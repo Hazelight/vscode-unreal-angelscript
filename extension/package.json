@@ -15,21 +15,20 @@
         "postinstall": "node ./node_modules/vscode/bin/install"
     },
     "dependencies": {
-        "vscode": "^1.1.14",
-        "vscode-languageclient": "^4.1.3",
         "await-notify": "1.0.1",
         "vscode-debugadapter": "1.27.0",
         "vscode-debugprotocol": "1.27.0",
+        "vscode-languageclient": "^4.4.2",
         "vscode-languageserver": "^4.1.2"
     },
     "devDependencies": {
-        "@types/node": "7.0.55",
         "@types/mocha": "2.2.48",
-        "typescript": "2.6.2",
+        "@types/node": "7.0.55",
         "mocha": "5.0.1",
-        "vscode": "1.1.10",
-        "vscode-debugadapter-testsupport": "1.27.0",
         "tslint": "5.9.1",
-        "vsce": "1.37.5"
+        "typescript": "2.6.2",
+        "vsce": "^1.57.1",
+        "vscode": "^1.1.30",
+        "vscode-debugadapter-testsupport": "1.27.0"
     }
 }
