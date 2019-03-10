@@ -1,0 +1,17 @@
+{
+	"compilerOptions": {
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"noImplicitAny": true,
+		"noImplicitReturns": true,		
+		"target": "es6",
+		"module": "commonjs",
+		"moduleResolution": "node",
+		"sourceMap": true,
+		"lib" : [ "es2016" ],
+		"outDir": "../extension/server"
+	},
+	"exclude": [
+		"node_modules"
+	]
+}

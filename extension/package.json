@@ -1,0 +1,35 @@
+{
+    "name": "unreal-angelscript",
+    "displayName": "Unreal Angelscript",
+    "description": "Implements support for unreal-bound angelscript files.",
+    "version": "0.0.1",
+    "publisher": "Hazelight",
+    "engines": {
+        "vscode": "^1.22.0"
+    },
+    "scripts": {
+        "vscode:prepublish": "tsc -p ./",
+        "compile": "tsc -p ./",
+        "watch": "tsc -w -p ./",
+        "update-vscode": "node ./node_modules/vscode/bin/install",
+        "postinstall": "node ./node_modules/vscode/bin/install"
+    },
+    "dependencies": {
+        "vscode": "^1.1.14",
+        "vscode-languageclient": "^4.1.3",
+        "await-notify": "1.0.1",
+        "vscode-debugadapter": "1.27.0",
+        "vscode-debugprotocol": "1.27.0",
+        "vscode-languageserver": "^4.1.2"
+    },
+    "devDependencies": {
+        "@types/node": "7.0.55",
+        "@types/mocha": "2.2.48",
+        "typescript": "2.6.2",
+        "mocha": "5.0.1",
+        "vscode": "1.1.10",
+        "vscode-debugadapter-testsupport": "1.27.0",
+        "tslint": "5.9.1",
+        "vsce": "1.37.5"
+    }
+}

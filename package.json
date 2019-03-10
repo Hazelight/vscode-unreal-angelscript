@@ -1,0 +1,165 @@
+{
+    "name": "unreal-angelscript",
+    "displayName": "Unreal Angelscript",
+    "description": "Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://github.com/Hazelight/UnrealEngine-Angelscript",
+    "version": "0.5.0",
+    "publisher": "Hazelight",
+    "engines": {
+        "vscode": "^1.22.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Debuggers"
+    ],
+    "activationEvents": [
+        "onDebug",
+        "onLanguage:angelscript"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Hazelight/vscode-unreal-angelscript"
+    },
+    "main": "./extension/out/src/extension",
+    "contributes": {
+        "languages": [
+            {
+                "id": "angelscript",
+                "aliases": [
+                    "Angelscript",
+                    "angelscript"
+                ],
+                "extensions": [
+                    ".as"
+                ],
+                "configuration": "./extension/language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "angelscript",
+                "scopeName": "source.angelscript",
+                "path": "./extension/syntaxes/angelscript.tmLanguage.json"
+            }
+        ],
+        "breakpoints": [
+            {
+                "language": "angelscript"
+            }
+        ],
+        "debuggers": [
+            {
+                "type": "angelscript",
+                "label": "Angelscript Debug",
+                "program": "./extension/out/debugAdapter.js",
+                "runtime": "node",
+                "configurationAttributes": {
+                    "launch": {
+                        "required": [],
+                        "properties": {
+                            "stopOnEntry": {
+                                "type": "boolean",
+                                "description": "Automatically stop after launch.",
+                                "default": true
+                            },
+                            "trace": {
+                                "type": "boolean",
+                                "description": "Enable logging of the Debug Adapter Protocol.",
+                                "default": true
+                            }
+                        }
+                    }
+                },
+                "initialConfigurations": [
+                    {
+                        "type": "angelscript",
+                        "request": "launch",
+                        "name": "Launch Angelscript",
+                        "stopOnEntry": false
+                    }
+                ],
+                "configurationSnippets": [
+                    {
+                        "label": "Start Angelscript Debugging",
+                        "description": "Debug angelscript code.",
+                        "body": {
+                            "type": "angelscript",
+                            "request": "launch",
+                            "name": "Debug Angelscript",
+                            "stopOnEntry": false
+                        }
+                    }
+                ]
+            }
+        ],
+        "commands": [
+            {
+                "command": "angelscript.copyImportPath",
+                "title": "Copy Import Path"
+            },
+            {
+                "command": "angelscript.goToSymbol",
+                "title": "Go to Symbol"
+            },
+            {
+                "command": "angelscript.addImportTo",
+                "title": "Add Import To"
+            }
+        ],
+        "menus": {
+            "explorer/context": [
+                {
+                    "when": "resourceLangId == angelscript",
+                    "command": "angelscript.copyImportPath",
+                    "group": "5_cutcopypaste"
+                }
+            ],
+            "editor/context": [
+                {
+                    "when": "resourceLangId == angelscript",
+                    "command": "angelscript.goToSymbol",
+                    "group": "navigation"
+                },
+                {
+                    "when": "resourceLangId == angelscript",
+                    "command": "angelscript.addImportTo",
+                    "group": "navigation"
+                }
+            ]
+        },
+        "keybindings": [
+            {
+                "command": "angelscript.goToSymbol",
+                "key": "alt+g",
+                "when": "editorTextFocus"
+            },
+            {
+                "command": "angelscript.addImportTo",
+                "key": "alt+shift+i",
+                "when": "editorTextFocus"
+            }
+        ]
+    },
+    "scripts": {
+        "postinstall": "cd language-server && npm install && cd ../extension && npm install && cd ..",
+        "compile": "tsc -p extension/tsconfig.json && cd server && npm run installServer && cd .. && tsc -p language-server/tsconfig.json",
+        "compile:client": "tsc -p extension/tsconfig.json",
+        "watch:client": "tsc -w -p extension/tsconfig.json",
+        "compile:server": "cd language-server && npm run installServer && cd .. && tsc -p language-server/tsconfig.json",
+        "watch:server": "cd language-server && npm run installServer && cd .. && tsc -w -p language-server/tsconfig.json"
+    },
+    "dependencies": {
+        "copy-paste": "1.3.0",
+        "vscode-languageserver": "^4.1.2"
+    },
+    "devDependencies": {
+        "@types/mocha": "2.2.48",
+        "@types/node": "7.0.55",
+        "glob": "7.1.3",
+        "mocha": "5.0.1",
+        "tslint": "5.9.1",
+        "typescript": "2.6.2",
+        "vsce": "^1.37.5",
+        "vscode": "1.1.10",
+        "vscode-debugadapter-testsupport": "1.27.0"
+    }
+}
