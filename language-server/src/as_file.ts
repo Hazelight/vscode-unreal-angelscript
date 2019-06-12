@@ -169,6 +169,17 @@ export class ASScope
             {
                 dbtype.methods.push(dbfunc);
             }
+
+            if (subscope.scopetype == ASScopeType.Class)
+            {
+                // Generate a 'constructor' function for the class for auto resolving
+                let ctor = new typedb.DBMethod();
+                ctor.name = subscope.typename;
+                ctor.returnType = subscope.typename;
+                ctor.declaredModule = subscope.modulename;
+                ctor.args = new Array<typedb.DBArg>();
+                dbtype.methods.push(ctor);
+            }
         }
 
         if (this.imports)

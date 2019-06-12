@@ -543,7 +543,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
         if (CanCompleteTo(getterStr, func.name))
         {
             let propname = func.name.substr(3);
-            if(!props.has(propname))
+            if(!props.has(propname) && func.args.length == 0)
             {
                 completions.push({
                         label: propname,
@@ -877,7 +877,7 @@ export function WorkspaceSymbols( query : string ) : SymbolInformation[]
     return symbols;
 }
 
-export function Hover(params : TextDocumentPositionParams) : Hover
+export function GetHover(params : TextDocumentPositionParams) : Hover
 {
     let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
     if (pos < 0)
@@ -1216,6 +1216,9 @@ export function GetDefinition(params : TextDocumentPositionParams) : Definition
     return null;
 }
 
+let re_literal_float = /^-?[0-9]+\.[0-9]*f$/;
+let re_literal_int = /^-?[0-9]+$/;
+
 export function ResolveAutos(root : scriptfiles.ASScope)
 {
     for (let vardesc of root.variables)
@@ -1229,6 +1232,40 @@ export function ResolveAutos(root : scriptfiles.ASScope)
         let resolvedType = GetTypeFromTerm(terms, 0, terms.length, root, true);
         if(resolvedType)
             vardesc.typename = resolvedType.typename;
+
+        // Parse basic literal types
+        if (!resolvedType)
+        {
+            if (terms.length == 1)
+            {
+                let literalExpr = terms[0].name.trim();
+                if (literalExpr.endsWith("\""))
+                {
+                    if (literalExpr.startsWith("\""))
+                    {
+                        vardesc.typename = "FString";
+                    }
+                    else if (literalExpr.startsWith("n\""))
+                    {
+                        vardesc.typename = "FName";
+                    }
+                }
+                else if (re_literal_int.test(literalExpr))
+                {
+                    vardesc.typename = "int";
+                }
+            }
+            else if (terms.length == 3)
+            {
+                if (terms[1].type == ASTermType.PropertyAccess)
+                {
+                    if (re_literal_float.test(terms[0].name + "." + terms[2].name))
+                    {
+                        vardesc.typename = "float";
+                    }
+                }
+            }
+        }
     }
 
     for (let subscope of root.subscopes)

@@ -31,16 +31,6 @@ function connect_unreal() {
 	}
 	unreal = new Socket;
 	//connection.console.log('Connecting to unreal editor...');
-	unreal.connect(27099, "localhost", function()
-	{
-		//connection.console.log('Connection to unreal editor established.');
-
-		let reqDb = Buffer.alloc(5);
-		reqDb.writeUInt32LE(1, 0);
-		reqDb.writeUInt8(MessageType.RequestDebugDatabase, 4);
-
-		unreal.write(reqDb);
-	});
 
 	unreal.on("data", function(data : Buffer) {
 		let messages : Array<Message> = readMessages(data);
@@ -92,8 +82,6 @@ function connect_unreal() {
 			else if(msg.type == MessageType.DebugDatabase)
 			{
 				let dbStr = msg.readString();
-				//connection.console.log('DATABASE: '+dbStr);
-
 				let dbObj = JSON.parse(dbStr);
 				typedb.AddPrimitiveTypes();
 				typedb.AddTypesFromUnreal(dbObj);
@@ -118,6 +106,21 @@ function connect_unreal() {
 			setTimeout(connect_unreal, 5000);
 		}
 	});
+
+	unreal.connect(27099, "localhost", function()
+	{
+		//connection.console.log('Connection to unreal editor established.');
+		setTimeout(function()
+		{
+			if (!unreal)
+				return;
+			let reqDb = Buffer.alloc(5);
+			reqDb.writeUInt32LE(1, 0);
+			reqDb.writeUInt8(MessageType.RequestDebugDatabase, 4);
+
+			unreal.write(reqDb);
+		}, 1000);
+	});
 }
 
 connect_unreal();
@@ -127,7 +130,6 @@ connect_unreal();
 let documents: TextDocuments = new TextDocuments();
 // Make the text document manager listen on the connection
 // for open, change and close text document events
-documents.listen(connection);
 
 let shouldSendDiagnosticRelatedInformation: boolean = false;
 let RootPath : string = "";
@@ -136,6 +138,8 @@ let RootUri : string = "";
 // After the server has started the client sends an initialize request. The server receives
 // in the passed params the rootPath of the workspace plus the client capabilities.
 connection.onInitialize((_params): InitializeResult => {
+	documents.listen(connection);
+	
 	RootPath = _params.rootPath;
 	RootUri = decodeURIComponent(_params.rootUri);
 	shouldSendDiagnosticRelatedInformation = _params.capabilities && _params.capabilities.textDocument && _params.capabilities.textDocument.publishDiagnostics && _params.capabilities.textDocument.publishDiagnostics.relatedInformation;
@@ -243,7 +247,7 @@ connection.onImplementation((_textDocumentPosition: TextDocumentPositionParams):
 });
 
 connection.onHover((_textDocumentPosition: TextDocumentPositionParams): Hover => {
-	return completion.Hover(_textDocumentPosition);
+	return completion.GetHover(_textDocumentPosition);
 });
 
 connection.onDocumentSymbol((_params : DocumentSymbolParams) : SymbolInformation[] => {
@@ -298,14 +302,6 @@ function getModuleName(uri : string) : string
 
 	return modulename;
 }
-	
-	/*connection.onDidOpenTextDocument((params) => {
-		let content = params.textDocument.getText();
-	let uri = params.textDocument.uri;
-	let modulename = getModuleName(uri);
-	
-	scriptfiles.UpdateContent(uri, modulename, content);
-});*/
 
 documents.onDidChangeContent((change) => {
 	let content = change.document.getText();
