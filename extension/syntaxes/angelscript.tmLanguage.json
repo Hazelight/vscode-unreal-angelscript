@@ -12,7 +12,7 @@
 		},
 		{
 			"name": "keyword.statement.angelscript",
-			"match": "\\b(default|delegate|event|import)\\b\\s*"
+			"match": "\\b(default|delegate|event|import|auto)\\b\\s*"
 		},
 		{
 			"name": "support.type.component.angelscript",

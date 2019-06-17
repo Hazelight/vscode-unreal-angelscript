@@ -242,7 +242,7 @@ export class ASScope
         let dbfunc = new typedb.DBMethod();
         dbfunc.name = this.funcname;
         dbfunc.returnType = this.funcreturn;
-        dbfunc.argumentStr = this.funcargs;
+        dbfunc.argumentStr = RemoveSpacing(this.funcargs);
         dbfunc.declaredModule = this.modulename;
 
         dbfunc.args = new Array<typedb.DBArg>();
@@ -351,7 +351,7 @@ function ParseEnumValues(root : ASScope)
 
 let re_declaration = /((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,[\t ]*[A-Za-z0-9_]+)*\>)?)[\t ]*&?)[\t ]+([A-Za-z_0-9]+)(;|\s*\(.*\)\s*;|\s*=.*;)/g;
 let re_classheader = /(class|struct|namespace)\s+([A-Za-z0-9_]+)(\s*:\s*([A-Za-z0-9_]+))?\s*$/g;
-let re_functionheader = /((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\((.*)\)/g;
+let re_functionheader = /((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
 let re_argument = /(,\s*|\(\s*|^\s*)((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)\s*&?(\s*(in|out|inout))?)\s+([A-Za-z_0-9]+)/g;
 let re_enum = /enum\s*([A-Za-z0-9_]+)\s*$/g;
 let re_import = /(\n|^)\s*import\s+([A-Za-z0-9_.]+)\s*;/g;
@@ -537,11 +537,18 @@ function ParseDeclarations(root : ASScope)
 
 let re_comment_oneline = /\/\/.*?\n/gi;
 let re_comment_multiline = /\/\*(.|\n|\r)*?\*\//gi;
+let re_spacing = /[\r\n\t]+/gi;
 
 function RemoveComments(code : string) : string
 {
     code = code.replace(re_comment_multiline, "");
     code = code.replace(re_comment_oneline, "");
+    return code;
+}
+
+function RemoveSpacing(code : string) : string
+{
+    code = code.replace(re_spacing, " ");
     return code;
 }
 
