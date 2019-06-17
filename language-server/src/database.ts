@@ -13,7 +13,7 @@ export class DBProperty
 
     format(prefix : string = null) : string
     {
-        if(prefix != null)
+        if(!prefix)
             return this.typename+" "+this.name;
         else
             return this.typename+" "+prefix+"::"+this.name;

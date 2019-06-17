@@ -981,8 +981,8 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
                 if(type.typename != "__")
                     prefix = type.typename.substring(2);
             }
-            else if(!type.typename.startsWith("//"))
-                prefix = type.typename;
+            /*else if(!type.typename.startsWith("//"))
+                prefix = type.typename;*/
 
             hover = prop.format(prefix);
             break;
