@@ -354,10 +354,33 @@ export class DBType
         if (!this.hasExtendTypes())
             return this.methods;
 
-        let mth = this.methods;
-        for(let extend of this.getExtendTypes())
-            mth = mth.concat(extend.allMethods());
-        return mth;
+        let methodNames = new Map<string, DBType>();
+        let outMethods = new Array<DBMethod>();
+
+        let combineTypes : DBType[] = [this];
+        let checkIndex = 0;
+        while (checkIndex < combineTypes.length)
+        {
+            // Analyze all types this extends
+            let type = combineTypes[checkIndex];
+            for (let extendType of type.getExtendTypes())
+                combineTypes.push(extendType);
+
+            // Append the methods of this type
+            for (let mth of type.methods)
+            {
+                let declType = methodNames.get(mth.name);
+                if (declType && declType != type)
+                    continue;
+
+                outMethods.push(mth);
+                methodNames.set(mth.name, type);
+            }
+
+            checkIndex += 1;
+        }
+
+        return outMethods;
     }
 
     getMethod(name : string) : DBMethod | null
