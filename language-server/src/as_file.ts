@@ -299,7 +299,7 @@ function ParseEnumValues(root : ASScope)
             break;
 
         let decl = new ASVariable();
-        decl.typename = root.typename;
+        decl.typename = root.typename.trim();
         decl.name = match[1];
         decl.isArgument = false;
         decl.posInParent = match.index;
@@ -350,7 +350,7 @@ function ParseDeclarations(root : ASScope)
                     break;
 
                 let decl = new ASVariable();
-                decl.typename = match[2];
+                decl.typename = match[2].trim();
                 decl.name = match[9];
                 decl.isArgument = true;
                 decl.posInParent = 0;
@@ -387,7 +387,7 @@ function ParseDeclarations(root : ASScope)
                 continue;
 
             let decl = new ASVariable();
-            decl.typename = match[1];
+            decl.typename = match[1].trim();
             decl.name = match[6];
             decl.isArgument = false;
             decl.posInParent = match.index + offset;
@@ -411,7 +411,7 @@ function ParseDeclarations(root : ASScope)
                 break;
 
             let decl = new ASVariable();
-            decl.typename = match[1];
+            decl.typename = match[1].trim();
             decl.name = match[6];
             decl.isArgument = false;
             decl.posInParent = match.index + offset;
