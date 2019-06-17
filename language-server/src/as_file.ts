@@ -58,6 +58,17 @@ export class ASVariable
     expression : string;
 };
 
+export class ASDelegate
+{
+    name : string;
+    returnValue : string;
+    arglist : string;
+    posInParent : number;
+    posInFile : number;
+    isMulticast : boolean;
+    args : Array<ASVariable>;
+};
+
 export class ASScope
 {
     scopetype : ASScopeType;
@@ -75,6 +86,7 @@ export class ASScope
     parentscope : ASScope;
     subscopes : Array<ASScope>;
     variables : Array<ASVariable>;
+    delegates : Array<ASDelegate>;
 
     startPosInParent : number;
     endPosInParent : number;
@@ -121,6 +133,34 @@ export class ASScope
             let found = subscope.findScopeType(typename);
             if(found)
                 return found;
+        }
+        return null;
+    }
+
+    getTypeScopeIsIn()  : string | null
+    {
+        let checktype : ASScope = this;
+        while (checktype)
+        {
+            if (checktype.scopetype == ASScopeType.Class)
+            {
+                return checktype.typename;
+            }
+            checktype = checktype.parentscope;
+        }
+        return null;
+    }
+
+    getSuperTypeForScope()  : string | null
+    {
+        let checktype : ASScope = this;
+        while (checktype)
+        {
+            if (checktype.scopetype == ASScopeType.Class)
+            {
+                return checktype.supertype;
+            }
+            checktype = checktype.parentscope;
         }
         return null;
     }
@@ -316,11 +356,14 @@ let re_argument = /(,\s*|\(\s*|^\s*)((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,
 let re_enum = /enum\s*([A-Za-z0-9_]+)\s*$/g;
 let re_import = /(\n|^)\s*import\s+([A-Za-z0-9_.]+)\s*;/g;
 let re_for_declaration = /for\s*\(((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,[\t ]*[A-Za-z0-9_]+)*\>)?)[\t ]*&?)[\t ]+([A-Za-z_0-9]+)\s*:\s*([^\n]*)\)/g;
+let re_delegate = /(delegate|event)[ \t]+((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\((.*)\);/g;
 
 function ParseDeclarations(root : ASScope)
 {
+    let cleanedDeclaration = root.declaration ? RemoveComments(root.declaration) : null;
+
     re_classheader.lastIndex = 0;
-    let classmatch = re_classheader.exec(root.declaration);
+    let classmatch = re_classheader.exec(cleanedDeclaration);
     if (classmatch)
     {
         root.typename = classmatch[2];
@@ -334,7 +377,7 @@ function ParseDeclarations(root : ASScope)
     else
     {
         re_functionheader.lastIndex = 0;
-        let funcmatch = re_functionheader.exec(root.declaration);
+        let funcmatch = re_functionheader.exec(cleanedDeclaration);
         if (funcmatch)
         {
             root.scopetype = ASScopeType.Function;
@@ -362,7 +405,7 @@ function ParseDeclarations(root : ASScope)
         else
         {
             re_enum.lastIndex = 0;
-            let enummatch = re_enum.exec(root.declaration);
+            let enummatch = re_enum.exec(cleanedDeclaration);
             if (enummatch)
             {
                 root.scopetype = ASScopeType.Enum;
@@ -432,6 +475,47 @@ function ParseDeclarations(root : ASScope)
                 root.imports = new Array<string>();
             root.imports.push(match[2]);
         }
+
+        if (root.scopetype == ASScopeType.Global)
+        {
+            re_delegate.lastIndex = 0;
+            while(true)
+            {
+                let match = re_delegate.exec(content);
+                if (match == null)
+                    break;
+
+                let decl = new ASDelegate();
+                decl.name = match[7];
+                decl.arglist = match[8];
+                decl.returnValue = match[2].trim();
+                decl.posInParent = match.index + offset;
+                decl.posInFile = root.startPosInFile + decl.posInParent;
+                decl.isMulticast = match[1] == "event";
+                decl.args = new Array<ASVariable>();
+
+                re_argument.lastIndex = 0;
+                while(true)
+                {
+                    let match = re_argument.exec(decl.arglist);
+                    if (match == null)
+                        break;
+
+                    let arg = new ASVariable();
+                    arg.typename = match[2].trim();
+                    arg.name = match[9];
+                    arg.isArgument = true;
+                    arg.posInParent = decl.posInParent;
+                    arg.posInFile = decl.posInFile;
+
+                    decl.args.push(arg);
+                }
+
+                if (!root.delegates)
+                    root.delegates = new Array<ASDelegate>();
+                root.delegates.push(decl);
+            }
+        }
     }
 
     for(let subscope of root.subscopes)
@@ -440,6 +524,25 @@ function ParseDeclarations(root : ASScope)
     let dbtype = root.toDBType();
     if (dbtype)
         typedb.GetDatabase().set(dbtype.typename, dbtype);
+
+    if (root.delegates)
+    {
+        for (let delegate of root.delegates)
+        {
+            dbtype = MakeDelegateDBType(root, delegate);
+            typedb.GetDatabase().set(delegate.name, dbtype);
+        }
+    }
+}
+
+let re_comment_oneline = /\/\/.*?\n/gi;
+let re_comment_multiline = /\/\*(.|\n|\r)*?\*\//gi;
+
+function RemoveComments(code : string) : string
+{
+    code = code.replace(re_comment_multiline, "");
+    code = code.replace(re_comment_oneline, "");
+    return code;
 }
 
 export function RemoveScopeFromDatabase(scope : ASScope)
@@ -608,6 +711,156 @@ export function GetTypeSymbolLocation(modulename : string, typename : string) : 
         return null;
 
     return file.GetLocation(subscope.startPosInFile);
+}
+
+function MakeDelegateDBType(scope : ASScope, delegate : ASDelegate) : typedb.DBType
+{
+    let dbtype = new typedb.DBType();
+    dbtype.typename = delegate.name;
+    dbtype.properties = new Array<typedb.DBProperty>();
+    dbtype.methods = new Array<typedb.DBMethod>();
+    dbtype.declaredModule = scope.modulename;
+
+    {
+        let method = new typedb.DBMethod();
+        method.name = "IsBound";
+        method.returnType = "bool";
+        method.documentation = "Whether the anything is bound to the delegate.";
+        method.args = [];
+        dbtype.methods.push(method);
+    }
+
+    {
+        let method = new typedb.DBMethod();
+        method.name = "Clear";
+        method.returnType = "void";
+        method.documentation = "Remove all bindings from the delegate.";
+        method.args = [];
+        dbtype.methods.push(method);
+    }
+
+    if (delegate.isMulticast)
+    {
+        {
+            let method = new typedb.DBMethod();
+            method.name = "Broadcast";
+            method.returnType = delegate.returnValue;
+            method.documentation = "Broadcast event to all existing bindings.";
+            method.args = new Array<typedb.DBArg>();
+            for (let delegateArg of delegate.args)
+            {
+                let arg = new typedb.DBArg();
+                arg.name = delegateArg.name;
+                arg.typename = delegateArg.typename;
+                method.args.push(arg);
+            }
+        
+            dbtype.methods.push(method);
+        }
+
+        {
+            let method = new typedb.DBMethod();
+            method.name = "AddUFunction";
+            method.returnType = "void";
+            method.documentation = "Add a new binding to this event. Make sure the function you're binding is a UFUNCTION().";
+            method.args = [
+                new typedb.DBArg().init("UObject", "Object"),
+                new typedb.DBArg().init("FName", "FunctionName"),
+            ];
+            dbtype.methods.push(method);
+        }
+
+        {
+            let method = new typedb.DBMethod();
+            method.name = "Unbind";
+            method.returnType = "void";
+            method.documentation = "Unbind a specific function that was previously added to this event.";
+            method.args = [
+                new typedb.DBArg().init("UObject", "Object"),
+                new typedb.DBArg().init("FName", "FunctionName"),
+            ];
+            dbtype.methods.push(method);
+        }
+
+        {
+            let method = new typedb.DBMethod();
+            method.name = "UnbindObject";
+            method.returnType = "void";
+            method.documentation = "Unbind all previously added functions that are called on the specified object.";
+            method.args = [
+                new typedb.DBArg().init("UObject", "Object"),
+            ];
+            dbtype.methods.push(method);
+        }
+    }
+    else
+    {
+        {
+            let method = new typedb.DBMethod();
+            method.name = "Execute";
+            method.returnType = delegate.returnValue;
+            method.documentation = "Execute the function bound to the delegate. Will throw an error if nothing is bound, use ExecuteIfBound() if you do not want an error in that case.";
+            method.args = new Array<typedb.DBArg>();
+            for (let delegateArg of delegate.args)
+            {
+                let arg = new typedb.DBArg();
+                arg.name = delegateArg.name;
+                arg.typename = delegateArg.typename;
+                method.args.push(arg);
+            }
+        
+            dbtype.methods.push(method);
+        }
+
+        {
+            let method = new typedb.DBMethod();
+            method.name = "ExecuteIfBound";
+            method.returnType = delegate.returnValue;
+            method.documentation = "Execute the function if one is bound to the delegate, otherwise do nothing.";
+            method.args = new Array<typedb.DBArg>();
+            for (let delegateArg of delegate.args)
+            {
+                let arg = new typedb.DBArg();
+                arg.name = delegateArg.name;
+                arg.typename = delegateArg.typename;
+                method.args.push(arg);
+            }
+        
+            dbtype.methods.push(method);
+        }
+
+        {
+            let method = new typedb.DBMethod();
+            method.name = "BindUFunction";
+            method.returnType = "void";
+            method.documentation = "Set the function that is bound to this delegate. Make sure the function you're binding is a UFUNCTION().";
+            method.args = [
+                new typedb.DBArg().init("UObject", "Object"),
+                new typedb.DBArg().init("FName", "FunctionName"),
+            ];
+            dbtype.methods.push(method);
+        }
+
+        {
+            let method = new typedb.DBMethod();
+            method.name = "GetUObject";
+            method.returnType = "UObject";
+            method.documentation = "Get the object that this delegate is bound to. Returns nullptr if unbound.";
+            method.args = [];
+            dbtype.methods.push(method);
+        }
+
+        {
+            let method = new typedb.DBMethod();
+            method.name = "GetFunctionName";
+            method.returnType = "FName";
+            method.documentation = "Get the function that this delegate is bound to. Returns NAME_None if unbound.";
+            method.args = [];
+            dbtype.methods.push(method);
+        }
+    }
+
+    return dbtype;
 }
 
 function PostProcessScope(scope : ASScope)

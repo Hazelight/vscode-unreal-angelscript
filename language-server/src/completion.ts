@@ -468,7 +468,19 @@ function GetTypeFromTerm(initialTerm : Array<ASTerm>, startIndex : number, endIn
                     return null;
             break;
             case ASTermType.Namespace:
-                if (curname != null)
+                if (curname == "Super")
+                {
+                    if (curscope != null && curscope.getSuperTypeForScope())
+                    {
+                        curtype = typedb.GetType(curscope.getSuperTypeForScope());
+                        curname = null;
+                        curscope = null;
+                        if (curtype == null)
+                            return null;
+                    }
+
+                }
+                else if (curname != null)
                 {
                     curtype = typedb.GetType("__"+curname);
                     curname = null;
@@ -730,6 +742,20 @@ export function Signature(params : TextDocumentPositionParams) : SignatureHelp
 
     for (let type of checkTypes)
     {
+        if (scope.scopetype == scriptfiles.ASScopeType.Class)
+        {
+            // Ignore functions from the class if we're in the
+            // class' scope. Since we're most likely completing
+            // an override function declaration at this point.
+            if (type.typename == scope.typename)
+            {
+                // Switch to the parent type so we can complete overrides for its functions
+                type = type.supertype ? typedb.GetType(type.supertype) : null;
+                if (!type)
+                    continue;
+            }
+        }
+
         for (let func of type.allMethods())
         {
             if (func.name != term[term.length-1].name)
@@ -1155,6 +1181,9 @@ export function GetDefinition(params : TextDocumentPositionParams) : Definition
         let dbtype = typedb.GetType(term[0].name);
         if(!dbtype)
             dbtype = typedb.GetType("__"+term[0].name);
+        if (!dbtype && term[0].name == "Super" && scope.getSuperTypeForScope())
+            dbtype = typedb.GetType(scope.getSuperTypeForScope());
+
         if (dbtype && dbtype.declaredModule)
         {
             let loc = scriptfiles.GetTypeSymbolLocation(dbtype.declaredModule, dbtype.typename);
@@ -1177,6 +1206,7 @@ export function GetDefinition(params : TextDocumentPositionParams) : Definition
                     locations.push(loc);
             }
         }
+
     }
 
     if (term.length >= 1 && scope)
