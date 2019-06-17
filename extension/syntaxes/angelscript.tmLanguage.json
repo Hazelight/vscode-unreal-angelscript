@@ -8,7 +8,7 @@
 		},
 		{
 			"name": "keyword.macro.uproperty.angelscript",
-			"match": "\\b(EditAnywhere|EditDefaultsOnly|EditInstanceOnly|BlueprintReadWrite|BlueprintReadOnly|NotBlueprintVisible|NotEditable|DefaultComponent|RootComponent|Attach|Transient|NotVisible|EditConst|BlueprintHidden|ShowOnActor|Config|Replicated|ReplicationCondition)\\b\\s*"
+			"match": "\\b(EditAnywhere|EditDefaultsOnly|EditInstanceOnly|BlueprintReadWrite|BlueprintReadOnly|NotBlueprintVisible|NotEditable|DefaultComponent|RootComponent|Attach|AttachSocket|Transient|NotVisible|EditConst|BlueprintHidden|ShowOnActor|Config|Replicated|ReplicationCondition)\\b\\s*"
 		},
 		{
 			"name": "keyword.statement.angelscript",

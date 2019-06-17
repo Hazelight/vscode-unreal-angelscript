@@ -2,7 +2,7 @@
     "name": "unreal-angelscript",
     "displayName": "Unreal Angelscript",
     "description": "Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://github.com/Hazelight/UnrealEngine-Angelscript",
-    "version": "0.5.2",
+    "version": "0.5.3",
     "publisher": "Hazelight",
     "engines": {
         "vscode": "^1.22.0"
@@ -149,6 +149,7 @@
     },
     "dependencies": {
         "copy-paste": "1.3.0",
+        "npm": "^6.9.0",
         "vscode-languageserver": "^4.1.2"
     },
     "devDependencies": {

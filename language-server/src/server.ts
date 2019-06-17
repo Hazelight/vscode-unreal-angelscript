@@ -4,7 +4,8 @@ import {
 	IPCMessageReader, IPCMessageWriter, createConnection, IConnection, TextDocuments, TextDocument,
 	Diagnostic, DiagnosticSeverity, InitializeResult, TextDocumentPositionParams, CompletionItem,
 	CompletionItemKind, SignatureHelp, Hover, DocumentSymbolParams, SymbolInformation,
-	WorkspaceSymbolParams, Definition, ExecuteCommandParams, VersionedTextDocumentIdentifier, Location
+	WorkspaceSymbolParams, Definition, ExecuteCommandParams, VersionedTextDocumentIdentifier, Location,
+	TextDocumentSyncKind
 } from 'vscode-languageserver';
 
 import { Socket } from 'net';
@@ -127,7 +128,6 @@ connect_unreal();
 
 // Create a simple text document manager. The text document manager
 // supports full document sync only
-let documents: TextDocuments = new TextDocuments();
 // Make the text document manager listen on the connection
 // for open, change and close text document events
 
@@ -138,8 +138,6 @@ let RootUri : string = "";
 // After the server has started the client sends an initialize request. The server receives
 // in the passed params the rootPath of the workspace plus the client capabilities.
 connection.onInitialize((_params): InitializeResult => {
-	documents.listen(connection);
-	
 	RootPath = _params.rootPath;
 	RootUri = decodeURIComponent(_params.rootUri);
 	shouldSendDiagnosticRelatedInformation = _params.capabilities && _params.capabilities.textDocument && _params.capabilities.textDocument.publishDiagnostics && _params.capabilities.textDocument.publishDiagnostics.relatedInformation;
@@ -167,7 +165,7 @@ connection.onInitialize((_params): InitializeResult => {
 	return {
 		capabilities: {
 			// Tell the client that the server works in FULL text document sync mode
-			textDocumentSync: documents.syncKind,
+			textDocumentSync: TextDocumentSyncKind.Full,
 			// Tell the client that the server support code complete
 			completionProvider: {
 				resolveProvider: true,
@@ -303,7 +301,7 @@ function getModuleName(uri : string) : string
 	return modulename;
 }
 
-documents.onDidChangeContent((change) => {
+/*documents.onDidChangeContent((change) => {
 	let content = change.document.getText();
 	let uri = change.document.uri;
 	let modulename = getModuleName(uri);
@@ -313,7 +311,7 @@ documents.onDidChangeContent((change) => {
 	let file = scriptfiles.UpdateContent(uri, modulename, content, change.document);
 	completion.ResolveAutos(file.rootscope);
 	scriptfiles.PostProcessModule(modulename);
-});
+});*/
 
 connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : string => {
 	let pos : TextDocumentPositionParams = params[0];
@@ -335,20 +333,22 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	return module;
 });
 	
-// connection.onDidChangeTextDocument((params) => {
+ connection.onDidChangeTextDocument((params) => {
 	// The content of a text document did change in VSCode.
 	// params.uri uniquely identifies the document.
 	// params.contentChanges describe the content changes to the document.
-	//connection.console.log(`${params.textDocument.uri} changed: ${JSON.stringify(params.contentChanges)}`);
-// 	connection.console.log("9");
-// });
-/*
-connection.onDidCloseTextDocument((params) => {
-	// A text document got closed in VSCode.
-	// params.uri uniquely identifies the document.
-	connection.console.log(`${params.textDocument.uri} closed.`);
-});
-*/
+
+	if (params.contentChanges.length == 0)
+		return;
+
+	let content = params.contentChanges[0].text;
+	let uri = params.textDocument.uri;
+	let modulename = getModuleName(uri);
+	
+	let file = scriptfiles.UpdateContent(uri, modulename, content, null);
+	completion.ResolveAutos(file.rootscope);
+	scriptfiles.PostProcessModule(modulename);
+ });
 
 // Listen on the connection
 connection.listen();
