@@ -1041,7 +1041,7 @@ function ExpandCheckedTypes(checkTypes : Array<typedb.DBType>)
         {
             for (let extendType of checkType.getExtendTypes())
             {
-                if(!checkTypes.includes(extendType))
+                if (!checkTypes.includes(extendType))
                     checkTypes.push(extendType);
             }
         }

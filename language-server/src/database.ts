@@ -303,6 +303,36 @@ export class DBType
         return extend;
     }
 
+    getCombineTypesList() : Array<DBType>
+    {
+        let extend : Array<DBType> = [ this ];
+        let checkIndex = 0;
+        while (checkIndex < extend.length)
+        {
+            let checkType = extend[checkIndex];
+
+            if (checkType.supertype)
+            {
+                let dbsuper = GetType(checkType.supertype);
+                if(dbsuper && !extend.includes(dbsuper))
+                    extend.push(dbsuper);
+            }
+
+            if (checkType.siblingTypes)
+            {
+                for (let sibling of checkType.siblingTypes)
+                {
+                    let dbsibling = GetType(sibling);
+                    if(dbsibling && !extend.includes(dbsibling))
+                        extend.push(dbsibling);
+                }
+            }
+
+            checkIndex += 1;
+        }
+
+        return extend;
+    }
 
     allProperties() : Array<DBProperty>
     {
@@ -310,12 +340,12 @@ export class DBType
             return this.properties;
 
         let props = this.properties;
-        for(let extend of this.getExtendTypes())
-            props = props.concat(extend.allProperties());
+        for(let extend of this.getCombineTypesList())
+            props = props.concat(extend.properties);
         return props;
     }
 
-    getProperty(name : string) : DBProperty | null
+    getProperty(name : string, recurse : boolean = true) : DBProperty | null
     {
         for (let prop of this.properties)
         {
@@ -325,12 +355,15 @@ export class DBType
             }
         }
 
+        if (!recurse)
+            return null;
+
         if (!this.hasExtendTypes())
             return null;
 
-        for(let extend of this.getExtendTypes())
+        for(let extend of this.getCombineTypesList())
         {
-            let prop = extend.getProperty(name);
+            let prop = extend.getProperty(name, false);
             if(prop)
                 return prop;
         }
@@ -357,16 +390,8 @@ export class DBType
         let methodNames = new Map<string, DBType>();
         let outMethods = new Array<DBMethod>();
 
-        let combineTypes : DBType[] = [this];
-        let checkIndex = 0;
-        while (checkIndex < combineTypes.length)
+        for (let type of this.getCombineTypesList())
         {
-            // Analyze all types this extends
-            let type = combineTypes[checkIndex];
-            for (let extendType of type.getExtendTypes())
-                combineTypes.push(extendType);
-
-            // Append the methods of this type
             for (let mth of type.methods)
             {
                 let declType = methodNames.get(mth.name);
@@ -376,14 +401,12 @@ export class DBType
                 outMethods.push(mth);
                 methodNames.set(mth.name, type);
             }
-
-            checkIndex += 1;
         }
 
         return outMethods;
     }
 
-    getMethod(name : string) : DBMethod | null
+    getMethod(name : string, recurse : boolean = true) : DBMethod | null
     {
         for (let func of this.methods)
         {
@@ -393,12 +416,15 @@ export class DBType
             }
         }
 
+        if (!recurse)
+            return null;
+
         if (!this.hasExtendTypes())
             return null;
 
-        for(let extend of this.getExtendTypes())
+        for(let extend of this.getCombineTypesList())
         {
-            let mth = extend.getMethod(name);
+            let mth = extend.getMethod(name, false);
             if(mth)
                 return mth;
         }
