@@ -544,7 +544,8 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
             completions.push({
                     label: prop.name,
                     detail: prop.typename+" "+prop.name,
-                    kind : CompletionItemKind.Field
+                    kind : CompletionItemKind.Field,
+                    data: [curtype.typename, prop.name],
             });
         }
     }
@@ -561,6 +562,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
                         label: propname,
                         detail: func.returnType+" "+propname,
                         kind: CompletionItemKind.Field,
+                        data: [curtype.typename, func.name],
                 });
                 props.add(propname);
             }
@@ -683,6 +685,12 @@ export function Resolve(item : CompletionItem) : CompletionItem
     {
         item.documentation = func.documentation;
     }
+    else
+    {
+        let prop = type.getProperty(item.data[1]);
+        if (prop && prop.documentation)
+            item.documentation = prop.documentation;
+    }
 
     return item;
 }
@@ -690,6 +698,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
 export function Signature(params : TextDocumentPositionParams) : SignatureHelp
 {
     let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
+    let originalPos = pos;
     if (pos < 0)
         return null;
 
@@ -737,7 +746,7 @@ export function Signature(params : TextDocumentPositionParams) : SignatureHelp
     let sigHelp = <SignatureHelp> {
         signatures : new Array<SignatureInformation>(),
         activeSignature : 0,
-        activeParameter : null,
+        activeParameter : GetActiveParameterCount(originalPos, params.textDocument.uri),
     };
 
     for (let type of checkTypes)
@@ -769,10 +778,21 @@ export function Signature(params : TextDocumentPositionParams) : SignatureHelp
                     label: arg.format(),
                 });
             }*/
+            let params = new Array<ParameterInformation>();
+            if (func.args)
+            {
+                for (let arg of func.args)
+                {
+                    params.push(<ParameterInformation>
+                    {
+                        label: arg.format()
+                    });
+                }
+            }
 
             let sig = <SignatureInformation> {
                 label: func.format(),
-                parameters: new Array<ParameterInformation>(),
+                parameters: params,
                 documentation: func.documentation,
             };
 
@@ -817,7 +837,16 @@ function GetScopeHover(initialTerm : string, scope : scriptfiles.ASScope) : stri
         {
             if (scopevar.name == initialTerm)
             {
-                return scopevar.typename+" "+scopevar.name;
+                let hover = "";
+                if(scopevar.documentation)
+                {
+                    hover += "*";
+                    hover += scopevar.documentation.replace("\n","*\n\n*");
+                    hover += "*\n\n";
+                }
+
+                hover += "```angelscript\n"+scopevar.typename+" "+scopevar.name+"\n```";
+                return hover;
             }
         }
     }
@@ -903,6 +932,18 @@ export function WorkspaceSymbols( query : string ) : SymbolInformation[]
     return symbols;
 }
 
+function FormatHoverDocumentation(doc : string) : string
+{
+    if (doc)
+    {
+        let outDoc = "*";
+        outDoc += doc.replace(/\s*\r?\n\s*/g,"*\n\n*");
+        outDoc += "*\n\n";
+        return outDoc;
+    }
+    return "";
+}
+
 export function GetHover(params : TextDocumentPositionParams) : Hover
 {
     let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
@@ -940,9 +981,36 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
     else
         return null;
 
+    if (term.length == 1)
+    {
+        let hoveredType = typedb.GetType(term[0].name);
+        if (hoveredType)
+        {
+            let hover = "";
+            hover += FormatHoverDocumentation(hoveredType.documentation);
+            hover += "```angelscript\n";
+            if (hoveredType.isStruct)
+                hover += "struct ";
+            else
+                hover += "class ";
+            hover += hoveredType.typename;
+            if (hoveredType.supertype)
+                hover += " : "+hoveredType.supertype;
+            else if (hoveredType.unrealsuper)
+                hover += " : "+hoveredType.unrealsuper;
+            hover += "\n```";
+
+            return <Hover> {contents: <MarkupContent> {
+                kind: "markdown",
+                value: hover,
+            }};
+        }
+    }
+
     let hover = "";
     let settername = "Set"+term[term.length-1].name;
     let gettername = "Get"+term[term.length-1].name;
+    let hadPropertyDoc = false;
     for (let type of checkTypes)
     {
         for (let func of type.allMethods())
@@ -954,21 +1022,30 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
             if(type.typename.startsWith("__"))
             {
                 if(type.typename != "__")
-                    prefix = type.typename.substring(2);
+                    prefix = type.typename.substring(2)+"::";
             }
             else if(!type.typename.startsWith("//"))
-                prefix = type.typename;
+                prefix = type.typename+".";
 
             hover = "";
-            if(func.documentation)
-            {
-                hover += "*";
-                hover += func.documentation;
-                hover += "*\n\n";
-            }
-            hover += func.format(prefix);
-            break;
+            hover += FormatHoverDocumentation(func.documentation);
+            if (func.documentation)
+                hadPropertyDoc = true;
+            if (func.name == gettername)
+                hover += "```angelscript\n"+func.returnType+" "+prefix+term[term.length-1].name+"\n```";
+            else if (func.name == settername && func.args.length >= 1)
+                hover += "```angelscript\n"+func.args[0].typename+" "+prefix+term[term.length-1].name+"\n```";
+            else
+                hover += "```angelscript\n"+func.format(prefix)+"\n```";
+
+            if ((func.name == gettername || func.name == settername) && !hadPropertyDoc)
+                continue;
+            else
+                break;
         }
+
+        if (hover.length != 0 && hadPropertyDoc)
+            break;
 
         for (let prop of type.allProperties())
         {
@@ -979,12 +1056,16 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
             if(type.typename.startsWith("__"))
             {
                 if(type.typename != "__")
-                    prefix = type.typename.substring(2);
+                    prefix = type.typename.substring(2)+"::";
             }
             /*else if(!type.typename.startsWith("//"))
-                prefix = type.typename;*/
+                prefix = type.typename+".";*/
 
-            hover = prop.format(prefix);
+            hover = "";
+            hover += FormatHoverDocumentation(prop.documentation);
+            hover += "```angelscript\n"+prop.format(prefix)+"\n```";
+            if (prop.documentation)
+                hadPropertyDoc = true;
             break;
         }
 
@@ -1011,13 +1092,8 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
                     continue;
 
                 hover = "";
-                if(func.documentation)
-                {
-                    hover += "*";
-                    hover += func.documentation;
-                    hover += "*\n\n";
-                }
-                hover += func.format(null, true);
+                hover += FormatHoverDocumentation(func.documentation);
+                hover += "```angelscript\n"+func.format(null, true)+"\n```";
             }
         }
     }
@@ -1302,4 +1378,50 @@ export function ResolveAutos(root : scriptfiles.ASScope)
     {
         ResolveAutos(subscope);
     }
+}
+
+function GetActiveParameterCount(pos : number, uri : string) : number
+{
+    let file = scriptfiles.GetFile(uri);
+    if (file == null)
+        return null;
+
+    let paramCount = 0;
+
+    let termstart = pos;
+    let brackets = 0;
+    while (termstart > 0)
+    {
+        let char = file.rootscope.content[termstart];
+        let end = false;
+
+        switch(char)
+        {
+            case ';':
+            case '{':
+            case '}':
+                end = true; break;
+
+            case '(':
+                if(brackets > 0)
+                    brackets -= 1;
+                else end = true;
+            break;
+
+            case ')':
+                brackets += 1;
+            break;
+
+            case ',':
+                if (brackets == 0)
+                    paramCount += 1;
+            break;
+        }
+
+        if(end)
+            break;
+        termstart -= 1;
+    }
+
+    return paramCount;
 }

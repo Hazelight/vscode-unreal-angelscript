@@ -1,4 +1,4 @@
-Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://github.com/Hazelight/UnrealEngine-Angelscript
+Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://angelscript.hazelight.se
 
 ## Getting Started
 After building or downloading the Unreal Editor version with Angelscript

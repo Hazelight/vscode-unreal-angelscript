@@ -4,11 +4,15 @@ export class DBProperty
 {
     name : string;
     typename : string;
+    documentation : string;
 
     fromJSON(name : string, input : any)
     {
         this.name = name;
         this.typename = input[0];
+
+        if (input.length >= 2)
+            this.documentation = FormatDocumentationComment(input[1]);
     }
 
     format(prefix : string = null) : string
@@ -16,7 +20,7 @@ export class DBProperty
         if(!prefix)
             return this.typename+" "+this.name;
         else
-            return this.typename+" "+prefix+"::"+this.name;
+            return this.typename+" "+prefix+this.name;
     }
 
     createTemplateInstance(templateTypes : Array<string>, actualTypes : Array<string>) : DBProperty
@@ -34,7 +38,7 @@ export class DBArg
     typename : string;
     defaultvalue : string | null;
 
-    init(name : string, typename : string, defaultvalue : string = "") : DBArg
+    init(typename : string, name : string, defaultvalue : string = "") : DBArg
     {
         this.name = name;
         this.typename = typename;
@@ -115,7 +119,7 @@ export class DBMethod
         }
 
         if ('doc' in input)
-            this.documentation = input['doc'];
+            this.documentation = FormatDocumentationComment(input['doc']);
         else
             this.documentation = null;
     }
@@ -124,7 +128,7 @@ export class DBMethod
     {
         let decl = this.returnType + " ";
         if(prefix != null)
-            decl += prefix + "::";
+            decl += prefix;
         decl += this.name + "(";
         let firstArg = true;
         if (this.argumentStr)
@@ -164,7 +168,9 @@ export class DBType
     properties : Array<DBProperty>;
     methods : Array<DBMethod>;
     unrealsuper : string;
+    documentation : string;
 
+    isStruct : boolean;
     isNS : boolean;
     rawName : string;
     namespaceResolved : boolean;
@@ -242,6 +248,16 @@ export class DBType
         {
             this.unrealsuper = input['supertype'];
         }
+
+        if ('doc' in input)
+            this.documentation = FormatDocumentationComment(input['doc']);
+        else
+            this.documentation = null;
+
+        if ('isStruct' in input)
+            this.isStruct = input['isStruct'];
+        else
+            this.isStruct = false;
     }
 
     resolveNamespace()
@@ -339,7 +355,7 @@ export class DBType
         if (!this.hasExtendTypes())
             return this.properties;
 
-        let props = this.properties;
+        let props : Array<DBProperty> = [];
         for(let extend of this.getCombineTypesList())
             props = props.concat(extend.properties);
         return props;
@@ -557,4 +573,14 @@ export function AddTypesFromUnreal(input : any)
 export function GetDatabase() : Map<string, DBType>
 {
     return database;
+}
+
+let re_comment_star_start = /^\s*\*+\s*[\r\n]+/gi;
+let re_comment_star_end = /[\r\n]+\s*\*+\s*/gi;
+export function FormatDocumentationComment(doc : string) : string
+{
+    doc = doc.replace(re_comment_star_end, "\n");
+    doc = doc.replace(re_comment_star_start, " ");
+    doc = doc.trim();
+    return doc;
 }

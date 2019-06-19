@@ -39,6 +39,9 @@ function connect_unreal() {
 		{
 			if (msg.type == MessageType.Diagnostics)
 			{
+				if (!InitialPostProcessDone)
+					RunInitialPostProcess();
+
 				let diagnostics: Diagnostic[] = [];
 
 				let filename = "file:///"+msg.readString();
@@ -154,12 +157,6 @@ connection.onInitialize((_params): InitializeResult => {
 			let asfile = UpdateFileFromDisk(getFileUri(file));
 			modules.push(asfile);
 		}
-
-		for (let module of modules)
-			completion.ResolveAutos(module.rootscope);
-
-		for (let module of modules)
-			scriptfiles.PostProcessModule(module.modulename);
 	});
 
 	return {
@@ -182,6 +179,17 @@ connection.onInitialize((_params): InitializeResult => {
 		}
 	}
 });
+
+let InitialPostProcessDone = false;
+function RunInitialPostProcess()
+{
+	for (let file of scriptfiles.GetAllFiles())
+	{
+		completion.ResolveAutos(file.rootscope);
+		scriptfiles.PostProcessModule(file.modulename);
+	}
+	InitialPostProcessDone = true;
+}
 
 connection.onDidChangeWatchedFiles((_change) => {
 	for(let change of _change.changes)

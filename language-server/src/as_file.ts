@@ -1,7 +1,8 @@
-import { TextDocument, Position, Location, Range } from 'vscode-languageserver';
+import { TextDocument, Position, Location, Range, DocumentSymbol } from 'vscode-languageserver';
 import * as typedb from './database';
 import { create } from 'domain';
 import { type } from 'os';
+import { createDecipher } from 'crypto';
 
 export class ASFile
 {
@@ -52,6 +53,7 @@ export class ASVariable
 {
     name : string;
     typename : string;
+    documentation : string;
     isArgument : boolean;
     posInParent : number;
     posInFile : number;
@@ -78,6 +80,7 @@ export class ASScope
     supertype : string;
     modulename : string;
     isStruct : boolean;
+    documentation : string;
 
     funcname : string;
     funcreturn : string;
@@ -190,6 +193,8 @@ export class ASScope
         dbtype.properties = new Array<typedb.DBProperty>();
         dbtype.methods = new Array<typedb.DBMethod>();
         dbtype.declaredModule = this.modulename;
+        dbtype.documentation = this.documentation;
+        dbtype.isStruct = this.isStruct;
 
         if (this.scopetype == ASScopeType.Enum || this.scopetype == ASScopeType.Namespace)
             dbtype.typename = "__" + dbtype.typename;
@@ -199,6 +204,7 @@ export class ASScope
             let dbprop = new typedb.DBProperty();
             dbprop.name = prop.name;
             dbprop.typename = prop.typename;
+            dbprop.documentation = prop.documentation;
             dbtype.properties.push(dbprop);
         }
 
@@ -244,6 +250,7 @@ export class ASScope
         dbfunc.returnType = this.funcreturn;
         dbfunc.argumentStr = RemoveSpacing(this.funcargs);
         dbfunc.declaredModule = this.modulename;
+        dbfunc.documentation = this.documentation;
 
         dbfunc.args = new Array<typedb.DBArg>();
         for (let funcVar of this.variables)
@@ -370,6 +377,7 @@ function ParseDeclarations(root : ASScope)
         root.supertype = classmatch[4];
         root.scopetype = ASScopeType.Class;
         root.isStruct = classmatch[1] == "struct";
+        root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
 
         if (classmatch[1] == "namespace")
             root.scopetype = ASScopeType.Namespace;
@@ -384,6 +392,7 @@ function ParseDeclarations(root : ASScope)
             root.funcname = funcmatch[6];
             root.funcreturn = funcmatch[1];
             root.funcargs = funcmatch[7];
+            root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
 
             re_argument.lastIndex = 0;
             while(true)
@@ -435,6 +444,9 @@ function ParseDeclarations(root : ASScope)
             decl.isArgument = false;
             decl.posInParent = match.index + offset;
             decl.posInFile = root.startPosInFile + decl.posInParent;
+
+            if (root.scopetype == ASScopeType.Class)
+                decl.documentation = ExtractDocumentationBackwards(content, match.index);
 
             decl.expression = match[7].trim();
             if(decl.expression.startsWith("="))
@@ -550,6 +562,42 @@ function RemoveSpacing(code : string) : string
 {
     code = code.replace(re_spacing, " ");
     return code;
+}
+
+function ExtractDocumentationBackwards(code : string, position : number, minPosition : number = 0) : string
+{
+    while (position >= minPosition)
+    {
+        if (code[position] == '/')
+        {
+            if (position+1 < code.length)
+            {
+                if (code[position+1] == '/')
+                {
+                    let endIndex = code.indexOf("\n", position);
+                    if (endIndex == -1)
+                        return typedb.FormatDocumentationComment(code.substr(position+2));
+                    else
+                        return typedb.FormatDocumentationComment(code.substring(position+2, endIndex));
+                }
+                else if (code[position+1] == '*')
+                {
+                    let endIndex = code.indexOf("*/", position);
+                    if (endIndex == -1)
+                        return typedb.FormatDocumentationComment(code.substr(position+2));
+                    else
+                        return typedb.FormatDocumentationComment(code.substring(position+2, endIndex));
+                }
+            }
+        }
+        else if (code[position] == ';' || code[position] == '}')
+        {
+            break;
+        }
+        position -= 1;
+    }
+
+    return "";
 }
 
 export function RemoveScopeFromDatabase(scope : ASScope)

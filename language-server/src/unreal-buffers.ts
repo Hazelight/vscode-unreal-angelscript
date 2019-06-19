@@ -101,52 +101,34 @@ export class Message
     }
 }
 
-let pendingMessage : Message = null;
+let pendingBuffer : Buffer = Buffer.alloc(0);
 
 export function readMessages(buffer : Buffer) : Array<Message>
 {
     let list : Array<Message> = [];
     let offset = 0;
 
-    if (pendingMessage != null)
+    pendingBuffer = Buffer.concat([pendingBuffer, buffer])
+
+    while (pendingBuffer.length >= 5)
     {
-        let wantSize = pendingMessage.remainingSize;
-        pendingMessage.buffer = Buffer.concat([pendingMessage.buffer, buffer]);
-
-        if (wantSize > buffer.length)
-        {
-            pendingMessage.remainingSize -= buffer.length;
-            return list;
-        }
-        else
-        {
-            pendingMessage.remainingSize = 0;
-            offset += wantSize;
-
-            list.push(pendingMessage);
-            pendingMessage = null;
-        }
-    }
-
-    while (offset < buffer.length)
-    {
-        let msglen = buffer.readUIntLE(offset, 4);
+        let offset = 0;
+        let msglen = pendingBuffer.readUIntLE(offset, 4);
         offset += 4;
-        let msgtype = buffer.readInt8(offset);
+        let msgtype = pendingBuffer.readInt8(offset);
         offset += 1;
 
-        if (msglen <= buffer.length - offset)
+        if (msglen <= pendingBuffer.length - offset)
         {
-            list.push(new Message(msgtype, offset, msglen, buffer));
-            offset += msglen;
+            list.push(new Message(msgtype, offset, msglen, pendingBuffer));
+            pendingBuffer = pendingBuffer.slice(offset + msglen);
         }
         else
         {
-            pendingMessage = new Message(msgtype, offset, msglen, buffer);
-            pendingMessage.remainingSize = msglen - (buffer.length - offset);
             return list;
         }
     }
+
     return list;
 }
 
@@ -154,7 +136,7 @@ function writeString(str : string) : Buffer
 {
     let newBuffer = Buffer.alloc(4);
     newBuffer.writeInt32LE(str.length+1, 0);
-    return Buffer.concat([newBuffer, new Buffer(str+"\0", "binary")]);
+    return Buffer.concat([newBuffer, Buffer.from(str+"\0", "binary")]);
 }
 
 export function buildGoTo(typename : string, symbolname : string) : Buffer
