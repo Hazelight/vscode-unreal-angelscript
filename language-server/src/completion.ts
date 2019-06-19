@@ -770,14 +770,6 @@ export function Signature(params : TextDocumentPositionParams) : SignatureHelp
             if (func.name != term[term.length-1].name)
                 continue;
 
-            /*let params = new Array<ParameterInformation>();
-
-            for (let arg of func.args)
-            {
-                params.push(<ParameterInformation>{
-                    label: arg.format(),
-                });
-            }*/
             let params = new Array<ParameterInformation>();
             if (func.args)
             {

@@ -575,8 +575,8 @@ export function GetDatabase() : Map<string, DBType>
     return database;
 }
 
-let re_comment_star_start = /^\s*\*+\s*[\r\n]+/gi;
-let re_comment_star_end = /[\r\n]+\s*\*+\s*/gi;
+let re_comment_star_start = /^[ \t]*\*+[ \t]*[\r\n]+/gi;
+let re_comment_star_end = /[\r\n]+[ \t]*\*+[ \t]*/gi;
 export function FormatDocumentationComment(doc : string) : string
 {
     doc = doc.replace(re_comment_star_end, "\n");
