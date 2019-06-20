@@ -200,6 +200,17 @@ function ExtractCompletingTermAt(pos : number, uri : string) : [Array<ASTerm>, s
 
 function CanCompleteTo(completing : string, suggestion : string) : boolean
 {
+    if (completing.startsWith("Get"))
+    {
+        if (suggestion.startsWith("Get"))
+            return suggestion.substr(3).toLowerCase().indexOf(completing.substr(3).toLowerCase()) != -1;
+    }
+    else if (completing.startsWith("Set"))
+    {
+        if (suggestion.startsWith("Set"))
+            return suggestion.substr(3).toLowerCase().indexOf(completing.substr(3).toLowerCase()) != -1;
+    }
+
     return suggestion.toLowerCase().indexOf(completing.toLowerCase()) != -1;
 }
 
