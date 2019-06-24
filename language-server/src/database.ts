@@ -5,11 +5,15 @@ export class DBProperty
     name : string;
     typename : string;
     documentation : string;
+    isProtected : boolean;
+    isPrivate : boolean;
 
     fromJSON(name : string, input : any)
     {
         this.name = name;
         this.typename = input[0];
+        this.isProtected = false;
+        this.isPrivate = false;
 
         if (input.length >= 2)
             this.documentation = FormatDocumentationComment(input[1]);
@@ -17,10 +21,17 @@ export class DBProperty
 
     format(prefix : string = null) : string
     {
-        if(!prefix)
-            return this.typename+" "+this.name;
-        else
-            return this.typename+" "+prefix+this.name;
+        let str : string = "";
+        if (this.isProtected)
+            str += "protected ";
+        if (this.isPrivate)
+            str += "private ";
+        str += this.typename;
+        str += " ";
+        if (prefix)
+            str += prefix;
+        str += this.name;
+        return str;
     }
 
     createTemplateInstance(templateTypes : Array<string>, actualTypes : Array<string>) : DBProperty
@@ -82,6 +93,8 @@ export class DBMethod
     argumentStr : string;
     documentation : string;
     declaredModule : string;
+    isProtected : boolean = false;
+    isPrivate : boolean = false;
 
     createTemplateInstance(templateTypes : Array<string>, actualTypes : Array<string>) : DBMethod
     {

@@ -517,7 +517,7 @@ function GetTermCompletions(initialTerm : Array<ASTerm>, inScope : scriptfiles.A
 
     // The last term is always the name we're trying to complete    
     let completingStr = initialTerm[initialTerm.length - 1].name.toLowerCase();
-    AddCompletionsFromType(curtype, completingStr, completions);
+    AddCompletionsFromType(curtype, completingStr, completions, inScope);
 
     // Deal with unified call syntax from global functions
     let globaltypes = GetGlobalScopeTypes(inScope, false, false);
@@ -544,17 +544,49 @@ function GetTermCompletions(initialTerm : Array<ASTerm>, inScope : scriptfiles.A
     }
 }
 
-export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : string, completions : Array<CompletionItem>)
+function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DBProperty, inScope : scriptfiles.ASScope) : boolean
+{
+    if (prop.isPrivate)
+    {
+        if (!inScope || !inScope.hasPrivateAccessTo(curtype.typename))
+            return false;
+    }
+    else if (prop.isProtected)
+    {
+        if (!inScope || !inScope.hasProtectedAccessTo(curtype.typename))
+            return false;
+    }
+    return true;
+}
+
+function isFunctionAccessibleFromScope(curtype : typedb.DBType, func : typedb.DBMethod, inScope : scriptfiles.ASScope) : boolean
+{
+    if (func.isPrivate)
+    {
+        if (!inScope || !inScope.hasPrivateAccessTo(curtype.typename))
+            return false;
+    }
+    else if (func.isProtected)
+    {
+        if (!inScope || !inScope.hasProtectedAccessTo(curtype.typename))
+            return false;
+    }
+    return true;
+}
+
+export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : string, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope)
 {
     let props = new Set<string>();
     for (let prop of curtype.allProperties())
     {
         if (CanCompleteTo(completingStr, prop.name))
         {
+            if (!isPropertyAccessibleFromScope(curtype, prop, inScope))
+                continue;
             props.add(prop.name);
             completions.push({
                     label: prop.name,
-                    detail: prop.typename+" "+prop.name,
+                    detail: prop.format(),
                     kind : CompletionItemKind.Field,
                     data: [curtype.typename, prop.name],
             });
@@ -566,6 +598,8 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
     {
         if (CanCompleteTo(getterStr, func.name))
         {
+            if (!isFunctionAccessibleFromScope(curtype, func, inScope))
+                continue;
             let propname = func.name.substr(3);
             if(!props.has(propname) && func.args.length == 0)
             {
@@ -581,6 +615,8 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
 
         if (CanCompleteTo(completingStr, func.name))
         {
+            if (!isFunctionAccessibleFromScope(curtype, func, inScope))
+                continue;
             if(!func.name.startsWith("op"))
             {
                 completions.push({
@@ -668,7 +704,7 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
     {
         let globaltypes = GetGlobalScopeTypes(inScope, true);
         for(let globaltype of globaltypes)
-            AddCompletionsFromType(globaltype, initialTerm[0].name, completions);
+            AddCompletionsFromType(globaltype, initialTerm[0].name, completions, inScope);
 
         AddKeywordCompletions(initialTerm[0].name, completions);
     }

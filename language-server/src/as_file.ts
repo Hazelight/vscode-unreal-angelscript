@@ -58,6 +58,8 @@ export class ASVariable
     posInParent : number;
     posInFile : number;
     expression : string;
+    isPrivate : boolean;
+    isProtected : boolean;
 };
 
 export class ASDelegate
@@ -85,6 +87,8 @@ export class ASScope
     funcname : string;
     funcreturn : string;
     funcargs : string;
+    funcprivate : boolean;
+    funcprotected : boolean;
 
     parentscope : ASScope;
     subscopes : Array<ASScope>;
@@ -205,6 +209,8 @@ export class ASScope
             dbprop.name = prop.name;
             dbprop.typename = prop.typename;
             dbprop.documentation = prop.documentation;
+            dbprop.isPrivate = prop.isPrivate;
+            dbprop.isProtected = prop.isProtected;
             dbtype.properties.push(dbprop);
         }
 
@@ -251,6 +257,8 @@ export class ASScope
         dbfunc.argumentStr = RemoveSpacing(this.funcargs);
         dbfunc.declaredModule = this.modulename;
         dbfunc.documentation = this.documentation;
+        dbfunc.isPrivate = this.funcprivate;
+        dbfunc.isProtected = this.funcprotected;
 
         dbfunc.args = new Array<typedb.DBArg>();
         for (let funcVar of this.variables)
@@ -265,6 +273,40 @@ export class ASScope
         }
         
         return dbfunc;
+    }
+
+    hasPrivateAccessTo(typename : string) : boolean
+    {
+        let checkScope : ASScope = this;
+        while (checkScope)
+        {
+            if (checkScope.scopetype == ASScopeType.Class)
+            {
+                if (checkScope.typename == typename)
+                    return true;
+            }
+            checkScope = checkScope.parentscope;
+        }
+        return false;
+    }
+
+    hasProtectedAccessTo(typename : string) : boolean
+    {
+        let checkScope : ASScope = this;
+        while (checkScope)
+        {
+            if (checkScope.scopetype == ASScopeType.Class)
+            {
+                if (checkScope.typename == typename)
+                    return true;
+
+                let dbtype = typedb.GetType(checkScope.typename);
+                if (dbtype.inheritsFrom(typename))
+                    return true;
+            }
+            checkScope = checkScope.parentscope;
+        }
+        return false;
     }
 };
 
@@ -356,9 +398,9 @@ function ParseEnumValues(root : ASScope)
     }
 }
 
-let re_declaration = /((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,[\t ]*[A-Za-z0-9_]+)*\>)?)[\t ]*&?)[\t ]+([A-Za-z_0-9]+)(;|\s*\(.*\)\s*;|\s*=.*;)/g;
+let re_declaration = /(private\s+|protected\s+)?((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,[\t ]*[A-Za-z0-9_]+)*\>)?)[\t ]*&?)[\t ]+([A-Za-z_0-9]+)(;|\s*\(.*\)\s*;|\s*=.*;)/g;
 let re_classheader = /(class|struct|namespace)\s+([A-Za-z0-9_]+)(\s*:\s*([A-Za-z0-9_]+))?\s*$/g;
-let re_functionheader = /((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
+let re_functionheader = /(private\s+|protected\s+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
 let re_argument = /(,\s*|\(\s*|^\s*)((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)\s*&?(\s*(in|out|inout))?)\s+([A-Za-z_0-9]+)/g;
 let re_enum = /enum\s*([A-Za-z0-9_]+)\s*$/g;
 let re_import = /(\n|^)\s*import\s+([A-Za-z0-9_.]+)\s*;/g;
@@ -389,9 +431,11 @@ function ParseDeclarations(root : ASScope)
         if (funcmatch)
         {
             root.scopetype = ASScopeType.Function;
-            root.funcname = funcmatch[6];
-            root.funcreturn = funcmatch[1];
-            root.funcargs = funcmatch[7];
+            root.funcname = funcmatch[7];
+            root.funcreturn = funcmatch[2];
+            root.funcargs = funcmatch[8];
+            root.funcprivate = funcmatch[1] && funcmatch[1].startsWith("private");
+            root.funcprotected = funcmatch[1] && funcmatch[1].startsWith("protected");
             root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
 
             re_argument.lastIndex = 0;
@@ -435,20 +479,22 @@ function ParseDeclarations(root : ASScope)
             let match = re_declaration.exec(content);
             if (match == null)
                 break;
-            if(match[1] == 'return')
+            if(match[2] == 'return')
                 continue;
 
             let decl = new ASVariable();
-            decl.typename = match[1].trim();
-            decl.name = match[6];
+            decl.typename = match[2].trim();
+            decl.name = match[7];
             decl.isArgument = false;
             decl.posInParent = match.index + offset;
             decl.posInFile = root.startPosInFile + decl.posInParent;
+            decl.isPrivate = match[1] && match[1].startsWith("private");
+            decl.isProtected = match[1] && match[1].startsWith("protected");
 
             if (root.scopetype == ASScopeType.Class)
                 decl.documentation = ExtractDocumentationBackwards(content, match.index);
 
-            decl.expression = match[7].trim();
+            decl.expression = match[8].trim();
             if(decl.expression.startsWith("="))
                 decl.expression = decl.expression.substr(1);
             if(decl.expression.endsWith(";"))
