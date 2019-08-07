@@ -44,7 +44,12 @@ function connect_unreal() {
 
 				let diagnostics: Diagnostic[] = [];
 
-				let filename = "file:///"+msg.readString();
+				// Based on https://en.wikipedia.org/wiki/File_URI_scheme,
+				// file:/// should be on both platforms, but on Linux the path
+				// begins with / while on Windows it is omitted. So we need to
+				// add it here to make sure both platforms are valid.
+				let localpath = msg.readString();
+				let filename = (localpath[0] == '/') ? ("file://" + localpath) : ("file:///" + localpath);
 				//connection.console.log('Diagnostics received: '+filename);
 
 				let msgCount = msg.readInt();
