@@ -795,6 +795,7 @@ export function Signature(params : TextDocumentPositionParams) : SignatureHelp
         activeSignature : 0,
         activeParameter : GetActiveParameterCount(originalPos, params.textDocument.uri),
     };
+    let foundFunc = false;
 
     for (let type of checkTypes)
     {
@@ -820,6 +821,13 @@ export function Signature(params : TextDocumentPositionParams) : SignatureHelp
             let params = new Array<ParameterInformation>();
             if (func.args)
             {
+                // Show the active signature for the least amount of arguments
+                if (func.args.length > sigHelp.activeParameter && !foundFunc)
+                {
+                    sigHelp.activeSignature = sigHelp.signatures.length;
+                    foundFunc = true;
+                }
+
                 for (let arg of func.args)
                 {
                     params.push(<ParameterInformation>

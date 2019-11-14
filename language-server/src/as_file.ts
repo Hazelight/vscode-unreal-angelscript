@@ -89,6 +89,7 @@ export class ASScope
     funcargs : string;
     funcprivate : boolean;
     funcprotected : boolean;
+    isConstructor : boolean = false;
 
     parentscope : ASScope;
     subscopes : Array<ASScope>;
@@ -219,18 +220,37 @@ export class ASScope
             let dbfunc = subscope.toDBFunc();
             if (dbfunc)
             {
-                dbtype.methods.push(dbfunc);
+                if (!subscope.isConstructor)
+                    dbtype.methods.push(dbfunc);
             }
 
             if (subscope.scopetype == ASScopeType.Class)
             {
-                // Generate a 'constructor' function for the class for auto resolving
-                let ctor = new typedb.DBMethod();
-                ctor.name = subscope.typename;
-                ctor.returnType = subscope.typename;
-                ctor.declaredModule = subscope.modulename;
-                ctor.args = new Array<typedb.DBArg>();
-                dbtype.methods.push(ctor);
+                // Add all constructors from the class to the global scope
+                let foundConstructor = false;
+                for (let funcscope of subscope.subscopes)
+                {
+                    if (funcscope.isConstructor)
+                    {
+                        let ctor = funcscope.toDBFunc();
+                        if (ctor)
+                        {
+                            dbtype.methods.push(ctor);
+                            foundConstructor = true;
+                        }
+                    }
+                }
+
+                // Generate a default constructor function for the class for auto resolving
+                if (!foundConstructor)
+                {
+                    let ctor = new typedb.DBMethod();
+                    ctor.name = subscope.typename;
+                    ctor.returnType = subscope.typename;
+                    ctor.declaredModule = subscope.modulename;
+                    ctor.args = new Array<typedb.DBArg>();
+                    dbtype.methods.push(ctor);
+                }
             }
         }
 
@@ -401,6 +421,7 @@ function ParseEnumValues(root : ASScope)
 let re_declaration = /(private\s+|protected\s+)?((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,[\t ]*[A-Za-z0-9_]+)*\>)?)[\t ]*&?)[\t ]+([A-Za-z_0-9]+)(;|\s*\(.*\)\s*;|\s*=.*;)/g;
 let re_classheader = /(class|struct|namespace)\s+([A-Za-z0-9_]+)(\s*:\s*([A-Za-z0-9_]+))?\s*$/g;
 let re_functionheader = /(private\s+|protected\s+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
+let re_constructor = /[\t ]*([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
 let re_argument = /(,\s*|\(\s*|^\s*)((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)\s*&?(\s*(in|out|inout))?)\s+([A-Za-z_0-9]+)/g;
 let re_enum = /enum\s*([A-Za-z0-9_]+)\s*$/g;
 let re_import = /(\n|^)\s*import\s+([A-Za-z0-9_.]+)\s*;/g;
@@ -457,14 +478,47 @@ function ParseDeclarations(root : ASScope)
         }
         else
         {
-            re_enum.lastIndex = 0;
-            let enummatch = re_enum.exec(cleanedDeclaration);
-            if (enummatch)
+            re_constructor.lastIndex = 0;
+            let constructormatch = re_constructor.exec(cleanedDeclaration);
+
+            if (constructormatch && constructormatch[1] == root.parentscope.typename)
             {
-                root.scopetype = ASScopeType.Enum;
-                root.typename = enummatch[1];
-                
-                ParseEnumValues(root);
+                root.scopetype = ASScopeType.Function;
+                root.funcname = constructormatch[1];
+                root.funcreturn = constructormatch[1];
+                root.funcargs = constructormatch[2];
+                root.funcprivate = false;
+                root.funcprotected = false;
+                root.isConstructor = true;
+
+                re_argument.lastIndex = 0;
+                while(true)
+                {
+                    let match = re_argument.exec(root.funcargs);
+                    if (match == null)
+                        break;
+
+                    let decl = new ASVariable();
+                    decl.typename = match[2].trim();
+                    decl.name = match[9];
+                    decl.isArgument = true;
+                    decl.posInParent = 0;
+                    decl.posInFile = root.startPosInFile;
+
+                    root.variables.push(decl);
+                }
+            }
+            else
+            {
+                re_enum.lastIndex = 0;
+                let enummatch = re_enum.exec(cleanedDeclaration);
+                if (enummatch)
+                {
+                    root.scopetype = ASScopeType.Enum;
+                    root.typename = enummatch[1];
+                    
+                    ParseEnumValues(root);
+                }
             }
         }
     }
@@ -581,7 +635,9 @@ function ParseDeclarations(root : ASScope)
 
     let dbtype = root.toDBType();
     if (dbtype)
+    {
         typedb.GetDatabase().set(dbtype.typename, dbtype);
+    }
 
     if (root.delegates)
     {
