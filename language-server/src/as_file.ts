@@ -90,6 +90,7 @@ export class ASScope
     funcprivate : boolean;
     funcprotected : boolean;
     isConstructor : boolean = false;
+    isConst : boolean = false;
 
     parentscope : ASScope;
     subscopes : Array<ASScope>;
@@ -115,6 +116,18 @@ export class ASScope
         this.content = "";
         this.unscopedContent = new Array<string>();
         this.unscopedOffsets = new Array<number>();
+    }
+
+    remove_variable(name : string)
+    {
+        for (let i = 0; i < this.variables.length; ++i)
+        {
+            if (this.variables[i].name == name)
+            {
+                this.variables.splice(i, 1);
+                break;
+            }
+        }
     }
 
     GetScopeAt(offset : number) : ASScope
@@ -200,6 +213,7 @@ export class ASScope
         dbtype.declaredModule = this.modulename;
         dbtype.documentation = this.documentation;
         dbtype.isStruct = this.isStruct;
+        dbtype.isEnum = this.scopetype == ASScopeType.Enum;;
 
         if (this.scopetype == ASScopeType.Enum || this.scopetype == ASScopeType.Namespace)
             dbtype.typename = "__" + dbtype.typename;
@@ -242,9 +256,10 @@ export class ASScope
                 }
 
                 // Generate a default constructor function for the class for auto resolving
-                if (!foundConstructor)
+                if (!foundConstructor && subscope.isStruct)
                 {
                     let ctor = new typedb.DBMethod();
+                    ctor.isConstructor = true;
                     ctor.name = subscope.typename;
                     ctor.returnType = subscope.typename;
                     ctor.declaredModule = subscope.modulename;
@@ -279,6 +294,8 @@ export class ASScope
         dbfunc.documentation = this.documentation;
         dbfunc.isPrivate = this.funcprivate;
         dbfunc.isProtected = this.funcprotected;
+        dbfunc.isConstructor = this.isConstructor;
+        dbfunc.isConst = this.isConst;
 
         dbfunc.args = new Array<typedb.DBArg>();
         for (let funcVar of this.variables)
@@ -413,6 +430,7 @@ function ParseEnumValues(root : ASScope)
         decl.isArgument = false;
         decl.posInParent = match.index;
         decl.posInFile = decl.posInParent + root.startPosInFile;
+        decl.documentation = ExtractCommentOnPreviousLine(root.content, match.index);
 
         root.variables.push(decl);
     }
@@ -420,7 +438,7 @@ function ParseEnumValues(root : ASScope)
 
 let re_declaration = /(private\s+|protected\s+)?((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,[\t ]*[A-Za-z0-9_]+)*\>)?)[\t ]*&?)[\t ]+([A-Za-z_0-9]+)(;|\s*\(.*\)\s*;|\s*=.*;)/g;
 let re_classheader = /(class|struct|namespace)\s+([A-Za-z0-9_]+)(\s*:\s*([A-Za-z0-9_]+))?\s*$/g;
-let re_functionheader = /(private\s+|protected\s+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
+let re_functionheader = /(private\s+|protected\s+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)(\s*const)?/g;
 let re_constructor = /[\t ]*([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
 let re_argument = /(,\s*|\(\s*|^\s*)((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)\s*&?(\s*(in|out|inout))?)\s+([A-Za-z_0-9]+)/g;
 let re_enum = /enum\s*([A-Za-z0-9_]+)\s*$/g;
@@ -458,6 +476,8 @@ function ParseDeclarations(root : ASScope)
             root.funcprivate = funcmatch[1] && funcmatch[1].startsWith("private");
             root.funcprotected = funcmatch[1] && funcmatch[1].startsWith("protected");
             root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
+            if (funcmatch[10])
+                root.isConst = true;
 
             re_argument.lastIndex = 0;
             while(true)
@@ -490,6 +510,7 @@ function ParseDeclarations(root : ASScope)
                 root.funcprivate = false;
                 root.funcprotected = false;
                 root.isConstructor = true;
+                root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
 
                 re_argument.lastIndex = 0;
                 while(true)
@@ -516,6 +537,7 @@ function ParseDeclarations(root : ASScope)
                 {
                     root.scopetype = ASScopeType.Enum;
                     root.typename = enummatch[1];
+                    root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
                     
                     ParseEnumValues(root);
                 }
@@ -534,6 +556,8 @@ function ParseDeclarations(root : ASScope)
             if (match == null)
                 break;
             if(match[2] == 'return')
+                continue;
+            if(match[2] == 'default')
                 continue;
 
             let decl = new ASVariable();
@@ -605,6 +629,8 @@ function ParseDeclarations(root : ASScope)
                 decl.posInFile = root.startPosInFile + decl.posInParent;
                 decl.isMulticast = match[1] == "event";
                 decl.args = new Array<ASVariable>();
+
+                root.remove_variable(decl.name);
 
                 re_argument.lastIndex = 0;
                 while(true)
@@ -702,6 +728,46 @@ function ExtractDocumentationBackwards(code : string, position : number, minPosi
     return "";
 }
 
+function ExtractCommentOnPreviousLine(code : string, position : number, minPosition : number = 0) : string
+{
+    let prevLine : boolean = false;
+    while (position >= minPosition)
+    {
+        if (code[position] == '\n')
+        {
+            if (prevLine)
+                return "";
+            prevLine = true;
+        }
+
+        if (prevLine)
+        {
+            if (code[position] == '/' && position > minPosition)
+            {
+                if (code[position-1] == '/')
+                {
+                    let endIndex = code.indexOf("\n", position);
+                    if (endIndex == -1)
+                        return typedb.FormatDocumentationComment(code.substr(position+1));
+                    else
+                        return typedb.FormatDocumentationComment(code.substring(position+1, endIndex));
+                }
+                else if (code[position-1] == '*')
+                {
+                    let startIndex = code.lastIndexOf("/*", position);
+                    if (startIndex == -1)
+                        return typedb.FormatDocumentationComment(code.substr(0, position-1));
+                    else
+                        return typedb.FormatDocumentationComment(code.substring(startIndex+2, position-1));
+                }
+            }
+        }
+        position -= 1;
+    }
+
+    return "";
+}
+
 export function RemoveScopeFromDatabase(scope : ASScope)
 {
     let typename = scope.getDBTypename();
@@ -752,6 +818,11 @@ export function UpdateContent(pathname : string, modulename : string, content : 
     else
         file.document = TextDocument.create(pathname, "angelscript", 1, content);
     SplitScopes(file.rootscope);
+
+    // Remove any types that were in this module before
+    typedb.RemoveTypesInModule(modulename);
+
+    // Add newly created types to the type database
     ParseDeclarations(file.rootscope);
 
     loadedFiles.set(pathname, file);
@@ -877,6 +948,10 @@ function MakeDelegateDBType(scope : ASScope, delegate : ASDelegate) : typedb.DBT
     dbtype.properties = new Array<typedb.DBProperty>();
     dbtype.methods = new Array<typedb.DBMethod>();
     dbtype.declaredModule = scope.modulename;
+    if (delegate.isMulticast)
+        dbtype.isEvent = true;
+    else
+        dbtype.isDelegate = true;
 
     {
         let method = new typedb.DBMethod();

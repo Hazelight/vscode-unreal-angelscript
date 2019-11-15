@@ -95,6 +95,9 @@ export class DBMethod
     declaredModule : string;
     isProtected : boolean = false;
     isPrivate : boolean = false;
+    isConstructor : boolean = false;
+    isEvent : boolean = false;
+    isConst : boolean = false;
 
     createTemplateInstance(templateTypes : Array<string>, actualTypes : Array<string>) : DBMethod
     {
@@ -135,14 +138,34 @@ export class DBMethod
             this.documentation = FormatDocumentationComment(input['doc']);
         else
             this.documentation = null;
+
+        if ('isConstructor' in input)
+            this.isConstructor = input['isConstructor'];
+        else
+            this.isConstructor = false;
+
+        if ('const' in input)
+            this.isConst = input['const'];
+        else
+            this.isConst = false;
+
+        if ('event' in input)
+            this.isEvent = input['event'];
+        else
+            this.isEvent = false;
     }
 
-    format(prefix : string = null, skipFirstArg = false) : string
+    format(prefix : string = null, skipFirstArg = false, skipReturn = false, replaceName : string = null) : string
     {
-        let decl = this.returnType + " ";
+        let decl : string = "";
+        if (!skipReturn)
+            decl += this.returnType + " ";
         if(prefix != null)
             decl += prefix;
-        decl += this.name + "(";
+        if (replaceName)
+            decl += replaceName + "(";
+        else
+            decl += this.name + "(";
         let firstArg = true;
         if (this.argumentStr)
         {
@@ -170,6 +193,8 @@ export class DBMethod
             }
         }
         decl += ")";
+        if (this.isConst)
+            decl += " const";
         return decl;
     }
 };
@@ -185,9 +210,13 @@ export class DBType
 
     isStruct : boolean;
     isNS : boolean;
+    isEnum : boolean;
     rawName : string;
     namespaceResolved : boolean;
     shadowedNamespace : boolean;
+    isDelegate : boolean = false;
+    isEvent : boolean = false;
+    isPrimitive : boolean = false;
 
     declaredModule : string;
 
@@ -203,6 +232,7 @@ export class DBType
         inst.typename = this.typename;
         inst.supertype = this.supertype;
         inst.isNS = this.isNS;
+        inst.isEnum = this.isEnum;
         inst.rawName = this.rawName;
         inst.namespaceResolved = this.namespaceResolved;
         inst.shadowedNamespace = this.shadowedNamespace;
@@ -271,6 +301,11 @@ export class DBType
             this.isStruct = input['isStruct'];
         else
             this.isStruct = false;
+
+        if ('isEnum' in input)
+            this.isEnum = input['isEnum'];
+        else
+            this.isEnum = false;
     }
 
     resolveNamespace()
@@ -568,7 +603,9 @@ export function AddPrimitiveTypes()
         "bool",
     ])
     {
-        database.set(primtype, new DBType().initEmpty(primtype));
+        let dbtype = new DBType().initEmpty(primtype);
+        dbtype.isPrimitive = true;
+        database.set(primtype, dbtype);
     }
 }
 
@@ -596,4 +633,13 @@ export function FormatDocumentationComment(doc : string) : string
     doc = doc.replace(re_comment_star_start, " ");
     doc = doc.trim();
     return doc;
+}
+
+export function RemoveTypesInModule(module : string)
+{
+    for (let [name, dbtype] of database)
+    {
+        if (dbtype.declaredModule == module)
+            database.delete(name);
+    }
 }

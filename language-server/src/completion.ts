@@ -1,7 +1,8 @@
 import {
     TextDocumentPositionParams, CompletionItem, CompletionItemKind, SignatureHelp,
     SignatureInformation, ParameterInformation, Hover, MarkupContent, SymbolInformation,
-    TextDocument, SymbolKind, Definition, Location
+    TextDocument, SymbolKind, Definition, Location, InsertTextFormat, TextEdit,
+    Range, Position
 } from 'vscode-languageserver';
 
 import * as scriptfiles from './as_file';
@@ -237,6 +238,7 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
                     label: typename,
                     detail: typename,
                     kind : kind,
+                    data : [dbtype.typename],
             });
         }
     }
@@ -622,7 +624,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
                 completions.push({
                         label: func.name,
                         detail: func.format(),
-                        kind: CompletionItemKind.Method,
+                        kind: func.isEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
                         data: [curtype.typename, func.name],
                 });
             }
@@ -726,6 +728,12 @@ export function Resolve(item : CompletionItem) : CompletionItem
     let type = typedb.GetType(item.data[0]);
     if (type == null)
         return item;
+
+    if (item.data.length == 1)
+    {
+        item.documentation = type.documentation;
+        return item;
+    }
 
     let func = type.getMethod(item.data[1]);
     if (func)
@@ -993,7 +1001,7 @@ function FormatHoverDocumentation(doc : string) : string
 
 export function GetHover(params : TextDocumentPositionParams) : Hover
 {
-    let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
+    let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position);
     if (pos < 0)
         return null;
 
@@ -1028,32 +1036,6 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
     else
         return null;
 
-    if (term.length == 1)
-    {
-        let hoveredType = typedb.GetType(term[0].name);
-        if (hoveredType)
-        {
-            let hover = "";
-            hover += FormatHoverDocumentation(hoveredType.documentation);
-            hover += "```angelscript\n";
-            if (hoveredType.isStruct)
-                hover += "struct ";
-            else
-                hover += "class ";
-            hover += hoveredType.typename;
-            if (hoveredType.supertype)
-                hover += " : "+hoveredType.supertype;
-            else if (hoveredType.unrealsuper)
-                hover += " : "+hoveredType.unrealsuper;
-            hover += "\n```";
-
-            return <Hover> {contents: <MarkupContent> {
-                kind: "markdown",
-                value: hover,
-            }};
-        }
-    }
-
     let hover = "";
     let settername = "Set"+term[term.length-1].name;
     let gettername = "Get"+term[term.length-1].name;
@@ -1063,6 +1045,8 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
         for (let func of type.allMethods())
         {
             if (func.name != term[term.length-1].name && func.name != gettername && func.name != settername)
+                continue;
+            if (func.isConstructor)
                 continue;
 
             let prefix = null;
@@ -1142,6 +1126,76 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
                 hover += FormatHoverDocumentation(func.documentation);
                 hover += "```angelscript\n"+func.format(null, true)+"\n```";
             }
+        }
+    }
+
+    if (term.length == 1 && (!hover || hover.length == 0) && term[0].name.length != 0)
+    {
+        let hoveredType = typedb.GetType(term[0].name);
+        if (hoveredType)
+        {
+            let hover = "";
+            hover += FormatHoverDocumentation(hoveredType.documentation);
+            hover += "```angelscript\n";
+            if (hoveredType.isDelegate)
+            {
+                hover += "delegate ";
+                let mth = hoveredType.getMethod("ExecuteIfBound");
+                if (mth)
+                    hover += mth.format(null, false, false, hoveredType.typename);
+                else
+                    hover += hoveredType.typename;
+            }
+            else if (hoveredType.isEvent)
+            {
+                hover += "event ";
+                let mth = hoveredType.getMethod("Broadcast");
+                if (mth)
+                    hover += mth.format(null, false, false, hoveredType.typename);
+                else
+                    hover += hoveredType.typename;
+            }
+            else
+            {
+                if (!hoveredType.isPrimitive)
+                {
+                    if (hoveredType.isStruct)
+                        hover += "struct ";
+                    else
+                        hover += "class ";
+                }
+                hover += hoveredType.typename;
+                if (hoveredType.supertype)
+                    hover += " : "+hoveredType.supertype;
+                else if (hoveredType.unrealsuper)
+                    hover += " : "+hoveredType.unrealsuper;
+            }
+
+            hover += "\n```";
+            return <Hover> {contents: <MarkupContent> {
+                kind: "markdown",
+                value: hover,
+            }};
+        }
+
+        let nsType = typedb.GetType("__"+term[0].name);
+        if (nsType)
+        {
+            let hover = "";
+            hover += FormatHoverDocumentation(nsType.documentation);
+            hover += "```angelscript\n";
+            nsType.resolveNamespace();
+            if (nsType.isEnum)
+                hover += "enum ";
+            else
+                hover += "namespace ";
+            hover += nsType.rawName;
+            hover += "\n```";
+
+            return <Hover> {contents: <MarkupContent> {
+                kind: "markdown",
+                value: hover,
+            }};
         }
     }
 
