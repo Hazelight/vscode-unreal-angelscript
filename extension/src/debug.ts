@@ -15,7 +15,6 @@ import { basename } from 'path';
 
 import * as unreal from './unreal-debugclient';
 
-//import { ASDebugRuntime, ASBreakpoint } from './debugRuntime';
 const { Subject } = require('await-notify');
 
 
@@ -30,8 +29,6 @@ interface ASBreakpoint
 	line : number;
 }
 
-let GLOBID = 0;
-
 export class ASDebugSession extends LoggingDebugSession
 {
 	// we don't support multiple threads, so we can use a hardcoded ID for the default thread
@@ -43,17 +40,14 @@ export class ASDebugSession extends LoggingDebugSession
 	private _variableHandles = new Handles<string>();
 
 	private _configurationDone = new Subject();
-	private instId = 0;
 
 	/**
 	 * Creates a new debug adapter that is used for one debug session.
 	 * We configure the default implementation of a debug adapter here.
 	 */
-		public constructor()
-		{
+	public constructor()
+	{
 		super("angelscript-debug");
-
-		this.instId = GLOBID++;
 
 		this.setDebuggerLinesStartAt1(true);
 		this.setDebuggerColumnsStartAt1(true);
@@ -87,34 +81,9 @@ export class ASDebugSession extends LoggingDebugSession
 			this.receiveClosed();
 		});
 
-		/*this._runtime = new ASDebugRuntime();
-
-		// setup event handlers
-		this._runtime.on('stopOnEntry', () => {
-			this.sendEvent(new StoppedEvent('entry', ASDebugSession.THREAD_ID));
+		unreal.events.on("SetBreakpoint", (msg : unreal.Message) => {
+			this.receiveBreakpoint(msg);
 		});
-		this._runtime.on('stopOnStep', () => {
-			this.sendEvent(new StoppedEvent('step', ASDebugSession.THREAD_ID));
-		});
-		this._runtime.on('stopOnBreakpoint', () => {
-			this.sendEvent(new StoppedEvent('breakpoint', ASDebugSession.THREAD_ID));
-		});
-		this._runtime.on('stopOnException', () => {
-			this.sendEvent(new StoppedEvent('exception', ASDebugSession.THREAD_ID));
-		});
-		this._runtime.on('breakpointValidated', (bp: ASBreakpoint) => {
-			this.sendEvent(new BreakpointEvent('changed', <DebugProtocol.Breakpoint>{ verified: true, id: 0 }));
-		});
-		this._runtime.on('output', (text, filePath, line, column) => {
-			const e: DebugProtocol.OutputEvent = new OutputEvent(`${text}\n`);
-			e.body.source = this.createSource(filePath);
-			e.body.line = this.convertDebuggerLineToClient(line);
-			e.body.column = this.convertDebuggerColumnToClient(column);
-			this.sendEvent(e);
-		});
-		this._runtime.on('end', () => {
-			this.sendEvent(new TerminatedEvent());
-		});*/
 	}
 
 	/**
@@ -199,7 +168,7 @@ export class ASDebugSession extends LoggingDebugSession
 
 				for(let breakpoint of breakpointList)
 				{
-					unreal.setBreakpoint(debugPath, breakpoint.line);
+					unreal.setBreakpoint(breakpoint.id, debugPath, breakpoint.line);
 				}
 			}
 		}
@@ -232,28 +201,43 @@ export class ASDebugSession extends LoggingDebugSession
 		return breakpointList;
 	}
 
-		protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) : void
-		{
+	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments) : void
+	{
 		const clientLines = args.lines || [];
 		const clientPath = <string>args.source.path;
 		const debugPath = this.convertClientPathToDebugger(clientPath);
 
 		let clientBreakpoints = new Array<DebugProtocol.Breakpoint>();
-		let breakpointList = this.getBreakpointList(clientPath);
+		let oldBreakpointList = this.getBreakpointList(clientPath);
+		let breakpointList = new Array<ASBreakpoint>();
 
 		if(unreal.connected)
 			unreal.clearBreakpoints(debugPath);
 
 		for (let line of clientLines)
 		{
-			let clientBreak = <DebugProtocol.Breakpoint> new Breakpoint(true, line);
+			let id = -1; 
+			for (let oldBP of oldBreakpointList)
+			{
+				if (oldBP.line == line)
+					id = oldBP.id;
+			}
+
+			if (id == -1)
+				id = this.nextBreakpointId++;
+
+			let clientBreak = <DebugProtocol.Breakpoint> {
+				id: id,
+				verified: true,
+				line: line
+			}
 			clientBreakpoints.push(clientBreak);
 
-			let breakpoint = <ASBreakpoint> { id: this.nextBreakpointId++, line: line };
+			let breakpoint = <ASBreakpoint> { id: clientBreak.id, line: line };
 			breakpointList.push(breakpoint);
 
 			if(unreal.connected)
-				unreal.setBreakpoint(debugPath, line);
+				unreal.setBreakpoint(breakpoint.id, debugPath, line);
 		}
 
 		this.breakpoints.set(clientPath, breakpointList);
@@ -264,14 +248,82 @@ export class ASDebugSession extends LoggingDebugSession
 		this.sendResponse(response);
 	}
 
+	protected receiveBreakpoint(msg : unreal.Message)
+	{
+		let filename = msg.readString();
+		let line = msg.readInt();
+		let id = msg.readInt();
+
+		let breakpointList = this.getBreakpointList(filename);
+
+		// If our line number has changed, but we are overlapping an existing breakpoint,
+		// we should delete the new breakpoint.
+		let overlapsExistingBreakpoint = false;
+		for (let i = 0; i < breakpointList.length; ++i)
+		{
+			let bp = breakpointList[i];
+			if (bp.id != id && bp.line == line)
+			{
+				overlapsExistingBreakpoint = true;
+				break;
+			}
+		}
+
+		// For some reason, doing multiple sendEvent calls at once
+		// confuses visual studio code (?). So we spread them out
+		// by a few ms so it can deal with it.
+		let timeout = 1;
+
+		let adapter = this;
+		for (let i = 0; i < breakpointList.length; ++i)
+		{
+			let bp = breakpointList[i];
+			if (bp.id == id)
+			{
+				if (overlapsExistingBreakpoint)
+				{
+					// We created a breakpoint that was moved to a line that already has a breakpoint,
+					// so just remove the one we created.
+					breakpointList.splice(i, 1);
+					setTimeout(function()
+					{
+						adapter.sendEvent(new BreakpointEvent('removed', <DebugProtocol.Breakpoint>{ verified: false, id: bp.id }));
+					}, timeout++);
+				}
+				else if (line == -1)
+				{
+					// No code existed at this line, so show it as an unverified breakpoint
+					breakpointList.splice(i, 1);
+					setTimeout(function()
+					{
+						adapter.sendEvent(new BreakpointEvent('changed', <DebugProtocol.Breakpoint>{ verified: false, id: bp.id, line: bp.line }));
+					}, timeout++);
+				}
+				else
+				{
+					// The breakpoint was moved to a different line that actually has code on it, send a change back to the UI
+					bp.line = line;
+					setTimeout(function()
+					{
+						adapter.sendEvent(new BreakpointEvent('changed', <DebugProtocol.Breakpoint>{ verified: true, id: bp.id, line: bp.line }));
+					}, timeout++);
+				}
+
+				break;
+			}
+		}
+
+		this.breakpoints.set(filename, breakpointList);
+	}
+
 	protected setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments)
 	{
 		unreal.sendBreakOptions(args.filters);
 		this.sendResponse(response);
 	}
 
-		protected threadsRequest(response: DebugProtocol.ThreadsResponse): void
-		{
+	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void
+	{
 		// runtime supports now threads so just return a default thread.
 		response.body = {
 			threads: [
@@ -284,8 +336,8 @@ export class ASDebugSession extends LoggingDebugSession
 
 	waitingTraces : Array<DebugProtocol.StackTraceResponse>;
 
-		protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) : void
-		{
+	protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments) : void
+	{
 		unreal.sendRequestCallStack();
 
 		if(!this.waitingTraces)
@@ -328,9 +380,8 @@ export class ASDebugSession extends LoggingDebugSession
 		}
 	}
 
-		protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) : void
-		{
-
+	protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) : void
+	{
 		const frameReference = args.frameId;
 		const scopes = new Array<Scope>();
 		scopes.push(new Scope("Variables", this._variableHandles.create(frameReference+":%local%"), false));
@@ -345,9 +396,8 @@ export class ASDebugSession extends LoggingDebugSession
 
 	waitingVariableRequests : Array<any>;
 
-		protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) : void
-		{
-
+	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments) : void
+	{
 		const id = this._variableHandles.get(args.variablesReference);
 		unreal.sendRequestVariables(id);
 

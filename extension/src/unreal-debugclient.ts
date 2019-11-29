@@ -199,6 +199,10 @@ export function connect()
             {
                 events.emit("BreakFilters", msg);
             }
+            else if (msg.type == MessageType.SetBreakpoint)
+            {
+                events.emit("SetBreakpoint", msg);
+            }
 		}
 	});
 
@@ -304,14 +308,14 @@ export function clearBreakpoints(pathname : string)
     unreal.write(msg);
 }
 
-export function setBreakpoint(pathname : string, line : number)
+export function setBreakpoint(id : number, pathname : string, line : number)
 {
     let head = Buffer.alloc(5);
     head.writeUInt32LE(1, 0);
     head.writeUInt8(MessageType.SetBreakpoint, 4);
 
     let msg = Buffer.concat([
-        head, writeString(pathname), writeInt(line)
+        head, writeString(pathname), writeInt(line), writeInt(id)
     ]);
 
     msg.writeUInt32LE(msg.length - 4, 0);
