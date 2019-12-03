@@ -643,7 +643,7 @@ function AddKeywordCompletions(completingStr : string, completions : Array<Compl
         "const", "override",
 
         "BlueprintOverride","BlueprintEvent","BlueprintCallable","NotBlueprintCallable","BlueprintPure","NetFunction","DevFunction","Category","Meta","NetMulticast","Client","Server","BlueprintAuthorityOnly","CallInEditor","Unreliable",
-        "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","ReplicationCondition",
+        "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","ReplicationCondition","Interp",
     ])
     {
         if (CanCompleteTo(completingStr, kw))
