@@ -774,6 +774,11 @@ export function RemoveScopeFromDatabase(scope : ASScope)
     if(typename != null)
     {
         typedb.GetDatabase().delete(typename);
+        typedb.GetDatabase().delete("__"+typename);
+    }
+
+    if (scope.scopetype == ASScopeType.Function && scope.isConstructor)
+    {
     }
 
     for(let subscope of scope.subscopes)

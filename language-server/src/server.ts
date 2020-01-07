@@ -160,7 +160,8 @@ connection.onInitialize((_params): InitializeResult => {
 		for (let file of files)
 		{
 			let asfile = UpdateFileFromDisk(getFileUri(file));
-			modules.push(asfile);
+			if (asfile)
+				modules.push(asfile);
 		}
 	});
 
@@ -200,8 +201,11 @@ connection.onDidChangeWatchedFiles((_change) => {
 	for(let change of _change.changes)
 	{
 		let file = UpdateFileFromDisk(change.uri);
-		completion.ResolveAutos(file.rootscope);
-		scriptfiles.PostProcessModule(file.modulename);
+		if (file)
+		{
+			completion.ResolveAutos(file.rootscope);
+			scriptfiles.PostProcessModule(file.modulename);
+		}
 	}
 });
 
@@ -273,13 +277,16 @@ function UpdateFileFromDisk(uri : string) : scriptfiles.ASFile
 {
 	let filename = getPathName(uri);
 	let modulename = getModuleName(uri);
+	if (!fs.existsSync(filename))
+		return scriptfiles.UpdateContent(uri, modulename, "");
+
+	let stat = fs.lstatSync(filename);
+	if (!stat.isFile())
+		return null;
 	
 	//connection.console.log("Update from disk: "+uri+" = "+modulename+" @ "+filename);
 
-	let content = "";
-	if (fs.existsSync(filename))
-		content = fs.readFileSync(filename, 'utf8');
-
+	let content = fs.readFileSync(filename, 'utf8');
 	return scriptfiles.UpdateContent(uri, modulename, content);
 }
 
