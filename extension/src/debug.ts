@@ -435,6 +435,7 @@ export class ASDebugSession extends LoggingDebugSession
 			let value = msg.readString();
 			let type = msg.readString();
 			let bHasMembers = msg.readBool();
+			let hint = <DebugProtocol.VariablePresentationHint>{};
 
 			let evalName = this.combineExpression(id, name);
 
@@ -442,10 +443,21 @@ export class ASDebugSession extends LoggingDebugSession
 			if (bHasMembers)
 				varRef = this._variableHandles.create(evalName);
 
+			if (name.endsWith("$"))
+			{
+				name = name.substr(0, name.length-1);
+				hint.kind = 'method';
+			}
+			else if (name.startsWith("[") && name.endsWith("]"))
+			{
+				hint.kind = 'data';
+			}
+
 			let variable = {
 				name: name,
 				type: type,
 				value: value,
+				presentationHint: hint,
 				variablesReference: varRef,
 				evaluateName: evalName.replace(/^[0-9]+:%.*%./g, ""),
 			};

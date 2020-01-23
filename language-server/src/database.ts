@@ -292,6 +292,11 @@ export class DBType
             this.unrealsuper = input['supertype'];
         }
 
+        if ('inherits' in input)
+        {
+            this.supertype = input['inherits'];
+        }
+
         if ('doc' in input)
             this.documentation = FormatDocumentationComment(input['doc']);
         else
