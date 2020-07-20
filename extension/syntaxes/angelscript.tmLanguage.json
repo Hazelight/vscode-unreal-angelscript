@@ -4,7 +4,7 @@
 	"patterns": [
 		{
 			"name": "keyword.macro.ufunction.angelscript",
-			"match": "\\b(BlueprintOverride|BlueprintEvent|BlueprintCallable|NotBlueprintCallable|BlueprintPure|NetFunction|DevFunction|Category|Meta|CallInEditor|Unreliable|NetMUlticast|Client|Server|BlueprintAuthorityOnly)\\b\\s*"
+			"match": "\\b(BlueprintOverride|BlueprintEvent|BlueprintCallable|NotBlueprintCallable|BlueprintPure|NetFunction|DevFunction|Category|Meta|CallInEditor|Unreliable|NetMUlticast|Client|Server|WithValidation|BlueprintAuthorityOnly)\\b\\s*"
 		},
 		{
 			"name": "keyword.macro.uproperty.angelscript",
