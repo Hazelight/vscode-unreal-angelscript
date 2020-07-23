@@ -846,6 +846,23 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
         GetTermCompletions(initialTerm, inScope, completions);
     }
 
+    // Check if we're inside a function call and complete argument names
+    let FuncCall = Signature(params, true);
+    if (FuncCall)
+    {
+        if (FuncCall.activeSignature < FuncCall.signatures.length)
+        {
+            let signature = FuncCall.signatures[FuncCall.activeSignature];
+            for (let arg of signature.parameters)
+            {
+                completions.push({
+                    label: arg.label+" = ",
+                    kind: CompletionItemKind.Snippet,
+                });
+            }
+        }
+    }
+
     return completions;
 }
 
@@ -879,7 +896,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
     return item;
 }
 
-export function Signature(params : TextDocumentPositionParams) : SignatureHelp
+export function Signature(params : TextDocumentPositionParams, paramNamesOnly : boolean = false) : SignatureHelp
 {
     let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
     let originalPos = pos;
@@ -892,6 +909,7 @@ export function Signature(params : TextDocumentPositionParams) : SignatureHelp
 
     // Find the opening bracket in front of our current pos
     let brackets = 0;
+    let startOfArg = true;
     while (true)
     {
         let char = file.rootscope.content[pos];
@@ -905,6 +923,10 @@ export function Signature(params : TextDocumentPositionParams) : SignatureHelp
             if(brackets < 0)
                 break;
         }
+        if (char == ',' && brackets == 0)
+            startOfArg = false;
+        if (paramNamesOnly && char == '=' && startOfArg)
+            return null;
 
         pos -= 1;
         if(pos < 0)
@@ -969,7 +991,7 @@ export function Signature(params : TextDocumentPositionParams) : SignatureHelp
                 {
                     params.push(<ParameterInformation>
                     {
-                        label: arg.format()
+                        label: paramNamesOnly ? arg.name : arg.format()
                     });
                 }
             }
