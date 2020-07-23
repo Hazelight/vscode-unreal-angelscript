@@ -128,6 +128,7 @@ function ExtractCompletingTermAt(pos : number, uri : string) : [Array<ASTerm>, s
         return [[], null];
     let termstart = pos;
     let brackets = 0;
+    let anglebrackets = 0;
     let braces = 0;
     let squarebrackets = 0;
     while (termstart > 0)
@@ -154,6 +155,14 @@ function ExtractCompletingTermAt(pos : number, uri : string) : [Array<ASTerm>, s
             case ')':
                 brackets += 1;
             break;
+            case '<':
+                if(anglebrackets > 0)
+                    anglebrackets -= 1;
+                else end = true;
+            break;
+            case '>':
+                anglebrackets += 1;
+            break;
             case '{':
             case '}':
             case '/':
@@ -164,9 +173,8 @@ function ExtractCompletingTermAt(pos : number, uri : string) : [Array<ASTerm>, s
             case '@':
             case '!':
             case ' ':
-            case '<':
             case '\n':
-                if(brackets == 0 && squarebrackets == 0)
+                if(brackets == 0 && squarebrackets == 0 && anglebrackets == 0)
                     end = true;
             break;
         }
