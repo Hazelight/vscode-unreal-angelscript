@@ -1133,18 +1133,6 @@ function PostProcessScope(scope : ASScope)
 
             {
                 let method = new typedb.DBMethod();
-                method.name = "GetAll";
-                method.returnType = "void";
-                method.documentation = "Get all components of a particular type on an actor.";
-                method.args = [
-                    new typedb.DBArg().init("AActor", "Actor"),
-                    new typedb.DBArg().init("TArray<"+scope.typename+">&", "OutComponents"),
-                ];
-                dbtype.methods.push(method);
-            }
-
-            {
-                let method = new typedb.DBMethod();
                 method.name = "GetOrCreate";
                 method.returnType = scope.typename;
                 method.documentation = "Get a component of a particular type on an actor, create it if it doesn't exist. Specified name is optional.";
@@ -1170,17 +1158,6 @@ function PostProcessScope(scope : ASScope)
 
         if(basetype && basetype.inheritsFrom("AActor"))
         {
-            {
-                let method = new typedb.DBMethod();
-                method.name = "GetAll";
-                method.returnType = "void";
-                method.documentation = "Get all actors of this type that are currently in the world.";
-                method.args = [
-                    new typedb.DBArg().init("TArray<"+scope.typename+">&", "OutActors"),
-                ];
-                dbtype.methods.push(method);
-            }
-
             {
                 let method = new typedb.DBMethod();
                 method.name = "Spawn";
