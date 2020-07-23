@@ -1189,6 +1189,8 @@ function PostProcessScope(scope : ASScope)
                     new typedb.DBArg().init("FVector", "Location", "FVector::ZeroVector"),
                     new typedb.DBArg().init("FRotator", "Rotation", "FRotator::ZeroRotator"),
                     new typedb.DBArg().init("FName", "Name", "NAME_None"),
+                    new typedb.DBArg().init("bool", "bDeferredSpawn", "false"),
+                    new typedb.DBArg().init("ULevel", "Level", "nullptr"),
                 ];
                 dbtype.methods.push(method);
             }
