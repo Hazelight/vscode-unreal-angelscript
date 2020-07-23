@@ -7,6 +7,8 @@ export class DBProperty
     documentation : string;
     isProtected : boolean;
     isPrivate : boolean;
+    isNoEdit : boolean = false;
+    isEditOnly : boolean = false;
 
     fromJSON(name : string, input : any)
     {
@@ -14,9 +16,27 @@ export class DBProperty
         this.typename = input[0];
         this.isProtected = false;
         this.isPrivate = false;
+        this.isNoEdit = false;
+        this.isEditOnly = false;
 
-        if (input.length >= 2)
-            this.documentation = FormatDocumentationComment(input[1]);
+        if (input.length >= 3)
+        {
+            if (input[1] == 'NoEdit')
+                this.isNoEdit = true;
+            else if (input[1] == 'EditOnly')
+                this.isEditOnly = true;
+
+            this.documentation = FormatDocumentationComment(input[2]);
+        }
+        else if (input.length >= 2)
+        {
+            if (input[1] == 'NoEdit')
+                this.isNoEdit = true;
+            else if (input[1] == 'EditOnly')
+                this.isEditOnly = true;
+            else
+                this.documentation = FormatDocumentationComment(input[1]);
+        }
     }
 
     format(prefix : string = null) : string
@@ -98,6 +118,7 @@ export class DBMethod
     isConstructor : boolean = false;
     isEvent : boolean = false;
     isConst : boolean = false;
+    isDefaultsOnly : boolean = false;
 
     createTemplateInstance(templateTypes : Array<string>, actualTypes : Array<string>) : DBMethod
     {
@@ -153,6 +174,9 @@ export class DBMethod
             this.isEvent = input['event'];
         else
             this.isEvent = false;
+
+        if ('defaultsonly' in input)
+            this.isDefaultsOnly = input['defaultsonly'];
     }
 
     format(prefix : string = null, skipFirstArg = false, skipReturn = false, replaceName : string = null) : string

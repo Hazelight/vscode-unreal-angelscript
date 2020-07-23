@@ -561,6 +561,22 @@ function GetTermCompletions(initialTerm : Array<ASTerm>, inScope : scriptfiles.A
     }
 }
 
+function isEditScope(inScope : scriptfiles.ASScope) : boolean
+{
+    if (!inScope)
+        return false;
+    if (inScope.scopetype == scriptfiles.ASScopeType.Function)
+    {
+        if (inScope.funcname != "ConstructionScript")
+            return false;
+    }
+    else if (inScope.scopetype != scriptfiles.ASScopeType.Class)
+    {
+        return false;
+    }
+    return true;
+}
+
 function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DBProperty, inScope : scriptfiles.ASScope) : boolean
 {
     if (prop.isPrivate)
@@ -573,6 +589,19 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DB
         if (!inScope || !inScope.hasProtectedAccessTo(curtype.typename))
             return false;
     }
+
+    if (prop.isEditOnly)
+    {
+        if (!isEditScope(inScope))
+            return false;
+    }
+    
+    if (prop.isNoEdit)
+    {
+        if (isEditScope(inScope))
+            return false;
+    }
+
     return true;
 }
 
@@ -588,6 +617,13 @@ function isFunctionAccessibleFromScope(curtype : typedb.DBType, func : typedb.DB
         if (!inScope || !inScope.hasProtectedAccessTo(curtype.typename))
             return false;
     }
+
+    if (func.isDefaultsOnly)
+    {
+        if (!isEditScope(inScope))
+            return false;
+    }
+
     return true;
 }
 
