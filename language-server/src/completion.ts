@@ -611,6 +611,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
     }
 
     let getterStr = "Get"+completingStr;
+    let setterStr = "Set"+completingStr;
     for (let func of curtype.allMethods())
     {
         if (CanCompleteTo(getterStr, func.name))
@@ -623,6 +624,23 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
                 completions.push({
                         label: propname,
                         detail: func.returnType+" "+propname,
+                        kind: CompletionItemKind.Field,
+                        data: [curtype.typename, func.name],
+                });
+                props.add(propname);
+            }
+        }
+        
+        if (CanCompleteTo(setterStr, func.name))
+        {
+            if (!isFunctionAccessibleFromScope(curtype, func, inScope))
+                continue;
+            let propname = func.name.substr(3);
+            if(!props.has(propname) && func.args.length == 1 && func.returnType == "void")
+            {
+                completions.push({
+                        label: propname,
+                        detail: func.args[0].typename+" "+propname,
                         kind: CompletionItemKind.Field,
                         data: [curtype.typename, func.name],
                 });
