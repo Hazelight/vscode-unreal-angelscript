@@ -642,7 +642,7 @@ function AddKeywordCompletions(completingStr : string, completions : Array<Compl
         "nullptr", "return", "true", "false", "this",
         "const", "override",
 
-        "BlueprintOverride","BlueprintEvent","BlueprintCallable","NotBlueprintCallable","BlueprintPure","NetFunction","DevFunction","Category","Meta","NetMulticast","Client","Server","BlueprintAuthorityOnly","CallInEditor","Unreliable",
+        "BlueprintOverride","BlueprintEvent","BlueprintCallable","NotBlueprintCallable","BlueprintPure","NetFunction","DevFunction","Category","Meta","NetMulticast","Client","Server","WithValidation","BlueprintAuthorityOnly","CallInEditor","Unreliable",
         "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","NotReplicated","ReplicationCondition","Interp","NoClear",
     ])
     {
