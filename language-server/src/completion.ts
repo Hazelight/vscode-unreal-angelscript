@@ -285,6 +285,15 @@ function GetGlobalScopeTypes(scope : scriptfiles.ASScope, includeClass : boolean
 
 function GetScopeCompletions(initialTerm : string, scope : scriptfiles.ASScope, completions : Array<CompletionItem>)
 {
+    if (scope.scopetype == scriptfiles.ASScopeType.Class)
+    {
+        completions.push({
+                label: "this",
+                detail: scope.typename,
+                kind : CompletionItemKind.Keyword
+        });
+    }
+
     if (scope.scopetype != scriptfiles.ASScopeType.Class
         && scope.scopetype != scriptfiles.ASScopeType.Global
     )
@@ -308,6 +317,12 @@ function GetScopeCompletions(initialTerm : string, scope : scriptfiles.ASScope, 
 
 function GetVariableType(variable : string, scope : scriptfiles.ASScope) : string | null
 {
+    if (scope.scopetype == scriptfiles.ASScopeType.Class)
+    {
+        if (variable == "this")
+            return scope.typename;
+    }
+
     for (let scopevar of scope.variables)
     {
         if (scopevar.name == variable)
@@ -737,13 +752,6 @@ function AddKeywordCompletions(completingStr : string, completions : Array<Compl
             "return",
             "if", "else", "while", "for",
         ], completingStr, completions);
-
-        if (scope.parentscope && scope.parentscope.scopetype == scriptfiles.ASScopeType.Class)
-        {
-            AddScopeKeywords([
-                "this",
-            ], completingStr, completions);
-        }
     }
     else
     {
@@ -1017,6 +1025,12 @@ function GetScopeHover(initialTerm : string, scope : scriptfiles.ASScope) : stri
                 return hover;
             }
         }
+    }
+
+    if (scope.scopetype == scriptfiles.ASScopeType.Class)
+    {
+        if (initialTerm == "this")
+            return "```angelscript\n"+scope.typename+" this\n```";
     }
 
     if (scope.parentscope)
