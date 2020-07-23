@@ -364,6 +364,11 @@ export class DBType
         return this.isNS && this.shadowedNamespace;
     }
 
+    isUnrealType() : boolean
+    {
+        return !this.declaredModule;
+    }
+
     hasExtendTypes() : boolean
     {
         if(this.supertype)
@@ -553,6 +558,37 @@ export class DBType
         }
         return false;
     }
+
+    canOverrideFromParent(methodname : string) : boolean
+    {
+        // Check script parents
+        let checktype = this.supertype;
+        while (checktype)
+        {
+            let dbsuper = GetType(checktype);
+            if (!dbsuper)
+                break;
+            let method = dbsuper.getMethod(methodname, false);
+            if (method)
+            {
+                if (!dbsuper.isUnrealType || method.isEvent)
+                    return true;
+            }
+            checktype = dbsuper.supertype;
+        }
+
+        return false;
+    }
+
+    hasOverriddenMethod(methodname : string) : boolean
+    {
+        for (let func of this.methods)
+        {
+            if (func.name == methodname)
+                return true;
+        }
+        return false;
+    }
 };
 
 export let database = new Map<string, DBType>();
@@ -584,6 +620,8 @@ export function ReplaceTemplateType(typename : string, templateTypes : Array<str
 let re_template = /([A-Za-z_0-9]+)\<([A-Za-z_0-9,\s]+)\>/;
 export function GetType(typename : string) : DBType | null
 {
+    if (!typename)
+        return null;
     typename = CleanTypeName(typename);
     let foundType = database.get(typename);
     if (foundType)

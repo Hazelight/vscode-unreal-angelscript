@@ -2,11 +2,12 @@ import {
     TextDocumentPositionParams, CompletionItem, CompletionItemKind, SignatureHelp,
     SignatureInformation, ParameterInformation, Hover, MarkupContent, SymbolInformation,
     TextDocument, SymbolKind, Definition, Location, InsertTextFormat, TextEdit,
-    Range, Position
+    Range, Position, MarkupKind
 } from 'vscode-languageserver';
 
 import * as scriptfiles from './as_file';
 import * as typedb from './database';
+import { type } from 'os';
 
 enum ASTermType
 {
@@ -249,7 +250,6 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
             {
                 completions.push({
                         label: typename,
-                        detail: typename,
                         kind : CompletionItemKind.Enum,
                         data : [dbtype.typename],
                 });
@@ -260,7 +260,6 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
                     let enumstr = typename+"::"+enumvalue.name;
                     completions.push({
                             label: enumstr,
-                            detail: enumstr,
                             kind : CompletionItemKind.EnumMember,
                             data : [dbtype.typename, enumvalue.name],
                     });
@@ -274,7 +273,6 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
                     let enumstr = typename+"::"+enumvalue.name;
                     completions.push({
                             label: enumstr,
-                            detail: enumstr,
                             insertText: ":"+enumvalue.name,
                             kind : CompletionItemKind.EnumMember,
                             data : [dbtype.typename, enumvalue.name],
@@ -288,7 +286,6 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
             {
                 completions.push({
                         label: typename,
-                        detail: typename,
                         kind : kind,
                         data : [dbtype.typename],
                 });
@@ -324,7 +321,7 @@ function GetGlobalScopeTypes(scope : scriptfiles.ASScope, includeClass : boolean
 
 function GetScopeCompletions(initialTerm : string, scope : scriptfiles.ASScope, completions : Array<CompletionItem>)
 {
-    if (scope.scopetype == scriptfiles.ASScopeType.Class)
+    if (scope.scopetype == scriptfiles.ASScopeType.Class && CanCompleteTo(initialTerm, "this"))
     {
         completions.push({
                 label: "this",
@@ -802,7 +799,7 @@ function AddKeywordCompletions(completingStr : string, completions : Array<Compl
     if (scope && scope.scopetype == scriptfiles.ASScopeType.Class)
     {
         AddScopeKeywords([
-            "UPROPERTY", "override",
+            "UPROPERTY", "override", "private", "protected",
             "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","NotReplicated","ReplicationCondition","Interp","NoClear",
         ], completingStr, completions);
 
@@ -873,28 +870,145 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
 
     // We are already inside a type, so we need to complete based on that type
     if (initialTerm.length >= 2 && inScope != null)
-    {
         GetTermCompletions(initialTerm, inScope, completions);
-    }
 
     // Check if we're inside a function call and complete argument names
-    let FuncCall = Signature(params, true);
-    if (FuncCall)
+    if (initialTerm.length == 1)
+        AddSignatureCompletions(initialTerm[0].name, params, completions, inScope);
+
+    // Check for snippet completions for method overrides
+    if (inScope && inScope.scopetype == scriptfiles.ASScopeType.Class && initialTerm.length == 1)
+        AddMethodOverrideSnippets(initialTerm[0].name, completions, inScope);
+
+    return completions;
+}
+
+function AddSignatureCompletions(initialTerm : string, params : TextDocumentPositionParams, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope)
+{
+    let typeOfScope : typedb.DBType = null;
+    if (inScope && inScope.scopetype == scriptfiles.ASScopeType.Class)
+        typeOfScope = typedb.GetType(inScope.typename);
+
+    // Check if we're inside a function call and complete argument names
+    let signatures = GetMethodSignaturesAroundPosition(params);
+    if (signatures && signatures.methods.length> 0 && signatures.isStartOfArg)
     {
-        if (FuncCall.activeSignature < FuncCall.signatures.length)
+        if (signatures.activeSignature < signatures.methods.length)
         {
-            let signature = FuncCall.signatures[FuncCall.activeSignature];
-            for (let arg of signature.parameters)
+            let method = signatures.methods[signatures.activeSignature];
+            let objType = signatures.objectTypes[signatures.activeSignature];
+
+            let completeDefinition = false;
+            if (typeOfScope != null && typeOfScope.inheritsFrom(objType.typename) && typeOfScope.canOverrideFromParent(method.name))
+                completeDefinition = true;
+            if (method.args)
             {
-                completions.push({
-                    label: arg.label+" = ",
-                    kind: CompletionItemKind.Snippet,
-                });
+                for (let arg of method.args)
+                {
+                    let complStr = completeDefinition ? arg.typename+" "+arg.name : arg.name+" = ";
+                    if (CanCompleteTo(initialTerm, complStr))
+                    {
+                        completions.push({
+                            label: complStr,
+                            documentation: <MarkupContent> {
+                                kind: MarkupKind.Markdown,
+                                value: "```angelscript\n"+complStr+"\n\n```"
+                            },
+                            kind: CompletionItemKind.Snippet,
+                        });
+                    }
+                }
             }
         }
     }
+}
 
-    return completions;
+function AddMethodOverrideSnippets(initialTerm : string, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope)
+{
+    let typeOfScope : typedb.DBType = null;
+    if (inScope && inScope.scopetype == scriptfiles.ASScopeType.Class)
+        typeOfScope = typedb.GetType(inScope.typename);
+    if (!typeOfScope || !typeOfScope.supertype)
+        return;
+    if (initialTerm.length == 0)
+        return;
+
+    let checktype = typedb.GetType(typeOfScope.supertype);
+    let foundOverrides = new Set<string>();
+    while (checktype)
+    {
+        for (let method of checktype.methods)
+        {
+            let includeReturnType = false;
+            let includeParamsOnly = false;
+
+            if (method.name && method.name.startsWith(initialTerm))
+                includeParamsOnly = true;
+            if (method.returnType && method.returnType.startsWith(initialTerm))
+                includeReturnType = true;
+
+            if (!includeParamsOnly && !includeReturnType)
+                continue;
+
+            if (typeOfScope.hasOverriddenMethod(method.name))
+                continue;
+            if (checktype.isUnrealType() && !method.isEvent)
+                continue;
+            if (foundOverrides.has(method.name))
+                continue;
+
+            let complStr = method.name+"(";
+            if (method.args)
+            {
+                let firstArg = true;
+                for (let arg of method.args)
+                {
+                    if (!firstArg)
+                        complStr += ", ";
+                    firstArg = false;
+
+                    complStr += arg.typename+" "+arg.name;
+                }
+            }
+            complStr += ")";
+            if (method.isConst)
+                complStr += " const";
+            if (!method.isEvent)
+                complStr += " override";
+            complStr += "\n";
+
+            if (includeParamsOnly)
+            {
+                completions.push({
+                    label: method.name+"(...)",
+                    documentation: <MarkupContent> {
+                        kind: MarkupKind.Markdown,
+                        value: "```angelscript\n"+method.returnType+" "+complStr+"...\n\n```"
+                    },
+                    insertText: complStr,
+                    kind: CompletionItemKind.Snippet,
+                });
+            }
+            if (includeReturnType)
+            {
+                completions.push({
+                    label: method.returnType+" "+method.name+"(...)",
+                    documentation: <MarkupContent> {
+                        kind: MarkupKind.Markdown,
+                        value: "```angelscript\n"+method.returnType+" "+complStr+"...\n\n```"
+                    },
+                    insertText: method.returnType+" "+complStr,
+                    kind: CompletionItemKind.Snippet,
+                });
+            }
+
+            foundOverrides.add(method.name);
+        }
+
+        if (!checktype.supertype)
+            break;
+        checktype = typedb.GetType(checktype.supertype);
+    }
 }
 
 export function Resolve(item : CompletionItem) : CompletionItem
@@ -927,7 +1041,16 @@ export function Resolve(item : CompletionItem) : CompletionItem
     return item;
 }
 
-export function Signature(params : TextDocumentPositionParams, paramNamesOnly : boolean = false) : SignatureHelp
+class MethodSignatures
+{
+    isStartOfArg : boolean = true;
+    paramCount : number = 0;
+    activeSignature : number = 0;
+    methods : Array<typedb.DBMethod>;
+    objectTypes : Array<typedb.DBType>;
+};
+
+function GetMethodSignaturesAroundPosition(params : TextDocumentPositionParams) : MethodSignatures
 {
     let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
     let originalPos = pos;
@@ -940,7 +1063,8 @@ export function Signature(params : TextDocumentPositionParams, paramNamesOnly : 
 
     // Find the opening bracket in front of our current pos
     let brackets = 0;
-    let startOfArg = true;
+    let commaFound = false;
+    let isStartOfArg = true;
     while (true)
     {
         let char = file.rootscope.content[pos];
@@ -955,9 +1079,9 @@ export function Signature(params : TextDocumentPositionParams, paramNamesOnly : 
                 break;
         }
         if (char == ',' && brackets == 0)
-            startOfArg = false;
-        if (paramNamesOnly && char == '=' && startOfArg)
-            return null;
+            commaFound = true;
+        if (char == '=' && !commaFound)
+            isStartOfArg = false;
 
         pos -= 1;
         if(pos < 0)
@@ -980,13 +1104,13 @@ export function Signature(params : TextDocumentPositionParams, paramNamesOnly : 
     else
         return null;
 
-    let sigHelp = <SignatureHelp> {
-        signatures : new Array<SignatureInformation>(),
-        activeSignature : 0,
-        activeParameter : GetActiveParameterCount(originalPos, params.textDocument.uri),
-    };
-    let foundFunc = false;
+    let signatures = new MethodSignatures();
+    signatures.methods = new Array<typedb.DBMethod>();
+    signatures.objectTypes = new Array<typedb.DBType>();
+    signatures.paramCount = GetActiveParameterCount(originalPos, params.textDocument.uri);
+    signatures.isStartOfArg = isStartOfArg;
 
+    let foundFunc = false;
     for (let type of checkTypes)
     {
         if (scope.scopetype == scriptfiles.ASScopeType.Class)
@@ -1008,32 +1132,15 @@ export function Signature(params : TextDocumentPositionParams, paramNamesOnly : 
             if (func.name != term[term.length-1].name)
                 continue;
 
-            let params = new Array<ParameterInformation>();
-            if (func.args)
+            // Show the active signature for the least amount of arguments
+            if (func.args.length > signatures.paramCount && !foundFunc)
             {
-                // Show the active signature for the least amount of arguments
-                if (func.args.length > sigHelp.activeParameter && !foundFunc)
-                {
-                    sigHelp.activeSignature = sigHelp.signatures.length;
-                    foundFunc = true;
-                }
-
-                for (let arg of func.args)
-                {
-                    params.push(<ParameterInformation>
-                    {
-                        label: paramNamesOnly ? arg.name : arg.format()
-                    });
-                }
+                signatures.activeSignature = signatures.methods.length;
+                foundFunc = true;
             }
 
-            let sig = <SignatureInformation> {
-                label: func.format(),
-                parameters: params,
-                documentation: func.documentation,
-            };
-
-            sigHelp.signatures.push(sig);
+            signatures.methods.push(func);
+            signatures.objectTypes.push(type);
         }
     }
 
@@ -1050,15 +1157,51 @@ export function Signature(params : TextDocumentPositionParams, paramNamesOnly : 
                 if(!func.args || func.args.length == 0 || !curtype.inheritsFrom(func.args[0].typename))
                     continue;
 
-                let sig = <SignatureInformation> {
-                    label: func.format(null, true),
-                    parameters: new Array<ParameterInformation>(),
-                    documentation: func.documentation,
-                };
-
-                sigHelp.signatures.push(sig);
+                signatures.methods.push(func);
+                signatures.objectTypes.push(null);
             }
         }
+    }
+
+    return signatures;
+}
+
+export function Signature(params : TextDocumentPositionParams) : SignatureHelp
+{
+    let signatures = GetMethodSignaturesAroundPosition(params);
+    if (!signatures)
+        return null;
+
+    let sigHelp = <SignatureHelp> {
+        signatures : new Array<SignatureInformation>(),
+        activeSignature : signatures.activeSignature,
+        activeParameter : signatures.paramCount,
+    };
+
+    for (let i = 0; i < signatures.methods.length; ++i)
+    {
+        let func = signatures.methods[i];
+        let type = signatures.objectTypes[i];
+
+        let params = new Array<ParameterInformation>();
+        if (func.args)
+        {
+            for (let a = type ? 0 : 1; a < func.args.length; ++a)
+            {
+                params.push(<ParameterInformation>
+                {
+                    label: func.args[a].format()
+                });
+            }
+        }
+
+        let sig = <SignatureInformation> {
+            label: func.format(null, !type),
+            parameters: params,
+            documentation: func.documentation,
+        };
+
+        sigHelp.signatures.push(sig);
     }
 
     return sigHelp.signatures.length == 0 ? null : sigHelp;
