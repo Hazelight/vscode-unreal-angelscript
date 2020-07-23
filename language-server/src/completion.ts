@@ -632,19 +632,9 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
     }
 }
 
-function AddKeywordCompletions(completingStr : string, completions : Array<CompletionItem>)
+function AddScopeKeywords(keywords : Array<string>, completingStr : string, completions : Array<CompletionItem>)
 {
-    for(let kw of [
-        "if", "else", "while", "for",
-        "default", "UFUNCTION", "UCLASS", "UPROPERTY",
-        "delegate", "event", "class", "struct",
-        "void", "float", "bool", "int", "double",
-        "nullptr", "return", "true", "false", "this",
-        "const", "override",
-
-        "BlueprintOverride","BlueprintEvent","BlueprintCallable","NotBlueprintCallable","BlueprintPure","NetFunction","DevFunction","Category","Meta","NetMulticast","Client","Server","WithValidation","BlueprintAuthorityOnly","CallInEditor","Unreliable",
-        "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","NotReplicated","ReplicationCondition","Interp","NoClear",
-    ])
+    for(let kw of keywords)
     {
         if (CanCompleteTo(completingStr, kw))
         {
@@ -652,6 +642,60 @@ function AddKeywordCompletions(completingStr : string, completions : Array<Compl
                     label: kw,
                     kind: CompletionItemKind.Keyword
             });
+        }
+    }
+}
+
+function AddKeywordCompletions(completingStr : string, completions : Array<CompletionItem>, scope : scriptfiles.ASScope)
+{
+    AddScopeKeywords([
+        "float", "bool", "int", "double",
+        "nullptr", "true", "false",
+        "const",
+    ], completingStr, completions);
+
+    if (!scope || scope.scopetype == scriptfiles.ASScopeType.Global || scope.scopetype == scriptfiles.ASScopeType.Namespace)
+    {
+        AddScopeKeywords([
+            "UCLASS",
+            "delegate", "event", "class", "struct",
+        ], completingStr, completions);
+    }
+
+    if (scope && scope.scopetype == scriptfiles.ASScopeType.Function)
+    {
+        AddScopeKeywords([
+            "return",
+            "if", "else", "while", "for",
+        ], completingStr, completions);
+
+        if (scope.parentscope && scope.parentscope.scopetype == scriptfiles.ASScopeType.Class)
+        {
+            AddScopeKeywords([
+                "this",
+            ], completingStr, completions);
+        }
+    }
+    else
+    {
+        AddScopeKeywords([
+            "void",
+        ], completingStr, completions);
+    }
+
+    if (scope && scope.scopetype == scriptfiles.ASScopeType.Class)
+    {
+        AddScopeKeywords([
+            "UPROPERTY", "override",
+            "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","NotReplicated","ReplicationCondition","Interp","NoClear",
+        ], completingStr, completions);
+
+        if (!scope.isStruct)
+        {
+            AddScopeKeywords([
+                "default", "UFUNCTION",
+                "BlueprintOverride","BlueprintEvent","BlueprintCallable","NotBlueprintCallable","BlueprintPure","NetFunction","DevFunction","Category","Meta","NetMulticast","Client","Server","WithValidation","BlueprintAuthorityOnly","CallInEditor","Unreliable",
+            ], completingStr, completions);
         }
     }
 }
@@ -708,7 +752,7 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
         for(let globaltype of globaltypes)
             AddCompletionsFromType(globaltype, initialTerm[0].name, completions, inScope);
 
-        AddKeywordCompletions(initialTerm[0].name, completions);
+        AddKeywordCompletions(initialTerm[0].name, completions, inScope);
     }
 
     // We are already inside a type, so we need to complete based on that type
