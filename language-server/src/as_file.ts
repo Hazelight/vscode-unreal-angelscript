@@ -352,12 +352,32 @@ function SplitScopes(root : ASScope)
     let scopes = 0;
     let activeScope : ASScope = null;
     let rootPos = 0;
+    let inComment = false;
+    let inBlockComment = false;
 
     for (let pos = 0; pos < root.content.length; ++pos)
     {
         switch (root.content[pos])
         {
+            case '/':
+                if (inComment || inBlockComment)
+                    break;
+                if (pos >= 1 && root.content[pos-1] == '/')
+                    inComment = true;
+            break;
+            case '*':
+                if (!inComment && !inBlockComment && pos >= 1 && root.content[pos-1] == '/')
+                    inBlockComment = true;
+                else if (!inComment && inBlockComment && pos < root.content.length - 1 && root.content[pos+1] == '/')
+                    inBlockComment = false;
+            break;
+            case '\n':
+                if (inComment)
+                    inComment = false;
+            break;
             case '{':
+                if (inComment || inBlockComment)
+                    break;
                 if (scopes == 0)
                 {
                     if (pos-1 > rootPos)
@@ -393,6 +413,8 @@ function SplitScopes(root : ASScope)
                 scopes += 1;
             break;
             case '}':
+                if (inComment || inBlockComment)
+                    break;
                 scopes -= 1;
                 if(scopes == 0)
                 {
