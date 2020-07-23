@@ -240,6 +240,21 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
                     kind : kind,
                     data : [dbtype.typename],
             });
+
+            // Allow completing to qualified enum values when appropriate
+            if (dbtype.isEnum)
+            {
+                for (let enumvalue of dbtype.properties)
+                {
+                    let enumstr = typename+"::"+enumvalue.name;
+                    completions.push({
+                            label: enumstr,
+                            detail: enumstr,
+                            kind : CompletionItemKind.EnumMember,
+                            data : [dbtype.typename, enumvalue.name],
+                    });
+                }
+            }
         }
     }
 }
