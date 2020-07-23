@@ -60,16 +60,19 @@ function ParseTerms(strTerm : string) : Array<ASTerm>
                 }
             break;
             case ":":
-                if (brackets == 0 && squarebrackets == 0 && pos > 0 && strTerm[pos-1] == ":")
+                if (brackets == 0 && squarebrackets == 0)
                 {
-                    pos -= 1;
-                    finalizeTerm();
-                    pos += 1;
+                    if (pos > 0 && strTerm[pos-1] == ":")
+                    {
+                        pos -= 1;
+                        finalizeTerm();
+                        pos += 1;
 
-                    terms.push(<ASTerm> {
-                        type: ASTermType.Namespace
-                    });
-                    termPos = pos+1;
+                        terms.push(<ASTerm> {
+                            type: ASTermType.Namespace
+                        });
+                        termPos = pos+1;
+                    }
                 }
             break;
             case "(":
@@ -240,18 +243,18 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
         if (typename.startsWith("//"))
             continue;
 
-        if (CanCompleteTo(initialTerm, typename))
+        if (dbtype.isEnum)
         {
-            completions.push({
-                    label: typename,
-                    detail: typename,
-                    kind : kind,
-                    data : [dbtype.typename],
-            });
-
-            // Allow completing to qualified enum values when appropriate
-            if (dbtype.isEnum)
+            if (CanCompleteTo(initialTerm, typename))
             {
+                completions.push({
+                        label: typename,
+                        detail: typename,
+                        kind : CompletionItemKind.Enum,
+                        data : [dbtype.typename],
+                });
+
+                // Allow completing to qualified enum values when appropriate
                 for (let enumvalue of dbtype.properties)
                 {
                     let enumstr = typename+"::"+enumvalue.name;
@@ -263,7 +266,35 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
                     });
                 }
             }
+            else if (initialTerm.endsWith(":") && initialTerm == typename+":")
+            {
+                // Allow completing to qualified enum values when appropriate
+                for (let enumvalue of dbtype.properties)
+                {
+                    let enumstr = typename+"::"+enumvalue.name;
+                    completions.push({
+                            label: enumstr,
+                            detail: enumstr,
+                            insertText: ":"+enumvalue.name,
+                            kind : CompletionItemKind.EnumMember,
+                            data : [dbtype.typename, enumvalue.name],
+                    });
+                }
+            }
         }
+        else
+        {
+            if (CanCompleteTo(initialTerm, typename))
+            {
+                completions.push({
+                        label: typename,
+                        detail: typename,
+                        kind : kind,
+                        data : [dbtype.typename],
+                });
+            }
+        }
+
     }
 }
 
