@@ -34,7 +34,7 @@ export class DBProperty
                 this.isNoEdit = true;
             else if (input[1] == 'EditOnly')
                 this.isEditOnly = true;
-            else
+            else if (!input[1].startsWith("+"))
                 this.documentation = FormatDocumentationComment(input[1]);
         }
     }
@@ -119,6 +119,7 @@ export class DBMethod
     isEvent : boolean = false;
     isConst : boolean = false;
     isDefaultsOnly : boolean = false;
+    id : number = NextMethodId++;
 
     createTemplateInstance(templateTypes : Array<string>, actualTypes : Array<string>) : DBMethod
     {
@@ -530,6 +531,41 @@ export class DBType
         return null;
     }
 
+    getMethodWithIdHint(name : string, idHint : number, recurse : boolean = true) : DBMethod | null
+    {
+        let fallback : DBMethod = null;
+        for (let func of this.methods)
+        {
+            if (func.name == name)
+            {
+                if (func.id == idHint)
+                    return func;
+                else if (!fallback)
+                    fallback = func;
+            }
+        }
+
+        if (!recurse)
+            return fallback;
+
+        if (!this.hasExtendTypes())
+            return fallback;
+
+        for(let extend of this.getCombineTypesList())
+        {
+            let mth = extend.getMethodWithIdHint(name, idHint, false);
+            if (mth)
+            {
+                if (mth.id == idHint)
+                    return mth;
+                else if (!fallback)
+                    fallback = mth;
+            }
+        }
+
+        return fallback;
+    }
+
     inheritsFrom(checktype : string) : boolean
     {
         let it : DBType = this;
@@ -592,6 +628,7 @@ export class DBType
 };
 
 export let database = new Map<string, DBType>();
+let NextMethodId = 0;
 
 export function CleanTypeName(typename : string) : string
 {

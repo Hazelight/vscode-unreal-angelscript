@@ -19,6 +19,13 @@ enum ASTermType
     ImportStatement
 };
 
+class ASExpressionType
+{
+    LValue : boolean = true;
+    RValue : boolean = true;
+    InBrackets : boolean = false;
+};
+
 class ASTerm
 {
     type : ASTermType;
@@ -117,6 +124,88 @@ function ParseTerms(strTerm : string) : Array<ASTerm>
     return terms;
 }
 
+function ExtractExpressionType(params : TextDocumentPositionParams, inScope : scriptfiles.ASScope) : ASExpressionType
+{
+    let expressionType = new ASExpressionType();
+    let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
+    if (pos == -1 || !inScope)
+        return expressionType;
+
+    let file = scriptfiles.GetFile(params.textDocument.uri);
+
+    // Standard search for the left side of the expression
+    {
+        let foundDefault = false;
+        let completePos = pos;
+        let commaFound = false;
+        let brackets = 0;
+        let isInFunction = scriptfiles.IsInFunctionBody(inScope.scopetype);
+
+        while (completePos > 0 && completePos > inScope.startPosInFile)
+        {
+            let char = file.rootscope.content[completePos];
+            if (char == ';' || char == '{' || char == '}')
+            {
+                expressionType.RValue = false;
+                return expressionType;
+            }
+            else if (char == ',')
+            {
+                if (brackets == 0)
+                {
+                    if (isInFunction)
+                    {
+                        expressionType.LValue = false;
+                        return expressionType;
+                    }
+                    else
+                    {
+                        commaFound = true;
+                    }
+                }
+            }
+            else if (char == ')')
+            {
+                brackets += 1;
+            }
+            else if (char == '(')
+            {
+                brackets -= 1;
+                if (brackets < 0)
+                {
+                    expressionType.InBrackets = true;
+                    if (isInFunction)
+                    {
+                        expressionType.LValue = false;
+                        return expressionType;
+                    }
+                }
+            }
+            else if (char == '=')
+            {
+                if (brackets < 0 || !commaFound || isInFunction)
+                {
+                    expressionType.LValue = false;
+                    return expressionType;
+                }
+            }
+            else if (char == 'n' && pos >= 5 && file.rootscope.content.substr(completePos-5, 6) == "return")
+            {
+                expressionType.LValue = false;
+                return expressionType;
+            }
+            else if (char == 'e' && pos >= 3 && file.rootscope.content.substr(completePos-3, 4) == "case")
+            {
+                expressionType.LValue = false;
+                return expressionType;
+            }
+            completePos -= 1;
+        }
+    }
+
+    return expressionType;
+}
+
 function ExtractCompletingTerm(params : TextDocumentPositionParams) : [Array<ASTerm>, scriptfiles.ASScope]
 {
     let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
@@ -178,7 +267,7 @@ function ExtractCompletingTermAt(pos : number, uri : string) : [Array<ASTerm>, s
             case '!':
             case ' ':
             case '\n':
-                if(brackets == 0 && squarebrackets == 0 && anglebrackets == 0)
+                if(brackets == 0 && squarebrackets == 0)
                     end = true;
             break;
         }
@@ -227,7 +316,7 @@ function CanCompleteTo(completing : string, suggestion : string) : boolean
     return suggestion.toLowerCase().indexOf(completing.toLowerCase()) != -1;
 }
 
-function GetTypeCompletions(initialTerm : string, completions : Array<CompletionItem>)
+function GetTypeCompletions(initialTerm : string, completions : Array<CompletionItem>, expressionType : ASExpressionType)
 {
     for (let [typename, dbtype] of typedb.GetDatabase())
     {
@@ -248,22 +337,25 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
         {
             if (CanCompleteTo(initialTerm, typename))
             {
+                // Allow completing to qualified enum values when appropriate
+                if (expressionType.RValue)
+                {
+                    for (let enumvalue of dbtype.properties)
+                    {
+                        let enumstr = typename+"::"+enumvalue.name;
+                        completions.push({
+                                label: enumstr,
+                                kind: CompletionItemKind.EnumMember,
+                                data: ["enum", dbtype.typename, enumvalue.name],
+                        });
+                    }
+                }
+
                 completions.push({
                         label: typename,
-                        kind : CompletionItemKind.Enum,
-                        data : [dbtype.typename],
+                        kind: CompletionItemKind.Enum,
+                        data: ["type", dbtype.typename],
                 });
-
-                // Allow completing to qualified enum values when appropriate
-                for (let enumvalue of dbtype.properties)
-                {
-                    let enumstr = typename+"::"+enumvalue.name;
-                    completions.push({
-                            label: enumstr,
-                            kind : CompletionItemKind.EnumMember,
-                            data : [dbtype.typename, enumvalue.name],
-                    });
-                }
             }
             else if (initialTerm.endsWith(":") && initialTerm == typename+":")
             {
@@ -274,8 +366,8 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
                     completions.push({
                             label: enumstr,
                             insertText: ":"+enumvalue.name,
-                            kind : CompletionItemKind.EnumMember,
-                            data : [dbtype.typename, enumvalue.name],
+                            kind: CompletionItemKind.EnumMember,
+                            data: ["enum", dbtype.typename, enumvalue.name],
                     });
                 }
             }
@@ -286,8 +378,8 @@ function GetTypeCompletions(initialTerm : string, completions : Array<Completion
             {
                 completions.push({
                         label: typename,
-                        kind : kind,
-                        data : [dbtype.typename],
+                        kind: kind,
+                        data: ["type", dbtype.typename],
                 });
             }
         }
@@ -601,9 +693,8 @@ function GetTermCompletions(initialTerm : Array<ASTerm>, inScope : scriptfiles.A
                     {
                         completions.push({
                                 label: func.name,
-                                detail: func.format(null, true),
                                 kind: CompletionItemKind.Method,
-                                data: [curtype.typename, func.name],
+                                data: ["func", curtype.typename, func.name, func.id],
                         });
                     }
                 }
@@ -616,9 +707,10 @@ function isEditScope(inScope : scriptfiles.ASScope) : boolean
 {
     if (!inScope)
         return false;
-    if (inScope.scopetype == scriptfiles.ASScopeType.Function)
+    let funcScope = inScope.getFunctionScope();
+    if (funcScope != null)
     {
-        if (inScope.funcname != "ConstructionScript")
+        if (funcScope.funcname != "ConstructionScript")
             return false;
     }
     else if (inScope.scopetype != scriptfiles.ASScopeType.Class)
@@ -690,9 +782,8 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
             props.add(prop.name);
             completions.push({
                     label: prop.name,
-                    detail: prop.format(),
                     kind : CompletionItemKind.Field,
-                    data: [curtype.typename, prop.name],
+                    data: ["prop", curtype.typename, prop.name],
             });
         }
     }
@@ -701,7 +792,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
     let setterStr = "Set"+completingStr;
     for (let func of curtype.allMethods())
     {
-        if (CanCompleteTo(getterStr, func.name))
+        if (func.name.startsWith("Get") && CanCompleteTo(getterStr, func.name))
         {
             if (!isFunctionAccessibleFromScope(curtype, func, inScope))
                 continue;
@@ -710,15 +801,14 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
             {
                 completions.push({
                         label: propname,
-                        detail: func.returnType+" "+propname,
                         kind: CompletionItemKind.Field,
-                        data: [curtype.typename, func.name],
+                        data: ["accessor", curtype.typename, propname],
                 });
                 props.add(propname);
             }
         }
         
-        if (CanCompleteTo(setterStr, func.name))
+        if (func.name.startsWith("Set") && CanCompleteTo(setterStr, func.name))
         {
             if (!isFunctionAccessibleFromScope(curtype, func, inScope))
                 continue;
@@ -727,9 +817,8 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
             {
                 completions.push({
                         label: propname,
-                        detail: func.args[0].typename+" "+propname,
                         kind: CompletionItemKind.Field,
-                        data: [curtype.typename, func.name],
+                        data: ["accessor", curtype.typename, propname],
                 });
                 props.add(propname);
             }
@@ -743,9 +832,8 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
             {
                 completions.push({
                         label: func.name,
-                        detail: func.format(),
                         kind: func.isEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
-                        data: [curtype.typename, func.name],
+                        data: ["func", curtype.typename, func.name, func.id],
                 });
             }
         }
@@ -766,15 +854,30 @@ function AddScopeKeywords(keywords : Array<string>, completingStr : string, comp
     }
 }
 
-function AddKeywordCompletions(completingStr : string, completions : Array<CompletionItem>, scope : scriptfiles.ASScope)
+function AddKeywordCompletions(completingStr : string, completions : Array<CompletionItem>, scope : scriptfiles.ASScope, expressionType : ASExpressionType)
 {
+    let inFunctionBody = scope && scope.getFunctionScope() != null;
+
     AddScopeKeywords([
         "float", "bool", "int", "double",
-        "nullptr", "true", "false",
-        "const",
     ], completingStr, completions);
 
-    if (!scope || scope.scopetype == scriptfiles.ASScopeType.Global || scope.scopetype == scriptfiles.ASScopeType.Namespace)
+    if (expressionType.RValue)
+    {
+        AddScopeKeywords([
+            "nullptr", "true", "false",
+        ], completingStr, completions);
+    }
+    
+    if (expressionType.LValue)
+    {
+        AddScopeKeywords([
+            "const",
+        ], completingStr, completions);
+    }
+
+    if ((!scope || scope.scopetype == scriptfiles.ASScopeType.Global || scope.scopetype == scriptfiles.ASScopeType.Namespace)
+        && expressionType.LValue)
     {
         AddScopeKeywords([
             "UCLASS",
@@ -782,33 +885,45 @@ function AddKeywordCompletions(completingStr : string, completions : Array<Compl
         ], completingStr, completions);
     }
 
-    if (scope && scope.scopetype == scriptfiles.ASScopeType.Function)
+    if (scope && inFunctionBody)
     {
-        AddScopeKeywords([
-            "return",
-            "if", "else", "while", "for",
-        ], completingStr, completions);
+        if (expressionType.LValue)
+        {
+            AddScopeKeywords([
+                "return",
+                "if", "else", "while", "for",
+            ], completingStr, completions);
+        }
     }
     else
     {
-        AddScopeKeywords([
-            "void",
-        ], completingStr, completions);
+        if (expressionType.LValue)
+        {
+            AddScopeKeywords([
+                "void",
+            ], completingStr, completions);
+        }
     }
 
     if (scope && scope.scopetype == scriptfiles.ASScopeType.Class)
     {
-        AddScopeKeywords([
-            "UPROPERTY", "override", "private", "protected",
-            "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","NotReplicated","ReplicationCondition","Interp","NoClear",
-        ], completingStr, completions);
+        if (expressionType.LValue)
+        {
+            AddScopeKeywords([
+                "UPROPERTY", "override", "private", "protected",
+                "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","NotReplicated","ReplicationCondition","Interp","NoClear",
+            ], completingStr, completions);
+        }
 
         if (!scope.isStruct)
         {
-            AddScopeKeywords([
-                "default", "UFUNCTION",
-                "BlueprintOverride","BlueprintEvent","BlueprintCallable","NotBlueprintCallable","BlueprintPure","NetFunction","DevFunction","Category","Meta","NetMulticast","Client","Server","WithValidation","BlueprintAuthorityOnly","CallInEditor","Unreliable",
-            ], completingStr, completions);
+            if (expressionType.LValue)
+            {
+                AddScopeKeywords([
+                    "default", "UFUNCTION",
+                    "BlueprintOverride","BlueprintEvent","BlueprintCallable","NotBlueprintCallable","BlueprintPure","NetFunction","DevFunction","Category","Meta","NetMulticast","Client","Server","WithValidation","BlueprintAuthorityOnly","CallInEditor","Unreliable",
+                ], completingStr, completions);
+            }
         }
     }
 }
@@ -839,6 +954,7 @@ function ImportCompletion(term : string) : Array<CompletionItem>
 export function Complete(params : TextDocumentPositionParams) : Array<CompletionItem>
 {
     let [initialTerm, inScope] = ExtractCompletingTerm(params);
+    let expressionType = ExtractExpressionType(params, inScope);
 
     if (initialTerm.length == 1 && initialTerm[0].type == ASTermType.ImportStatement)
         return ImportCompletion(initialTerm[0].name);
@@ -855,7 +971,7 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
     // If we're not inside a type, also complete to type names for static functions / declarations
     if (allowScopeCompletions)
     {
-        GetTypeCompletions(initialTerm[0].name, completions);
+        GetTypeCompletions(initialTerm[0].name, completions, expressionType);
     }
     
     // If we're not inside a type, also complete to anything is global scope
@@ -865,7 +981,7 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
         for(let globaltype of globaltypes)
             AddCompletionsFromType(globaltype, initialTerm[0].name, completions, inScope);
 
-        AddKeywordCompletions(initialTerm[0].name, completions, inScope);
+        AddKeywordCompletions(initialTerm[0].name, completions, inScope, expressionType);
     }
 
     // We are already inside a type, so we need to complete based on that type
@@ -873,17 +989,22 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
         GetTermCompletions(initialTerm, inScope, completions);
 
     // Check if we're inside a function call and complete argument names
+    let insideSignature = false;
     if (initialTerm.length == 1)
-        AddSignatureCompletions(initialTerm[0].name, params, completions, inScope);
+        insideSignature = AddSignatureCompletions(initialTerm[0].name, params, completions, inScope);
 
     // Check for snippet completions for method overrides
-    if (inScope && inScope.scopetype == scriptfiles.ASScopeType.Class && initialTerm.length == 1)
+    if (inScope && inScope.scopetype == scriptfiles.ASScopeType.Class && initialTerm.length == 1
+            && expressionType.LValue && !expressionType.InBrackets
+            && !insideSignature)
+    {
         AddMethodOverrideSnippets(initialTerm[0].name, completions, inScope);
+    }
 
     return completions;
 }
 
-function AddSignatureCompletions(initialTerm : string, params : TextDocumentPositionParams, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope)
+function AddSignatureCompletions(initialTerm : string, params : TextDocumentPositionParams, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope) : boolean
 {
     let typeOfScope : typedb.DBType = null;
     if (inScope && inScope.scopetype == scriptfiles.ASScopeType.Class)
@@ -899,7 +1020,7 @@ function AddSignatureCompletions(initialTerm : string, params : TextDocumentPosi
             let objType = signatures.objectTypes[signatures.activeSignature];
 
             let completeDefinition = false;
-            if (typeOfScope != null && typeOfScope.inheritsFrom(objType.typename) && typeOfScope.canOverrideFromParent(method.name))
+            if (typeOfScope != null && objType && typeOfScope.inheritsFrom(objType.typename) && typeOfScope.canOverrideFromParent(method.name))
                 completeDefinition = true;
             if (method.args)
             {
@@ -921,6 +1042,40 @@ function AddSignatureCompletions(initialTerm : string, params : TextDocumentPosi
             }
         }
     }
+
+    return signatures && signatures.methods.length != 0;
+}
+
+function GetDeclarationSnippet(method : typedb.DBMethod, includeReturnType : boolean) : string
+{
+    let complStr = "";
+    if (includeReturnType)
+        complStr += method.returnType+" ";
+    complStr += method.name+"(";
+    if (method.args)
+    {
+        let firstArg = true;
+        for (let arg of method.args)
+        {
+            if (!firstArg)
+                complStr += ", ";
+            firstArg = false;
+
+            complStr += arg.typename+" "+arg.name;
+        }
+    }
+    complStr += ")";
+    if (method.isConst)
+        complStr += " const";
+    if (!method.isEvent)
+        complStr += " override";
+    complStr += "\n";
+    return complStr;
+}
+
+function NoBreakingSpaces(decl : string) : string
+{
+    return decl.replace(/ /g, "\xa0");
 }
 
 function AddMethodOverrideSnippets(initialTerm : string, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope)
@@ -950,55 +1105,28 @@ function AddMethodOverrideSnippets(initialTerm : string, completions : Array<Com
             if (!includeParamsOnly && !includeReturnType)
                 continue;
 
-            if (typeOfScope.hasOverriddenMethod(method.name))
-                continue;
             if (checktype.isUnrealType() && !method.isEvent)
                 continue;
             if (foundOverrides.has(method.name))
                 continue;
 
-            let complStr = method.name+"(";
-            if (method.args)
-            {
-                let firstArg = true;
-                for (let arg of method.args)
-                {
-                    if (!firstArg)
-                        complStr += ", ";
-                    firstArg = false;
-
-                    complStr += arg.typename+" "+arg.name;
-                }
-            }
-            complStr += ")";
-            if (method.isConst)
-                complStr += " const";
-            if (!method.isEvent)
-                complStr += " override";
-            complStr += "\n";
-
+            let complStr = GetDeclarationSnippet(method, false);
             if (includeParamsOnly)
             {
                 completions.push({
                     label: method.name+"(...)",
-                    documentation: <MarkupContent> {
-                        kind: MarkupKind.Markdown,
-                        value: "```angelscript\n"+method.returnType+" "+complStr+"...\n\n```"
-                    },
                     insertText: complStr,
                     kind: CompletionItemKind.Snippet,
+                    data: ["decl_snippet", checktype.typename, method.name, method.id],
                 });
             }
             if (includeReturnType)
             {
                 completions.push({
                     label: method.returnType+" "+method.name+"(...)",
-                    documentation: <MarkupContent> {
-                        kind: MarkupKind.Markdown,
-                        value: "```angelscript\n"+method.returnType+" "+complStr+"...\n\n```"
-                    },
                     insertText: method.returnType+" "+complStr,
                     kind: CompletionItemKind.Snippet,
+                    data: ["decl_snippet", checktype.typename, method.name, method.id],
                 });
             }
 
@@ -1011,31 +1139,99 @@ function AddMethodOverrideSnippets(initialTerm : string, completions : Array<Com
     }
 }
 
+function NicifyDefinition(func : typedb.DBMethod, def : string) : string
+{
+    if (def.length < 40 || !func.args || func.args.length == 0)
+        return def;
+
+    def = def.replace("(", "(\n\t");
+    def = def.replace(/, /g, ",\n\t");
+    return def;
+}
+
 export function Resolve(item : CompletionItem) : CompletionItem
 {
     if (!item.data)
         return item;
 
-    let type = typedb.GetType(item.data[0]);
+    let kind = item.data[0];
+    let type = typedb.GetType(item.data[1]);
     if (type == null)
         return item;
 
-    if (item.data.length == 1)
+    if (kind == "type")
     {
-        item.documentation = type.documentation;
+        if (type.documentation)
+            item.documentation = type.documentation.replace(/\n/g,"\n\n");
         return item;
     }
-
-    let func = type.getMethod(item.data[1]);
-    if (func)
+    else if (kind == "enum" || kind == "prop")
     {
-        item.documentation = func.documentation;
+        let prop = type.getProperty(item.data[2]);
+        if (prop)
+        {
+            item.documentation = <MarkupContent> {
+                kind: MarkupKind.Markdown,
+                value: "```angelscript\n"+NoBreakingSpaces(prop.format())+"\n```\n\n",
+            };
+            if (prop.documentation)
+                item.documentation.value += "\n"+prop.documentation.replace(/\n/g,"\n\n")+"\n\n";
+        }
     }
-    else
+    else if (kind == "accessor")
     {
-        let prop = type.getProperty(item.data[1]);
-        if (prop && prop.documentation)
-            item.documentation = prop.documentation;
+        let getFunc = type.getMethod("Get"+item.data[2]);
+        let setFunc = type.getMethod("Set"+item.data[2]);
+
+        let docStr = "";
+        if (getFunc)
+        {
+            docStr += "```angelscript\n"+getFunc.returnType+"\xa0"+item.data[2]+"\n```\n\n";
+        }
+        else if (setFunc && setFunc.args && setFunc.args.length >= 1)
+        {
+            docStr += "```angelscript\n"+setFunc.args[0].typename+"\xa0"+item.data[2]+"\n```\n\n";
+        }
+
+        if (getFunc && getFunc.documentation && getFunc.documentation.length != 0)
+            docStr += "\n"+getFunc.documentation.replace(/\n/g,"\n\n")+"\n\n";
+        else if (setFunc && setFunc.documentation && setFunc.documentation.length != 0)
+            docStr += "\n"+setFunc.documentation.replace(/\n/g,"\n\n")+"\n\n";
+            
+        item.documentation = <MarkupContent> {
+            kind: MarkupKind.Markdown,
+            value: docStr,
+        };
+    }
+    else if (kind == "func")
+    {
+        let func = type.getMethodWithIdHint(item.data[2], item.data[3]);
+        if (func)
+        {
+            let complStr = NoBreakingSpaces(NicifyDefinition(func, func.format()));
+            item.documentation = <MarkupContent> {
+                kind: MarkupKind.Markdown,
+                value: "```angelscript\n"+complStr+"\n```\n\n",
+            };
+
+            if (func.documentation)
+                item.documentation.value += "\n"+func.documentation.replace(/\n/g,"\n\n")+"\n\n";
+        }
+    }
+    else if (kind == "decl_snippet")
+    {
+        let func = type.getMethodWithIdHint(item.data[2], item.data[3]);
+        if (func)
+        {
+            let complStr = NoBreakingSpaces(GetDeclarationSnippet(func, true));
+            item.documentation = <MarkupContent> {
+                kind: MarkupKind.Markdown,
+                value: "```angelscript\n"+complStr+"\n```\n\n",
+            };
+
+            if (func.documentation)
+                item.documentation.value += "\n"+func.documentation.replace(/\n/g,"\n\n")+"\n\n";
+        }
     }
 
     return item;
@@ -1390,7 +1586,23 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
                 prefix = type.typename+".";
 
             hover = "";
-            hover += FormatHoverDocumentation(func.documentation);
+
+            if (func.documentation)
+            {
+                hover += FormatHoverDocumentation(func.documentation);
+            }
+            else if (type.supertype)
+            {
+                // Fall back to using the documentation from the parent class
+                let supertype = typedb.GetType(type.supertype);
+                if (supertype)
+                {
+                    let parentFunc = supertype.getMethod(func.name);
+                    if (parentFunc && parentFunc.documentation)
+                        hover += FormatHoverDocumentation(parentFunc.documentation);
+                }
+            }
+
             if (func.documentation)
                 hadPropertyDoc = true;
             if (func.name == gettername)

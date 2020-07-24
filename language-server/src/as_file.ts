@@ -49,6 +49,11 @@ export enum ASScopeType
     Namespace
 };
 
+export function IsInFunctionBody(scopeType : ASScopeType)
+{
+    return scopeType == ASScopeType.Function || scopeType == ASScopeType.Other;
+}
+
 export class ASVariable
 {
     name : string;
@@ -141,6 +146,18 @@ export class ASScope
         }
 
         return this;
+    }
+
+    getFunctionScope() : ASScope
+    {
+        let checkscope : ASScope = this;
+        while (checkscope != null)
+        {
+            if (checkscope.scopetype == ASScopeType.Function)
+                return checkscope;
+            checkscope = checkscope.parentscope;
+        }
+        return null;
     }
 
     findScopeType(typename : string) : ASScope
