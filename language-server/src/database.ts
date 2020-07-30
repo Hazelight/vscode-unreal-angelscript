@@ -118,6 +118,7 @@ export class DBMethod
     isConstructor : boolean = false;
     isEvent : boolean = false;
     isConst : boolean = false;
+    isProperty : boolean = false;
     isDefaultsOnly : boolean = false;
     id : number = NextMethodId++;
 
@@ -176,6 +177,11 @@ export class DBMethod
         else
             this.isEvent = false;
 
+        if ('isProperty' in input)
+            this.isProperty = input['isProperty'];
+        else
+            this.isProperty = false;
+
         if ('defaultsonly' in input)
             this.isDefaultsOnly = input['defaultsonly'];
     }
@@ -220,6 +226,8 @@ export class DBMethod
         decl += ")";
         if (this.isConst)
             decl += " const";
+        if (this.isProperty)
+            decl += " property";
         return decl;
     }
 };

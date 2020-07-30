@@ -94,6 +94,7 @@ export class ASScope
     funcargs : string;
     funcprivate : boolean;
     funcprotected : boolean;
+    funcproperty : boolean;
     isConstructor : boolean = false;
     isConst : boolean = false;
 
@@ -313,6 +314,7 @@ export class ASScope
         dbfunc.isProtected = this.funcprotected;
         dbfunc.isConstructor = this.isConstructor;
         dbfunc.isConst = this.isConst;
+        dbfunc.isProperty = this.funcproperty;
 
         dbfunc.args = new Array<typedb.DBArg>();
         for (let funcVar of this.variables)
@@ -477,7 +479,7 @@ function ParseEnumValues(root : ASScope)
 
 let re_declaration = /(private\s+|protected\s+)?((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,[\t ]*[A-Za-z0-9_]+)*\>)?)[\t ]*&?)[\t ]+([A-Za-z_0-9]+)(\s*;|\s*\(.*\)\s*;|\s*=.*;)/g;
 let re_classheader = /(class|struct|namespace)\s+([A-Za-z0-9_]+)(\s*:\s*([A-Za-z0-9_]+))?\s*$/g;
-let re_functionheader = /(private\s+|protected\s+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)(\s*const)?/g;
+let re_functionheader = /(private\s+|protected\s+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)(\s*const)?(\s*property)?/g;
 let re_constructor = /[\t ]*([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
 let re_argument = /(,\s*|\(\s*|^\s*)((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)\s*&?(\s*(in|out|inout))?)\s+([A-Za-z_0-9]+)/g;
 let re_enum = /enum\s*([A-Za-z0-9_]+)\s*$/g;
@@ -517,6 +519,8 @@ function ParseDeclarations(root : ASScope)
             root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
             if (funcmatch[10])
                 root.isConst = true;
+            if (funcmatch[11])
+                root.funcproperty = true;
 
             re_argument.lastIndex = 0;
             while(true)
