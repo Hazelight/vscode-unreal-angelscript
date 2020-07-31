@@ -792,7 +792,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
     let setterStr = "Set"+completingStr;
     for (let func of curtype.allMethods())
     {
-        if (func.name.startsWith("Get") && CanCompleteTo(getterStr, func.name))
+        if (func.name.startsWith("Get") && CanCompleteTo(getterStr, func.name) && func.isProperty)
         {
             if (!isFunctionAccessibleFromScope(curtype, func, inScope))
                 continue;
@@ -808,7 +808,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
             }
         }
         
-        if (func.name.startsWith("Set") && CanCompleteTo(setterStr, func.name))
+        if (func.name.startsWith("Set") && CanCompleteTo(setterStr, func.name) && func.isProperty)
         {
             if (!isFunctionAccessibleFromScope(curtype, func, inScope))
                 continue;
@@ -882,6 +882,7 @@ function AddKeywordCompletions(completingStr : string, completions : Array<Compl
         AddScopeKeywords([
             "UCLASS",
             "delegate", "event", "class", "struct",
+            "property"
         ], completingStr, completions);
     }
 
@@ -910,7 +911,7 @@ function AddKeywordCompletions(completingStr : string, completions : Array<Compl
         if (expressionType.LValue)
         {
             AddScopeKeywords([
-                "UPROPERTY", "override", "private", "protected",
+                "UPROPERTY", "override", "final", "property", "private", "protected",
                 "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","NotReplicated","ReplicationCondition","Interp","NoClear",
             ], completingStr, completions);
         }
@@ -1069,6 +1070,8 @@ function GetDeclarationSnippet(method : typedb.DBMethod, includeReturnType : boo
         complStr += " const";
     if (!method.isEvent)
         complStr += " override";
+    if (!method.isEvent && method.isProperty)
+        complStr += " property";
     complStr += "\n";
     return complStr;
 }

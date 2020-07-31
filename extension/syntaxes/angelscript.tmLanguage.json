@@ -45,7 +45,7 @@
 			"include": "#strings"
 		},
 		{
-			"match": "\\b(override|final|private|protected)\\b",
+			"match": "\\b(override|final|private|protected|property)\\b",
 			"name": "storage.modifier.angelscript"
 		},
 		{
