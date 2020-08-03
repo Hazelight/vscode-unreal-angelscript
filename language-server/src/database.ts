@@ -180,7 +180,7 @@ export class DBMethod
         if ('isProperty' in input)
             this.isProperty = input['isProperty'];
         else
-            this.isProperty = false;
+            this.isProperty = true;
 
         if ('defaultsonly' in input)
             this.isDefaultsOnly = input['defaultsonly'];
