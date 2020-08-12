@@ -1070,7 +1070,7 @@ function GetDeclarationSnippet(method : typedb.DBMethod, includeReturnType : boo
         complStr += " const";
     if (!method.isEvent)
         complStr += " override";
-    if (!method.isEvent && method.isProperty)
+    if (!method.isEvent && method.isProperty && method.declaredModule)
         complStr += " property";
     complStr += "\n";
     return complStr;

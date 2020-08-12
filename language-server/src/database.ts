@@ -226,7 +226,7 @@ export class DBMethod
         decl += ")";
         if (this.isConst)
             decl += " const";
-        if (this.isProperty)
+        if (this.isProperty && this.declaredModule)
             decl += " property";
         return decl;
     }
