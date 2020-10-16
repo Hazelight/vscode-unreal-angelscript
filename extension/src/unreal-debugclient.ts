@@ -156,7 +156,7 @@ let unreal : Socket | null = null;
 export let connected = false;
 export let events = new EventEmitter();
 
-export function connect()
+export function connect(port : number)
 {
     if (unreal != null)
     {
@@ -166,7 +166,7 @@ export function connect()
     unreal = new Socket;
     connected = true;
 	//connection.console.log('Connecting to unreal editor...');
-	unreal.connect(27099, "localhost", function()
+	unreal.connect(port, "localhost", function()
 	{
 		//connection.console.log('Connection to unreal editor established.');
 	});
