@@ -21,6 +21,7 @@ const { Subject } = require('await-notify');
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 	stopOnEntry?: boolean;
 	trace?: boolean;
+	port?: number;
 }
 
 interface ASBreakpoint
@@ -40,6 +41,8 @@ export class ASDebugSession extends LoggingDebugSession
 	private _variableHandles = new Handles<string>();
 
 	private _configurationDone = new Subject();
+
+	port = 27099;
 
 	/**
 	 * Creates a new debug adapter that is used for one debug session.
@@ -104,7 +107,7 @@ export class ASDebugSession extends LoggingDebugSession
 		response.body.supportsEvaluateForHovers = true;
 		response.body.supportsExceptionInfoRequest = true;
 
-		unreal.connect();
+		unreal.connect(this.port);
 		unreal.sendRequestBreakFilters();
 
 		this.waitingInitializeResponse = response;
@@ -155,7 +158,7 @@ export class ASDebugSession extends LoggingDebugSession
 		// make sure to 'Stop' the buffered logging if 'trace' is not set
 		logger.setup(args.trace ? Logger.LogLevel.Verbose : Logger.LogLevel.Stop, false);
 
-		unreal.connect();
+		unreal.connect(args.port !== undefined ? args.port : this.port);
 		unreal.sendStartDebugging();
 
 		for (let clientPath of this.breakpoints.keys())

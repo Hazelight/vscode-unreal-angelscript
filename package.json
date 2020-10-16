@@ -65,6 +65,11 @@
                                 "type": "boolean",
                                 "description": "Enable logging of the Debug Adapter Protocol.",
                                 "default": true
+                            },
+                            "port": {
+                                "type": "number",
+                                "description": "Port to AS debug server",
+                                "default:": 27099
                             }
                         }
                     }
