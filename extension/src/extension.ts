@@ -134,6 +134,23 @@ export function activate(context: ExtensionContext) {
 	});
 
 	context.subscriptions.push(addImportTo);
+
+	let quickOpenImport = vscode.commands.registerCommand('angelscript.quickOpenImport', () => {
+		let activeEditor = vscode.window.activeTextEditor;
+		if (activeEditor != null) {
+			let line_number = activeEditor.selection.active.line;
+			let text_line = activeEditor.document.lineAt(line_number);
+			let text = text_line.text.split(' ');
+			if (text.length != 0 && text[0] === "import") {
+				let path = text[1].slice(0, -1).split('.').join('\\');
+				vscode.commands.executeCommand('workbench.action.quickOpen', path);
+				return;
+			}
+		}
+		vscode.commands.executeCommand('workbench.action.quickOpen', '');
+	});
+	context.subscriptions.push(quickOpenImport);
+
 	console.log("Done activating angelscript extension");
 }
 
