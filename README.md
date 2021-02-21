@@ -54,6 +54,11 @@ The 'Add Import To' (default shortcut: Shift+Alt+I) command from the
 right click menu will try to automatically add an import statement
 to the top of the file to import the type that the command was run on.
 
+### Quick Open Import
+The 'Quick Open Import' (default shortcut: Ctrl+E or Ctrl+P) command from the
+right click menu will try to open the quick open navigation with the import
+statement.
+
 ## Known Issues
 * There is a rare bug causing the language server to crash, breaking
   code completion until visual studio code is reloaded. If you have

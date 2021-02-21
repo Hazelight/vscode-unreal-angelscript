@@ -108,6 +108,10 @@
             {
                 "command": "angelscript.addImportTo",
                 "title": "Add Import To"
+            },
+            {
+                "command": "angelscript.quickOpenImport",
+                "title": "Quick Open Import"
             }
         ],
         "menus": {
@@ -128,6 +132,11 @@
                     "when": "resourceLangId == angelscript",
                     "command": "angelscript.addImportTo",
                     "group": "navigation"
+                },
+                {
+                    "when": "resourceLangId == angelscript",
+                    "command": "angelscript.quickOpenImport",
+                    "group": "navigation"
                 }
             ]
         },
@@ -140,6 +149,16 @@
             {
                 "command": "angelscript.addImportTo",
                 "key": "alt+shift+i",
+                "when": "editorTextFocus"
+            },
+            {
+                "command": "angelscript.quickOpenImport",
+                "key": "ctrl+e",
+                "when": "editorTextFocus"
+            },
+            {
+                "command": "angelscript.quickOpenImport",
+                "key": "ctrl+p",
                 "when": "editorTextFocus"
             }
         ]
