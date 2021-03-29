@@ -5,7 +5,7 @@
     "version": "0.0.1",
     "publisher": "Hazelight",
     "engines": {
-        "vscode": "^1.22.0"
+        "vscode": "*"
     },
     "scripts": {
         "vscode:prepublish": "tsc -p ./",
