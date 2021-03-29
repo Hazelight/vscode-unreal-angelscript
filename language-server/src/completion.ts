@@ -770,7 +770,7 @@ function isFunctionAccessibleFromScope(curtype : typedb.DBType, func : typedb.DB
     return true;
 }
 
-export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : string, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope)
+export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : string, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope, showEvents : boolean = true)
 {
     let props = new Set<string>();
     for (let prop of curtype.allProperties())
@@ -828,7 +828,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
         {
             if (!isFunctionAccessibleFromScope(curtype, func, inScope))
                 continue;
-            if(!func.name.startsWith("op"))
+            if(!func.name.startsWith("op") && (!func.isEvent || showEvents))
             {
                 completions.push({
                         label: func.name,
@@ -922,7 +922,7 @@ function AddKeywordCompletions(completingStr : string, completions : Array<Compl
             {
                 AddScopeKeywords([
                     "default", "UFUNCTION",
-                    "BlueprintOverride","BlueprintEvent","BlueprintCallable","NotBlueprintCallable","BlueprintPure","NetFunction","DevFunction","Category","Meta","NetMulticast","Client","Server","WithValidation","BlueprintAuthorityOnly","CallInEditor","Unreliable",
+                    "BlueprintOverride","BlueprintEvent","BlueprintCallable","NotBlueprintCallable","BlueprintPure","NetFunction","CrumbFunction","DevFunction","Category","Meta","NetMulticast","Client","Server","WithValidation","BlueprintAuthorityOnly","CallInEditor","Unreliable",
                 ], completingStr, completions);
             }
         }
@@ -980,7 +980,10 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
     {
         let globaltypes = GetGlobalScopeTypes(inScope, true);
         for(let globaltype of globaltypes)
-            AddCompletionsFromType(globaltype, initialTerm[0].name, completions, inScope);
+        {
+            let showEvents = !inScope || inScope.scopetype != scriptfiles.ASScopeType.Class || globaltype.typename != inScope.typename;
+            AddCompletionsFromType(globaltype, initialTerm[0].name, completions, inScope, showEvents);
+        }
 
         AddKeywordCompletions(initialTerm[0].name, completions, inScope, expressionType);
     }
@@ -999,7 +1002,7 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
             && expressionType.LValue && !expressionType.InBrackets
             && !insideSignature)
     {
-        AddMethodOverrideSnippets(initialTerm[0].name, completions, inScope);
+        AddMethodOverrideSnippets(params, initialTerm[0].name, completions, inScope);
     }
 
     return completions;
@@ -1081,7 +1084,7 @@ function NoBreakingSpaces(decl : string) : string
     return decl.replace(/ /g, "\xa0");
 }
 
-function AddMethodOverrideSnippets(initialTerm : string, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope)
+function AddMethodOverrideSnippets(positionParams : TextDocumentPositionParams, initialTerm : string, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope)
 {
     let typeOfScope : typedb.DBType = null;
     if (inScope && inScope.scopetype == scriptfiles.ASScopeType.Class)
@@ -1090,6 +1093,52 @@ function AddMethodOverrideSnippets(initialTerm : string, completions : Array<Com
         return;
     if (initialTerm.length == 0)
         return;
+
+    let position = positionParams.position;
+    let document = scriptfiles.GetDocument(positionParams.textDocument.uri);
+
+    let prevLineText = document.getText(
+        Range.create(
+            Position.create(position.line-1, 0),
+            Position.create(position.line, 0)
+        )
+    );
+
+    let curLineText = document.getText(
+        Range.create(
+            Position.create(position.line, 0),
+            Position.create(position.line+1, 0)
+        )
+    );
+
+    let hasUFunctionMacro = prevLineText.indexOf("UFUNCTION") != -1;
+    let textEdits = new Array<TextEdit>();
+
+    let currentIndent = "";
+    for (let char of curLineText)
+    {
+        if (char == ' ' || char == '\t')
+            currentIndent += char;
+        else
+            break;
+    }
+
+    let hasReturnType = curLineText.trim().indexOf(initialTerm) != 0;
+
+    // Add the closing brace
+    textEdits.push(TextEdit.insert(
+        Position.create(position.line+1, 0),
+        currentIndent+"}\n",
+    ));
+
+    // Add the UFUNCTION() macro if we don't have one
+    if (!hasUFunctionMacro)
+    {
+        textEdits.push(TextEdit.insert(
+            Position.create(position.line, 0),
+            currentIndent+"UFUNCTION(BlueprintOverride)\n"
+        ))
+    }
 
     let checktype = typedb.GetType(typeOfScope.supertype);
     let foundOverrides = new Set<string>();
@@ -1100,9 +1149,9 @@ function AddMethodOverrideSnippets(initialTerm : string, completions : Array<Com
             let includeReturnType = false;
             let includeParamsOnly = false;
 
-            if (method.name && method.name.startsWith(initialTerm))
+            if (method.name && CanCompleteTo(initialTerm, method.name))
                 includeParamsOnly = true;
-            if (method.returnType && method.returnType.startsWith(initialTerm))
+            if (method.returnType && CanCompleteTo(initialTerm, method.returnType))
                 includeReturnType = true;
 
             if (!includeParamsOnly && !includeReturnType)
@@ -1117,19 +1166,31 @@ function AddMethodOverrideSnippets(initialTerm : string, completions : Array<Com
             if (includeParamsOnly)
             {
                 completions.push({
-                    label: method.name+"(...)",
-                    insertText: complStr,
+                    label: method.returnType+" "+method.name+"(...)",
+                    filterText: method.name+"(...)",
+                    insertText: complStr+"{\n"+currentIndent,
                     kind: CompletionItemKind.Snippet,
                     data: ["decl_snippet", checktype.typename, method.name, method.id],
+                    additionalTextEdits:
+                        hasReturnType ? textEdits
+                            : textEdits.concat(
+                                [
+                                    TextEdit.insert(
+                                        Position.create(position.line, position.character-1),
+                                        method.returnType+" "
+                                    )
+                                ]
+                            )
                 });
             }
             if (includeReturnType)
             {
                 completions.push({
                     label: method.returnType+" "+method.name+"(...)",
-                    insertText: method.returnType+" "+complStr,
+                    insertText: method.returnType+" "+complStr+"{\n"+currentIndent,
                     kind: CompletionItemKind.Snippet,
                     data: ["decl_snippet", checktype.typename, method.name, method.id],
+                    additionalTextEdits: textEdits,
                 });
             }
 

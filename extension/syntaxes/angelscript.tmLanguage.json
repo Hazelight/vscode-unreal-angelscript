@@ -4,7 +4,7 @@
 	"patterns": [
 		{
 			"name": "keyword.macro.ufunction.angelscript",
-			"match": "\\b(BlueprintOverride|BlueprintEvent|BlueprintCallable|NotBlueprintCallable|BlueprintPure|NetFunction|DevFunction|Category|Meta|CallInEditor|Unreliable|NetMUlticast|Client|Server|WithValidation|BlueprintAuthorityOnly)\\b\\s*"
+			"match": "\\b(BlueprintOverride|BlueprintEvent|BlueprintCallable|NotBlueprintCallable|BlueprintPure|NetFunction|CrumbFunction|DevFunction|Category|Meta|CallInEditor|Unreliable|NetMulticast|Client|Server|WithValidation|BlueprintAuthorityOnly)\\b\\s*"
 		},
 		{
 			"name": "keyword.macro.uproperty.angelscript",
@@ -20,7 +20,7 @@
 		},
 		{
 			"name": "variable.other.basictype.angelscript",
-			"match": "\\b(FVector|FVector2D|TArray|TMap|TSet|FRotator|FQuat|FString|FName|FText|FTransform|TPerPlayer|TSubclassOf)\\b"
+			"match": "\\b(FVector|FVector2D|TArray|TMap|TSet|FRotator|FQuat|FString|FName|FText|FTransform|TPerPlayer|TSubclassOf|TInstigated|TSoftObjectPtr|TSoftClassPtr)\\b"
 		},
 		{
 			"name": "variable.other.structtype.angelscript",
