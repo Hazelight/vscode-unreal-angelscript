@@ -1132,9 +1132,10 @@ function AddMethodOverrideSnippets(positionParams : TextDocumentPositionParams, 
     ));
 
     // Add the UFUNCTION() macro if we don't have one
+    let textEditsForEvent = [];
     if (!hasUFunctionMacro)
     {
-        textEdits.push(TextEdit.insert(
+        textEditsForEvent.push(TextEdit.insert(
             Position.create(position.line, 0),
             currentIndent+"UFUNCTION(BlueprintOverride)\n"
         ))
@@ -1163,34 +1164,56 @@ function AddMethodOverrideSnippets(positionParams : TextDocumentPositionParams, 
                 continue;
 
             let complStr = GetDeclarationSnippet(method, false);
+            let complEdits = textEdits;
+
+            if (method.isEvent)
+                complEdits = complEdits.concat(textEditsForEvent);
+
+            let superStr = "";
+            if (method.declaredModule && (!method.returnType || method.returnType == "void"))
+            {
+                superStr += "Super::"+method.name+"(";
+                for (let i = 0; i < method.args.length; ++i)
+                {
+                    if (i != 0)
+                        superStr += ", ";
+                    superStr += method.args[i].name;
+                }
+                superStr += ");\n"+currentIndent;
+            }
+
             if (includeParamsOnly)
             {
+                if (!hasReturnType)
+                {
+                    complEdits = complEdits.concat(
+                        TextEdit.replace(
+                            Range.create(
+                                Position.create(position.line, 0),
+                                Position.create(position.line, position.character-1),
+                            ),
+                            currentIndent + method.returnType+" "
+                        )
+                    );
+                }
+
                 completions.push({
                     label: method.returnType+" "+method.name+"(...)",
                     filterText: method.name+"(...)",
-                    insertText: complStr+"{\n"+currentIndent,
+                    insertText: complStr+"{\n"+currentIndent+superStr,
                     kind: CompletionItemKind.Snippet,
                     data: ["decl_snippet", checktype.typename, method.name, method.id],
-                    additionalTextEdits:
-                        hasReturnType ? textEdits
-                            : textEdits.concat(
-                                [
-                                    TextEdit.insert(
-                                        Position.create(position.line, position.character-1),
-                                        method.returnType+" "
-                                    )
-                                ]
-                            )
+                    additionalTextEdits: complEdits,
                 });
             }
-            if (includeReturnType)
+            else if (includeReturnType)
             {
                 completions.push({
                     label: method.returnType+" "+method.name+"(...)",
-                    insertText: method.returnType+" "+complStr+"{\n"+currentIndent,
+                    insertText: method.returnType+" "+complStr+"{\n"+currentIndent+superStr,
                     kind: CompletionItemKind.Snippet,
                     data: ["decl_snippet", checktype.typename, method.name, method.id],
-                    additionalTextEdits: textEdits,
+                    additionalTextEdits: complEdits,
                 });
             }
 
@@ -1946,12 +1969,40 @@ export function GetDefinition(params : TextDocumentPositionParams) : Definition
 
     for (let type of checkTypes)
     {
-        if (!type.declaredModule)
-            continue;
-
-        let loc = scriptfiles.GetSymbolLocation(type.declaredModule, type.typename, term[term.length-1].name);
-        if (loc)
-            locations.push(loc);
+        if (type.declaredModule)
+        {
+            let loc = scriptfiles.GetSymbolLocation(type.declaredModule, type.typename, term[term.length-1].name);
+            if (loc)
+                locations.push(loc);
+        }
+        else
+        {
+            // Namespaces don't always have a declared module, if they are merged from multiple files
+            // Find the symbol first and then check the declared module on the symbol
+            let method = type.getMethod(term[term.length-1].name);
+            if (method)
+            {
+                if (method.declaredModule)
+                {
+                    let loc = scriptfiles.GetSymbolLocation(method.declaredModule, type.typename, term[term.length-1].name);
+                    if (loc)
+                        locations.push(loc);
+                }
+            }
+            else
+            {
+                let prop = type.getProperty(term[term.length-1].name);
+                if (prop)
+                {
+                    if (prop.declaredModule)
+                    {
+                        let loc = scriptfiles.GetSymbolLocation(prop.declaredModule, type.typename, term[term.length-1].name);
+                        if (loc)
+                            locations.push(loc);
+                    }
+                }
+            }
+        }
     }
 
     if (term.length == 1 && scope)
@@ -2037,12 +2088,18 @@ export function ResolveAutos(root : scriptfiles.ASScope)
 {
     for (let vardesc of root.variables)
     {
-        if (vardesc.typename != "auto")
+        if (vardesc.typename.indexOf("auto") == -1)
             continue;
         if (!vardesc.expression)
             continue;
 
+        let originalType = vardesc.typename;
+        let cleanedType = typedb.CleanTypeName(vardesc.typename);
+        if (cleanedType != "auto")
+            continue;
+
         let terms = ParseTerms(vardesc.expression);
+        let isAutoRef = vardesc.typename.endsWith("&");
         let resolvedType = GetTypeFromTerm(terms, 0, terms.length, root, true);
         if(resolvedType)
             vardesc.typename = resolvedType.typename;
@@ -2080,6 +2137,8 @@ export function ResolveAutos(root : scriptfiles.ASScope)
                 }
             }
         }
+
+        vardesc.typename = typedb.TransferTypeQualifiers(originalType, vardesc.typename);
     }
 
     for (let subscope of root.subscopes)

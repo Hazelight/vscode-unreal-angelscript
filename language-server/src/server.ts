@@ -191,8 +191,8 @@ function RunInitialPostProcess()
 {
 	for (let file of scriptfiles.GetAllFiles())
 	{
-		completion.ResolveAutos(file.rootscope);
 		scriptfiles.PostProcessModule(file.modulename);
+		completion.ResolveAutos(file.rootscope);
 	}
 	InitialPostProcessDone = true;
 }
@@ -203,8 +203,8 @@ connection.onDidChangeWatchedFiles((_change) => {
 		let file = UpdateFileFromDisk(change.uri);
 		if (file)
 		{
-			completion.ResolveAutos(file.rootscope);
 			scriptfiles.PostProcessModule(file.modulename);
+			completion.ResolveAutos(file.rootscope);
 		}
 	}
 });
@@ -366,8 +366,8 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	let modulename = getModuleName(uri);
 	
 	let file = scriptfiles.UpdateContent(uri, modulename, content, null);
-	completion.ResolveAutos(file.rootscope);
 	scriptfiles.PostProcessModule(modulename);
+	completion.ResolveAutos(file.rootscope);
  });
 
 // Listen on the connection

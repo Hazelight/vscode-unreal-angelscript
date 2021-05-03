@@ -9,6 +9,7 @@ export class DBProperty
     isPrivate : boolean;
     isNoEdit : boolean = false;
     isEditOnly : boolean = false;
+    declaredModule : string | null;
 
     fromJSON(name : string, input : any)
     {
@@ -129,6 +130,13 @@ export class DBMethod
         inst.returnType = ReplaceTemplateType(this.returnType, templateTypes, actualTypes);
         inst.argumentStr = this.argumentStr;
         inst.documentation = this.documentation;
+        inst.isProtected = this.isProtected;
+        inst.isPrivate = this.isPrivate;
+        inst.isConstructor = this.isConstructor;
+        inst.isEvent = this.isEvent;
+        inst.isConst = this.isConst;
+        inst.isProperty = this.isProperty;
+        inst.isDefaultsOnly = this.isDefaultsOnly;
 
         inst.args = [];
         for(let argval of this.args)
@@ -644,11 +652,33 @@ export function CleanTypeName(typename : string) : string
         typename = typename.substring(6);
     if (typename.endsWith("&"))
         typename = typename.substring(0, typename.length-1);
-    if (typename.endsWith("@"))
+    else if (typename.endsWith("&out"))
+        typename = typename.substring(0, typename.length-4);
+    else if (typename.endsWith("&in"))
+        typename = typename.substring(0, typename.length-3);
+    else if (typename.endsWith("&inout"))
+        typename = typename.substring(0, typename.length-5);
+    else if (typename.endsWith("@"))
         typename = typename.substring(0, typename.length-1);
     return typename;
 }
 
+export function TransferTypeQualifiers(typename : string, newtype : string) : string
+{
+    if (typename.startsWith("const "))
+        newtype = "const "+newtype;
+    if (typename.endsWith("&"))
+        newtype = newtype+"&";
+    else if (typename.endsWith("&out"))
+        newtype = newtype+"&out";
+    else if (typename.endsWith("&in"))
+        newtype = newtype+"&in";
+    else if (typename.endsWith("&inout"))
+        newtype = newtype+"&inout";
+    return newtype;
+}
+
+let re_template = /([A-Za-z_0-9]+)\<([A-Za-z_0-9,\s]+)\>/;
 export function ReplaceTemplateType(typename : string, templateTypes : Array<string>, actualTypes : Array<string>)
 {
     typename = CleanTypeName(typename);
@@ -659,10 +689,34 @@ export function ReplaceTemplateType(typename : string, templateTypes : Array<str
             return actualTypes[i];
         }
     }
+
+    if (typename.indexOf('<') != -1)
+    {
+        // Replace the template types inside the subtemplate as well
+        let match = typename.match(re_template);
+        if (match != null)
+        {
+            let basetype = match[1];
+
+            let newtype = "";
+            for (let subtype of match[2].split(","))
+            {
+                subtype = subtype.trim();
+                let templIndex = templateTypes.indexOf(subtype);
+                if (templIndex != -1)
+                    subtype = actualTypes[templIndex];
+                if (newtype.length != 0)
+                    newtype += ",";
+                newtype += subtype;
+            }
+
+            return basetype+"<"+newtype+">";
+        }
+    }
+
     return typename;
 }
 
-let re_template = /([A-Za-z_0-9]+)\<([A-Za-z_0-9,\s]+)\>/;
 export function GetType(typename : string) : DBType | null
 {
     if (!typename)
@@ -728,7 +782,10 @@ export function AddTypesFromUnreal(input : any)
         let type = new DBType();
         type.fromJSON(key, input[key]);
 
-        database.set(key, type);
+        if (type.isNamespace())
+            MergeNamespaceToDB(type);
+        else
+            database.set(key, type);
     }
 }
 
@@ -754,4 +811,66 @@ export function RemoveTypesInModule(module : string)
         if (dbtype.declaredModule == module)
             database.delete(name);
     }
+}
+
+export function RemoveModuleFromNamespace(namespace : string, modulename : string)
+{
+    // Check if we already have a database entry for this namespace
+    let dbtype = database.get(namespace);
+    if (!dbtype)
+        return;
+    if (dbtype.declaredModule == modulename)
+    {
+        database.delete(namespace);
+        return;
+    }
+
+    // Remove old methods from the same module that we are replacing
+    let keepMethods = [];
+    for (let method of dbtype.methods)
+    {
+        if (method.declaredModule != modulename)
+            keepMethods.push(method);
+    }
+
+    // Replace method list in type
+    dbtype.methods = keepMethods;
+}
+
+export function MergeNamespaceToDB(newtype : DBType, removeOldMethods : boolean = true)
+{
+    // Check if we already have a database entry for this namespace
+    let dbtype = database.get(newtype.typename);
+    if (!dbtype || (dbtype.declaredModule == newtype.declaredModule && removeOldMethods))
+    {
+        database.set(newtype.typename, newtype);
+        return;
+    }
+
+    // Remove old methods from the same module that we are replacing
+    let keepMethods = [];
+    if (removeOldMethods)
+    {
+        for (let method of dbtype.methods)
+        {
+            if (method.declaredModule != newtype.declaredModule)
+                keepMethods.push(method);
+        }
+    }
+    else
+    {
+        // Keep all methods
+        keepMethods = dbtype.methods;
+    }
+
+    // Add all the new methods we're adding
+    for (let method of newtype.methods)
+        keepMethods.push(method);
+
+    // Replace method list in type
+    dbtype.methods = keepMethods;
+
+    // Now that we're merging methods this type is no longer exclusive to this module
+    if (dbtype.declaredModule != newtype.declaredModule)
+        dbtype.declaredModule = null;
 }

@@ -97,6 +97,7 @@ export class ASScope
     funcproperty : boolean;
     isConstructor : boolean = false;
     isConst : boolean = false;
+    funcIsEvent : boolean = false;
 
     parentscope : ASScope;
     subscopes : Array<ASScope>;
@@ -231,7 +232,7 @@ export class ASScope
         dbtype.declaredModule = this.modulename;
         dbtype.documentation = this.documentation;
         dbtype.isStruct = this.isStruct;
-        dbtype.isEnum = this.scopetype == ASScopeType.Enum;;
+        dbtype.isEnum = this.scopetype == ASScopeType.Enum;
 
         if (this.scopetype == ASScopeType.Enum || this.scopetype == ASScopeType.Namespace)
             dbtype.typename = "__" + dbtype.typename;
@@ -242,6 +243,7 @@ export class ASScope
             dbprop.name = prop.name;
             dbprop.typename = prop.typename;
             dbprop.documentation = prop.documentation;
+            dbprop.declaredModule = this.modulename;
             dbprop.isPrivate = prop.isPrivate;
             dbprop.isProtected = prop.isProtected;
             dbtype.properties.push(dbprop);
@@ -315,6 +317,7 @@ export class ASScope
         dbfunc.isConstructor = this.isConstructor;
         dbfunc.isConst = this.isConst;
         dbfunc.isProperty = this.funcproperty;
+        dbfunc.isEvent = this.funcIsEvent;
 
         dbfunc.args = new Array<typedb.DBArg>();
         for (let funcVar of this.variables)
@@ -486,6 +489,7 @@ let re_enum = /enum\s*([A-Za-z0-9_]+)\s*$/g;
 let re_import = /(\n|^)\s*import\s+([A-Za-z0-9_.]+)\s*;/g;
 let re_for_declaration = /for\s*\(((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,[\t ]*[A-Za-z0-9_]+)*\>)?)[\t ]*&?)[\t ]+([A-Za-z_0-9]+)\s*:\s*([^\n]*)\)/g;
 let re_delegate = /(delegate|event)[ \t]+((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\((.*)\);/g;
+let re_refwhitespace = /\s*&/g;
 
 function ParseDeclarations(root : ASScope)
 {
@@ -521,6 +525,15 @@ function ParseDeclarations(root : ASScope)
                 root.isConst = true;
             if (funcmatch[11])
                 root.funcproperty = true;
+
+            let descriptors = ExtractUFunctionMacro(root.declaration);
+            if (descriptors)
+            {
+                if (descriptors.indexOf("BlueprintEvent") != -1)
+                    root.funcIsEvent = true;
+                else if (descriptors.indexOf("BlueprintOverride") != -1)
+                    root.funcIsEvent = true;
+            }
 
             re_argument.lastIndex = 0;
             while(true)
@@ -604,7 +617,7 @@ function ParseDeclarations(root : ASScope)
                 continue;
 
             let decl = new ASVariable();
-            decl.typename = match[2].trim();
+            decl.typename = match[2].replace(re_refwhitespace, "&");
             decl.name = match[7];
             decl.isArgument = false;
             decl.posInParent = match.index + offset;
@@ -638,7 +651,7 @@ function ParseDeclarations(root : ASScope)
             decl.isArgument = false;
             decl.posInParent = match.index + offset;
             decl.posInFile = root.startPosInFile + decl.posInParent;
-            decl.expression = match[7].trim() + "[0]";
+            decl.expression = match[7].trim() + ".Iterator().Proceed()";
 
             root.variables.push(decl);
         }
@@ -705,7 +718,17 @@ function ParseDeclarations(root : ASScope)
     let dbtype = root.toDBType();
     if (dbtype)
     {
-        typedb.GetDatabase().set(dbtype.typename, dbtype);
+        if (dbtype.isNamespace())
+        {
+            // We need to merge this module's version of the namespace with the others
+            // other functions in this namespace may have come from C++ or other modules
+            typedb.MergeNamespaceToDB(dbtype, false);
+        }
+        else
+        {
+            // This is a script type, overwrite the entry in the database
+            typedb.GetDatabase().set(dbtype.typename, dbtype);
+        }
     }
 
     if (root.delegates)
@@ -811,13 +834,67 @@ function ExtractCommentOnPreviousLine(code : string, position : number, minPosit
     return "";
 }
 
+let re_ufunctionmacro = /UFUNCTION\((.*)\)/;
+function ExtractUFunctionMacro(decl : string) : Array<string> | null
+{
+    let specmatch = re_ufunctionmacro.exec(decl);
+    if (!specmatch)
+        return null;
+
+    return ExtractSpecifierList(specmatch[1]);
+}
+
+function ExtractSpecifierList(specStr : string) : Array<string>
+{
+    let specifiers = new Array<string>();
+
+    let brackets = 0;
+    let quoted = false;
+    let escaped = false;
+    let specStart = 0;
+    for (let pos = 0; pos < specStr.length; ++pos)
+    {
+        if (specStr[pos] == ',')
+        {
+            if (brackets == 0 && !quoted)
+            {
+                if (pos - specStart > 0)
+                    specifiers.push(specStr.substring(specStart, pos).trim());
+                specStart = pos+1;
+            }
+        }
+        else if (specStr[pos] == '(')
+        {
+            brackets += 1;
+        }
+        else if (specStr[pos] == ')')
+        {
+            brackets -= 1;
+        }
+        else if (specStr[pos] == '"')
+        {
+            if (!escaped)
+                quoted = !quoted;
+        }
+
+        if (specStr[pos] == '\\')
+            escaped = !escaped;
+        else
+            escaped = false;
+    }
+
+    if (specStr.length - specStart > 0)
+        specifiers.push(specStr.substring(specStart, specStr.length).trim());
+    return specifiers;
+}
+
 export function RemoveScopeFromDatabase(scope : ASScope)
 {
     let typename = scope.getDBTypename();
     if(typename != null)
     {
         typedb.GetDatabase().delete(typename);
-        typedb.GetDatabase().delete("__"+typename);
+        typedb.RemoveModuleFromNamespace("__"+typename, scope.modulename);
     }
 
     if (scope.scopetype == ASScopeType.Function && scope.isConstructor)
@@ -920,11 +997,11 @@ export function GetSymbolLocation(modulename : string, typename : string, symbol
     if (!file)
         return null;
 
-    let subscope = typename != null ? file.rootscope.findScopeType(typename) : file.rootscope;
-    if(!subscope)
-        return null;
-
-    return _GetScopeSymbol(file, subscope, symbolname);
+    if (!typename)
+        return _GetScopeSymbol(file, file.rootscope, symbolname);
+    if (typename.startsWith("__"))
+        typename = typename.substr(2);
+    return RecursiveFindScopeSymbol(file, file.rootscope, typename, symbolname);
 }
 
 export function GetSymbolLocationInScope(scope : ASScope, symbolname : string) : Location | null
@@ -938,6 +1015,25 @@ export function GetSymbolLocationInScope(scope : ASScope, symbolname : string) :
             return sym;
         checkScope = checkScope.parentscope;
     }
+    return null;
+}
+
+function RecursiveFindScopeSymbol(file : ASFile, scope : ASScope, typename : string, symbolname : string) : Location | null
+{
+    for (let subscope of scope.subscopes)
+    {
+        if (subscope.typename == typename)
+        {
+            let symbolLocation = _GetScopeSymbol(file, subscope, symbolname);
+            if (symbolLocation)
+                return symbolLocation;
+        }
+
+        let subLocation = RecursiveFindScopeSymbol(file, subscope, typename, symbolname);
+        if (subLocation)
+            return subLocation;
+    }
+
     return null;
 }
 
@@ -1148,10 +1244,12 @@ function PostProcessScope(scope : ASScope)
     if (scope.scopetype == ASScopeType.Class && !scope.isStruct)
     {
         let dbtype = new typedb.DBType();
+        dbtype.declaredModule = scope.modulename;
         dbtype.initEmpty("__"+scope.typename);
 
         {
             let method = new typedb.DBMethod();
+            method.declaredModule = scope.modulename;
             method.name = "StaticClass";
             method.returnType = "UClass";
             method.documentation = "Gets the descriptor for the class generated for the specified type.";
@@ -1164,6 +1262,7 @@ function PostProcessScope(scope : ASScope)
         {
             {
                 let method = new typedb.DBMethod();
+                method.declaredModule = scope.modulename;
                 method.name = "Get";
                 method.returnType = scope.typename;
                 method.documentation = "Get the component of this type from an actor. Specified name is optional.";
@@ -1176,6 +1275,7 @@ function PostProcessScope(scope : ASScope)
 
             {
                 let method = new typedb.DBMethod();
+                method.declaredModule = scope.modulename;
                 method.name = "GetOrCreate";
                 method.returnType = scope.typename;
                 method.documentation = "Get a component of a particular type on an actor, create it if it doesn't exist. Specified name is optional.";
@@ -1188,6 +1288,7 @@ function PostProcessScope(scope : ASScope)
 
             {
                 let method = new typedb.DBMethod();
+                method.declaredModule = scope.modulename;
                 method.name = "Create";
                 method.returnType = scope.typename;
                 method.documentation = "Always create a new component of this type on an actor.";
@@ -1203,6 +1304,7 @@ function PostProcessScope(scope : ASScope)
         {
             {
                 let method = new typedb.DBMethod();
+                method.declaredModule = scope.modulename;
                 method.name = "Spawn";
                 method.returnType = scope.typename;
                 method.documentation = "Spawn a new actor of this type into the world.";
@@ -1217,7 +1319,7 @@ function PostProcessScope(scope : ASScope)
             }
         }
 
-        typedb.database.set(dbtype.typename, dbtype);
+        typedb.MergeNamespaceToDB(dbtype, false);
     }
 
     for (let subscope of scope.subscopes)
