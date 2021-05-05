@@ -305,6 +305,8 @@ export class ASScope
     {
         if (this.scopetype != ASScopeType.Function)
             return null;
+        if (this.funcname.startsWith("__"))
+            return null;
 
         let dbfunc = new typedb.DBMethod();
         dbfunc.name = this.funcname;
@@ -483,6 +485,7 @@ function ParseEnumValues(root : ASScope)
 let re_declaration = /(private\s+|protected\s+)?((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,[\t ]*[A-Za-z0-9_]+)*\>)?)[\t ]*&?)[\t ]+([A-Za-z_0-9]+)(\s*;|\s*\(.*\)\s*;|\s*=.*;)/g;
 let re_classheader = /(class|struct|namespace)\s+([A-Za-z0-9_]+)(\s*:\s*([A-Za-z0-9_]+))?\s*$/g;
 let re_functionheader = /(private\s+|protected\s+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)[ \t]*&?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)(\s*const)?(\s*property)?/g;
+let re_assetheader = /asset ([A-Za-z0-9_]+) of ([A-Za-z0-9_]+)/g;
 let re_constructor = /[\t ]*([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
 let re_argument = /(,\s*|\(\s*|^\s*)((const\s*)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)\s*&?(\s*(in|out|inout))?)\s+([A-Za-z_0-9]+)/g;
 let re_enum = /enum\s*([A-Za-z0-9_]+)\s*$/g;
@@ -495,25 +498,33 @@ function ParseDeclarations(root : ASScope)
 {
     let cleanedDeclaration = root.declaration ? RemoveComments(root.declaration) : null;
 
-    re_classheader.lastIndex = 0;
-    let classmatch = re_classheader.exec(cleanedDeclaration);
-    if (classmatch)
-    {
-        root.typename = classmatch[2];
-        root.supertype = classmatch[4];
-        root.scopetype = ASScopeType.Class;
-        root.isStruct = classmatch[1] == "struct";
-        root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
+    let matched = false;
 
-        if (classmatch[1] == "namespace")
-            root.scopetype = ASScopeType.Namespace;
+    if (!matched)
+    {
+        re_classheader.lastIndex = 0;
+        let classmatch = re_classheader.exec(cleanedDeclaration);
+        if (classmatch)
+        {
+            matched = true;
+            root.typename = classmatch[2];
+            root.supertype = classmatch[4];
+            root.scopetype = ASScopeType.Class;
+            root.isStruct = classmatch[1] == "struct";
+            root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
+
+            if (classmatch[1] == "namespace")
+                root.scopetype = ASScopeType.Namespace;
+        }
     }
-    else
+
+    if (!matched)
     {
         re_functionheader.lastIndex = 0;
         let funcmatch = re_functionheader.exec(cleanedDeclaration);
         if (funcmatch)
         {
+            matched = true;
             root.scopetype = ASScopeType.Function;
             root.funcname = funcmatch[7];
             root.funcreturn = funcmatch[2];
@@ -552,52 +563,87 @@ function ParseDeclarations(root : ASScope)
                 root.variables.push(decl);
             }
         }
+    }
+
+    if (!matched)
+    {
+        re_constructor.lastIndex = 0;
+        let constructormatch = re_constructor.exec(cleanedDeclaration);
+
+        if (constructormatch && constructormatch[1] == root.parentscope.typename)
+        {
+            matched = true;
+            root.scopetype = ASScopeType.Function;
+            root.funcname = constructormatch[1];
+            root.funcreturn = constructormatch[1];
+            root.funcargs = constructormatch[2];
+            root.funcprivate = false;
+            root.funcprotected = false;
+            root.isConstructor = true;
+            root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
+
+            re_argument.lastIndex = 0;
+            while(true)
+            {
+                let match = re_argument.exec(root.funcargs);
+                if (match == null)
+                    break;
+
+                let decl = new ASVariable();
+                decl.typename = match[2].trim();
+                decl.name = match[9];
+                decl.isArgument = true;
+                decl.posInParent = 0;
+                decl.posInFile = root.startPosInFile;
+
+                root.variables.push(decl);
+            }
+        }
         else
         {
-            re_constructor.lastIndex = 0;
-            let constructormatch = re_constructor.exec(cleanedDeclaration);
-
-            if (constructormatch && constructormatch[1] == root.parentscope.typename)
+            re_enum.lastIndex = 0;
+            let enummatch = re_enum.exec(cleanedDeclaration);
+            if (enummatch)
             {
-                root.scopetype = ASScopeType.Function;
-                root.funcname = constructormatch[1];
-                root.funcreturn = constructormatch[1];
-                root.funcargs = constructormatch[2];
-                root.funcprivate = false;
-                root.funcprotected = false;
-                root.isConstructor = true;
+                root.scopetype = ASScopeType.Enum;
+                root.typename = enummatch[1];
                 root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
-
-                re_argument.lastIndex = 0;
-                while(true)
-                {
-                    let match = re_argument.exec(root.funcargs);
-                    if (match == null)
-                        break;
-
-                    let decl = new ASVariable();
-                    decl.typename = match[2].trim();
-                    decl.name = match[9];
-                    decl.isArgument = true;
-                    decl.posInParent = 0;
-                    decl.posInFile = root.startPosInFile;
-
-                    root.variables.push(decl);
-                }
+                
+                ParseEnumValues(root);
             }
-            else
-            {
-                re_enum.lastIndex = 0;
-                let enummatch = re_enum.exec(cleanedDeclaration);
-                if (enummatch)
-                {
-                    root.scopetype = ASScopeType.Enum;
-                    root.typename = enummatch[1];
-                    root.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
-                    
-                    ParseEnumValues(root);
-                }
-            }
+        }
+    }
+
+    if (!matched)
+    {
+        re_assetheader.lastIndex = 0;
+        let assetmatch = re_assetheader.exec(cleanedDeclaration);
+        if (assetmatch)
+        {
+            let assetname = assetmatch[1];
+            let assettype = assetmatch[2];
+
+            matched = true;
+
+            // Create a fake declaration for the global variable for this
+            let decl = new ASVariable();
+            decl.typename = assettype;
+            decl.name = assetname;
+            decl.isArgument = false;
+            decl.posInParent = root.startPosInFile - root.parentscope.startPosInFile;
+            decl.posInFile = root.startPosInFile;
+            decl.documentation = ExtractDocumentationBackwards(root.declaration, root.declaration.length-1);
+            root.parentscope.variables.push(decl);
+
+            // Create the scope
+            root.scopetype = ASScopeType.Function;
+            root.funcname = "__Init_"+assetname;
+            root.funcreturn = "void";
+            root.funcargs = "";
+            root.funcprivate = false;
+            root.funcprotected = false;
+            root.isConst = false;
+            root.funcproperty = false;
         }
     }
 

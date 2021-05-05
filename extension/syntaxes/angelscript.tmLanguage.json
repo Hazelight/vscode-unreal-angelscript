@@ -15,6 +15,20 @@
 			"match": "\\b(default|delegate|event|import|auto)\\b\\s*"
 		},
 		{
+			"match": "\\b(asset) ([A-Za-z0-9_]+) (of) ([A-Za-z0-9_]+)\\b",
+			"captures": {
+				"1": {
+					"name": "keyword.statement.angelscript"
+				},
+				"3": {
+					"name": "keyword.statement.angelscript"
+				},
+				"4": {
+					"name": "variable.other.objecttype.angelscript"
+				}
+			}
+		},
+		{
 			"name": "support.type.component.angelscript",
 			"match": "\\bU[A-Za-z_0-9]*Component\\b"
 		},
