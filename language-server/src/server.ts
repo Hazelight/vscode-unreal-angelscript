@@ -1,12 +1,12 @@
 'use strict';
 
 import {
-	IPCMessageReader, IPCMessageWriter, createConnection, IConnection, TextDocuments, TextDocument,
+	IPCMessageReader, IPCMessageWriter, createConnection, Connection, TextDocuments, TextDocument,
 	Diagnostic, DiagnosticSeverity, InitializeResult, TextDocumentPositionParams, CompletionItem,
 	CompletionItemKind, SignatureHelp, Hover, DocumentSymbolParams, SymbolInformation,
 	WorkspaceSymbolParams, Definition, ExecuteCommandParams, VersionedTextDocumentIdentifier, Location,
-	TextDocumentSyncKind
-} from 'vscode-languageserver';
+	TextDocumentSyncKind, DocumentHighlight
+} from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
 
@@ -19,7 +19,7 @@ let glob = require('glob');
 import { Message, MessageType, readMessages, buildGoTo, buildDisconnect } from './unreal-buffers';
 
 // Create a connection for the server. The connection uses Node's IPC as a transport
-let connection: IConnection = createConnection(new IPCMessageReader(process), new IPCMessageWriter(process));
+let connection: Connection = createConnection(new IPCMessageReader(process), new IPCMessageWriter(process));
 
 // Create a connection to unreal
 let unreal : Socket;

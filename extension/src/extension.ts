@@ -7,7 +7,7 @@
 import * as path from 'path';
 
 import { workspace, ExtensionContext } from 'vscode';
-import { LanguageClient, LanguageClientOptions, ServerOptions, Definition, TransportKind, Diagnostic, RequestType, ExecuteCommandRequest, ExecuteCommandParams, ExecuteCommandRegistrationOptions, TextDocumentPositionParams, ImplementationRequest, TypeDefinitionRequest } from 'vscode-languageclient';
+import { LanguageClient, LanguageClientOptions, ServerOptions, Definition, TransportKind, Diagnostic, RequestType, ExecuteCommandRequest, ExecuteCommandParams, ExecuteCommandRegistrationOptions, TextDocumentPositionParams, ImplementationRequest, TypeDefinitionRequest } from 'vscode-languageclient/node';
 
 import * as vscode from 'vscode';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
@@ -18,12 +18,12 @@ let copyPaste = require("copy-paste");
 
 const EMBED_DEBUG_ADAPTER = true;
 
-const GetModuleForSymbolRequest: RequestType<TextDocumentPositionParams, string, void, void> = new RequestType<TextDocumentPositionParams, string, void, void>('angelscript/getModuleForSymbol');
+const GetModuleForSymbolRequest: RequestType<TextDocumentPositionParams, string, void> = new RequestType<TextDocumentPositionParams, string, void>('angelscript/getModuleForSymbol');
 
 export function activate(context: ExtensionContext) {
 
 	// The server is implemented in node
-	let serverModule = context.asAbsolutePath(path.join('extension', 'server', 'server.js'));
+	let serverModule = context.asAbsolutePath(path.join('language-server', 'out', 'server.js'));
 	// The debug options for the server
 	let debugOptions = { execArgv: ["--nolazy", "--inspect=6009"] };
 	
@@ -193,7 +193,7 @@ class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
 			}
 
 			// make VS Code connect to debug server instead of launching debug adapter
-			config.debugServer = this._server.address().port;
+			//config.debugServer = this._server.address().port;
 		}
 		this._config = config;
 		return config;

@@ -1,19 +1,13 @@
 {
 	"compilerOptions": {
-		"noUnusedLocals": true,
-		"noUnusedParameters": true,
-		"noImplicitAny": true,
-		"noImplicitReturns": true,		
-		"target": "es6",
 		"module": "commonjs",
-		"moduleResolution": "node",
-		"rootDir": ".",
+		"target": "es2019",
+		"lib": ["ES2019"],
 		"outDir": "out",
-		"lib": [ "es2016" ],
-		"sourceMap": true
+		"rootDir": "src",
+		"sourceMap": true,
+		"strictNullChecks": false,
 	},
-	"exclude": [
-		"node_modules",
-		"server"
-	]
+	"include": ["src"],
+	"exclude": ["node_modules", ".vscode-test"]
 }
