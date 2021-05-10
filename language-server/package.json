@@ -12,6 +12,10 @@
 		"url": "https://github.com/Microsoft/vscode-extension-samples"
 	},
 	"dependencies": {
+		"@types/glob": "^7.1.3",
+		"@types/nearley": "^2.0.0",
+		"moo": "^0.5.1",
+		"nearley": "^2.20.1",
 		"vscode-languageserver": "^7.0.0",
 		"vscode-languageserver-textdocument": "^1.0.1"
 	},

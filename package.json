@@ -52,6 +52,7 @@
                 "label": "Angelscript Debug",
                 "program": "./extension/out/debugAdapter.js",
                 "runtime": "node",
+                "languages": ["angelscript"],
                 "configurationAttributes": {
                     "launch": {
                         "required": [],
@@ -78,7 +79,7 @@
                     {
                         "type": "angelscript",
                         "request": "launch",
-                        "name": "Launch Angelscript",
+                        "name": "Debug Angelscript",
                         "stopOnEntry": false
                     }
                 ],
@@ -168,7 +169,8 @@
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -b",
         "watch": "tsc -b -w",
-        "postinstall": "cd extension && npm install && cd ../language-server && npm install && cd .."
+        "postinstall": "cd extension && npm install && cd ../language-server && npm install && cd ..",
+        "grammar:compile": "cd language-server/grammar && nearleyc angelscript.ne -o angelscript.js && nearleyc grammar_statement.ne -o grammar_statement.js && nearleyc grammar_class_statement.ne -o grammar_class_statement.js && nearleyc grammar_global_statement.ne -o grammar_global_statement.js && nearleyc grammar_enum_statement.ne -o grammar_enum_statement.js"
     },
     "devDependencies": {
         "@types/mocha": "^8.2.2",
