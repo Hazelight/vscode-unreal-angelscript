@@ -6,10 +6,21 @@ import * as glob from 'glob';
 import * as nearley from 'nearley';
 import { performance } from "perf_hooks";
 
-let grammar_statement = require("../grammar/grammar_statement.js");
-let grammar_class_statement = require("../grammar/grammar_class_statement.js");
-let grammar_global_statement = require("../grammar/grammar_global_statement.js");
-let grammar_enum_statement = require("../grammar/grammar_enum_statement.js");
+let grammar_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_statement.js"));
+let grammar_class_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_class_statement.js"));
+let grammar_global_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_global_statement.js"));
+let grammar_enum_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_enum_statement.js"));
+
+let parser_statement = new nearley.Parser(grammar_statement);
+let parser_class_statement = new nearley.Parser(grammar_class_statement);
+let parser_global_statement = new nearley.Parser(grammar_global_statement);
+let parser_enum_statement = new nearley.Parser(grammar_enum_statement);
+
+let parser_statement_initial = parser_statement.save();
+let parser_class_statement_initial = parser_class_statement.save();
+let parser_global_statement_initial = parser_global_statement.save();
+let parser_enum_statement_initial = parser_enum_statement.save();
+
 let node_types = require("../grammar/node_types.js");
 
 enum ASScopeType
@@ -413,28 +424,30 @@ function ParseStatement(scopetype : ASScopeType, statement : ASStatement)
     statement.parsed = true;
     statement.ast = null;
 
-    let grammar : any = null;
+    let parser : nearley.Parser = null;
     switch (scopetype)
     {
         default:
         case ASScopeType.Global:
         case ASScopeType.Namespace:
-            grammar = grammar_global_statement;
+            parser = parser_global_statement;
+            parser.restore(parser_global_statement_initial);
         break;
         case ASScopeType.Class:
-            grammar = grammar_class_statement;
+            parser = parser_class_statement;
+            parser.restore(parser_class_statement_initial);
         break;
         case ASScopeType.Enum:
-            grammar = grammar_enum_statement;
+            parser = parser_enum_statement;
+            parser.restore(parser_enum_statement_initial);
         break;
         case ASScopeType.Function:
-            grammar = grammar_statement;
-        break;
+            parser = parser_statement;
+            parser.restore(parser_statement_initial);
+        break
     }
 
-    let parser = new nearley.Parser(nearley.Grammar.fromCompiled(grammar));
     let parseError = false;
-
     try
     {
         parser.feed(statement.content);
@@ -482,8 +495,8 @@ function ParseStatement(scopetype : ASScopeType, statement : ASStatement)
 }
 
 
-//let folder = "D:\\Split\\Split\\Script";
-let folder = "D:\\Nuts\\Nuts\\Script";
+let folder = "D:\\Split\\Split\\Script";
+//let folder = "D:\\Nuts\\Nuts\\Script";
 
 let modules : ASModule[] = [];
 glob(folder+"/**/*.as", null, function(err : any, files : any)
@@ -493,7 +506,7 @@ glob(folder+"/**/*.as", null, function(err : any, files : any)
     //let filename = "D:\\Nuts\\Nuts\\Script\\Cake\\Environment\\Sky.as";
     {
         let content = fs.readFileSync(filename, 'utf8');
-        let doc = TextDocument.create("file:///"+filename, "angelscript", 1, content)
+        let doc = TextDocument.create("ile:///"+filename, "angelscript", 1, content)
         let asmodule = CreateModule("Test", filename, doc);
         modules.push(asmodule);
     }

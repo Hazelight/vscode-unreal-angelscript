@@ -61,6 +61,17 @@ const lexer = moo.compile({
     number: /[0-9]+/,
 });
 
+/*function Node(node_type, )
+{
+    return {
+        type: node_type:
+        start: 
+        end: 
+        value: 
+        children: [],
+    };
+}*/
+
 var grammar = {
     Lexer: lexer,
     ParserRules: [

@@ -57,6 +57,32 @@ const lexer = moo.compile({
     number: /[0-9]+/,
 });
 
+function Compound(d, node_type, children)
+{
+    let start = -1;
+    let end = -1;
+
+    for (let part of d)
+    {
+        if (!part)
+            continue;
+        if (start == -1)
+            start = part.start;
+        end = part.end;
+    }
+
+    return {
+        type: node_type:
+        start: start,
+        end: end,
+        chlidren: children,
+    };
+}
+
+function Identifier(node_type, start, end)
+{
+}
+
 %}
 
 @lexer lexer
