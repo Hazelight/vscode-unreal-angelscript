@@ -157,6 +157,14 @@
                 "key": "alt+e",
                 "when": "editorTextFocus"
             }
+        ],
+        "semanticTokenScopes": [
+            {
+                "language": "angelscript",
+                "scopes": {
+                    "unused_param": ["comment"]
+                }
+            }
         ]
     },
     "dependencies": {

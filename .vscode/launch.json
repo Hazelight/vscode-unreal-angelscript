@@ -7,7 +7,7 @@
 			"name": "Launch Client",
 			"runtimeExecutable": "${execPath}",
 			"args": ["--extensionDevelopmentPath=${workspaceRoot}"],
-			"outFiles": ["${workspaceRoot}/client/out/**/*.js"],
+			"outFiles": ["${workspaceRoot}/extension/out/**/*.js"],
 			"preLaunchTask": {
 				"type": "npm",
 				"script": "watch"
@@ -19,7 +19,7 @@
 			"name": "Attach to Server",
 			"port": 6009,
 			"restart": true,
-			"outFiles": ["${workspaceRoot}/server/out/**/*.js"]
+			"outFiles": ["${workspaceRoot}/language-server/out/**/*.js"]
 		},
 		{
 			"name": "Debug Debug Adapter",

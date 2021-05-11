@@ -1,10 +1,11 @@
 import { TextDocument, } from "vscode-languageserver-textdocument";
-import { Range, Position, CodeLensResolveRequest, } from "vscode-languageserver";
-import * as fs from 'fs';
-import * as glob from 'glob';
+import { Range, Position, CodeLensResolveRequest, Location, } from "vscode-languageserver";
 
+import * as fs from 'fs';
 import * as nearley from 'nearley';
-import { performance } from "perf_hooks";
+
+import * as typedb from './database';
+import { RemoveScopeFromDatabase } from "./as_file";
 
 let grammar_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_statement.js"));
 let grammar_class_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_class_statement.js"));
@@ -23,88 +24,859 @@ let parser_enum_statement_initial = parser_enum_statement.save();
 
 let node_types = require("../grammar/node_types.js");
 
-enum ASScopeType
+export enum ASScopeType
 {
     Global,
     Class,
     Function,
     Enum,
-    Other,
+    Code,
     Namespace
 }
 
-class ASModule
+export class ASModule
 {
-    textDocument : TextDocument;
+    created : boolean = false;
     modulename : string;
     filename : string;
     uri : string;
 
-    rootscope : ASScope;
+    content : string = null;
+
+    loaded: boolean = false;
+    textDocument : TextDocument = null;
+
+    parsed : boolean = false;
+    rootscope : ASScope = null;
+
+    resolved : boolean = false;
+
+    global_type : typedb.DBType = null;
+    namespaces : Array<typedb.DBType> = [];
+    types : Array<typedb.DBType> = [];
+
+    getOffset(position : Position) : number
+    {
+        if (!this.textDocument)
+            return -1;
+        return this.textDocument.offsetAt(position);
+    }
+
+    getPosition(offset : number) : Position
+    {
+        if (!this.textDocument)
+            return Position.create(-1, -1);
+        return this.textDocument.positionAt(offset);
+    }
+
+    getRange(start_offset : number, end_offset : number) : Range
+    {
+        return Range.create(
+            this.getPosition(start_offset),
+            this.getPosition(end_offset)
+        );
+    }
+
+    getScopeAt(offset : number) : ASScope
+    {
+        if (!this.parsed)
+            return null;
+        return this.rootscope.getScopeAt(offset);
+    }
+
+    getLocation(offset : number) : Location
+    {
+        return Location.create(
+            this.uri,
+            Range.create(
+                this.getPosition(offset),
+                this.getPosition(offset),
+            ),
+        )
+    }
+
+    getLocationRange(start_offset : number, end_offset : number) : Location
+    {
+        return Location.create(
+            this.uri,
+            this.getRange(start_offset, end_offset),
+        )
+    }
 };
 
-class ASElement
+export class ASElement
 {
     previous : ASElement = null;
     next : ASElement = null;
 };
 
-class ASScope extends ASElement
+export class ASVariable
+{
+    name : string;
+    typename : string;
+    documentation : string;
+
+    isArgument : boolean = false;
+    isPrivate : boolean = false;
+    isProtected : boolean = false;
+
+    in_statement : boolean = false;
+    node_expression : any = null;
+
+    start_offset_type : number = -1;
+    end_offset_type : number = -1;
+    start_offset_name : number = -1;
+    end_offset_name : number = -1;
+    start_offset_expression : number = -1;
+    end_offset_expression : number = -1;
+};
+
+export enum ASSymbolType
+{
+    Parameter,
+};
+
+export class ASSymbol
+{
+    type : ASSymbolType;
+    start: number = -1;
+    end: number = -1;
+};
+
+export class ASScope extends ASElement
 {
     module : ASModule;
+
     range : Range;
+    start_offset : number = -1;
+    end_offset : number = -1;
 
     parsed : boolean = false;
-    statements : ASStatement[] = [];
-    scopes : ASScope[] = [];
+    statements : Array<ASStatement> = [];
+    scopes : Array<ASScope> = [];
 
     scopetype : ASScopeType = null;
     parentscope : ASScope = null;
+
+    variables : Array<ASVariable> = [];
+    symbols : Array<ASSymbol> = [];
+
+    dbtype : typedb.DBType = null;
+    dbfunc : typedb.DBMethod = null;
+
+    isInFunctionBody() : boolean
+    {
+        switch (this.scopetype)
+        {
+            case ASScopeType.Function:
+            case ASScopeType.Code:
+                return true;
+        }
+        return false;
+    }
+
+    getScopeAt(offset : number) : ASScope
+    {
+        if (!this.parsed)
+            return null;
+        for (let subscope of this.scopes)
+        {
+            if (offset >= subscope.start_offset && offset < subscope.end_offset)
+                return subscope.getScopeAt(offset);
+        }
+        return this;
+    }
+
+    getParentFunctionScope() : ASScope
+    {
+        let checkscope : ASScope = this;
+        while (checkscope != null)
+        {
+            let dbFunc = checkscope.getDatabaseFunction();
+            if (dbFunc)
+                return checkscope;
+            checkscope = checkscope.parentscope;
+        }
+        return null;
+    }
+
+    getParentTypeScope() : ASScope
+    {
+        let checkscope : ASScope = this;
+        while (checkscope != null)
+        {
+            let dbType = checkscope.getDatabaseType();
+            if (dbType)
+                return checkscope;
+            checkscope = checkscope.parentscope;
+        }
+        return null;
+    }
+
+    getParentType() : typedb.DBType
+    {
+        let typeScope = this.getParentTypeScope();
+        if (!typeScope)
+            return null;
+        return typeScope.getDatabaseType();
+    }
+
+    getGlobalOrNamespaceParentType() : typedb.DBType
+    {
+        let checkscope : ASScope = this;
+        while (checkscope != null)
+        {
+            let dbType = checkscope.getDatabaseType();
+            if (dbType
+                && (checkscope.scopetype == ASScopeType.Namespace
+                    || checkscope.scopetype == ASScopeType.Global))
+            {
+                return dbType;
+            }
+            checkscope = checkscope.parentscope;
+        }
+        return null;
+    }
+
+    getDatabaseType() : typedb.DBType
+    {
+        return this.dbtype;
+    }
+
+    getDatabaseFunction() : typedb.DBMethod
+    {
+        return this.dbfunc;
+    }
+
+    findScopeForType(typename : string) : ASScope
+    {
+        if(typename.startsWith("__"))
+            typename = typename.substr(2);
+
+        let dbtype = this.getDatabaseType();
+        if(dbtype && dbtype.typename == typename)
+            return this;
+        for(let subscope of this.scopes)
+        {
+            let found = subscope.findScopeForType(typename);
+            if(found)
+                return found;
+        }
+        return null;
+    }
 };
 
-class ASStatement extends ASElement
+export class ASStatement extends ASElement
 {
     content : string;
+
     range : Range;
+    start_offset : number = -1;
+    end_offset : number = -1;
+
     ast : any = null;
     parsed : boolean = false;
 }
 
-function CreateModule(modulename : string, filename : string, textDocument : TextDocument) : ASModule
+let ModuleDatabase = new Map<string, ASModule>();
+let ModulesByUri = new Map<string, ASModule>();
+
+// Get all modules currently loaded
+export function GetAllModules() : Array<ASModule>
 {
-    let module = new ASModule;
-    module.textDocument = textDocument;
-    module.uri = textDocument.uri;
-    module.filename = filename;
-    module.modulename = modulename;
+    let files : Array<ASModule> = [];
+    for (let module of ModuleDatabase)
+    {
+        if (module[1].parsed)
+            files.push(module[1]);
+    }
+    return files;
+}
+
+// Get a module reference with the specified module name
+export function GetModule(modulename : string) : ASModule
+{
+    let module = ModuleDatabase.get(modulename);
+    if (!module)
+    {
+        module = new ASModule;
+        module.modulename = modulename;
+        ModuleDatabase.set(modulename, module);
+    }
+    return module;
+}
+
+// Get a module reference by its file uri
+export function GetModuleByUri(uri : string) : ASModule
+{
+    return ModulesByUri.get(NormalizeUri(uri));
+}
+
+// Create an unloaded module and put it into the module database
+export function GetOrCreateModule(modulename : string, filename : string, uri : string) : ASModule
+{
+    let module = GetModule(modulename);
+    if (!module.created)
+    {
+        module.uri = NormalizeUri(uri);
+        module.filename = filename;
+        module.created = true;
+        ModulesByUri.set(module.uri, module);
+    }
+
+    return module;
+}
+
+function NormalizeUri(uri : string) : string
+{
+    return uri.replace("%3A", ":");
+}
+
+// Ensure the module is parsed into an abstract syntax tree if it is not already parsed
+export function ParseModule(module : ASModule, debug : boolean = false)
+{
+    if (module.parsed)
+        return;
+    module.parsed = true;
 
     module.rootscope = new ASScope;
     module.rootscope.module = module;
-    module.rootscope.range = Range.create(
-        Position.create(0, 0),
-        textDocument.positionAt(textDocument.getText().length)
+    module.rootscope.start_offset = 0;
+    module.rootscope.end_offset = module.textDocument.getText().length;
+    module.rootscope.range = module.getRange(module.rootscope.start_offset, module.rootscope.end_offset);
+
+    // Parse content of file into distinct statements
+    ParseScopeIntoStatements(module.rootscope);
+
+    // Parse each statement into an abstract syntax tree
+    ParseAllStatements(module.rootscope, debug);
+
+    // Create the global type for the module
+    module.global_type = AddDBType(module.rootscope, "//"+module.modulename);
+    module.global_type.moduleOffset = 0;
+    module.rootscope.dbtype = module.global_type;
+
+    // Traverse syntax trees to lift out functions, variables and imports during this first parse step
+    GenerateTypeInformation(module.rootscope);
+}
+
+// Resolve symbols in the module from the syntax tree if not already resolved
+export function ResolveModule(module : ASModule)
+{
+    if (module.resolved)
+        return;
+    module.resolved = true;
+
+    // Resolve symbols used in the scope
+    ResolveScopeSymbols(module.rootscope);
+}
+
+// Update a module with new transient content
+export function UpdateModuleFromContent(module : ASModule, content : string)
+{
+    ClearModule(module);
+    module.content = content;
+    LoadModule(module);
+}
+
+export function UpdateModuleFromDisk(module : ASModule)
+{
+    ClearModule(module);
+    module.content = fs.readFileSync(module.filename, 'utf8');
+    LoadModule(module);
+}
+
+// Ensure the module is initialized from the loaded content
+function LoadModule(module : ASModule)
+{
+    if (module.loaded)
+        return;
+    module.loaded = true;
+    module.textDocument = TextDocument.create(module.uri, "angelscript", 1, module.content)
+}
+
+function ClearModule(module : ASModule)
+{
+    if (module.parsed)
+    {
+        // Remove the module globals from the type database
+        if (module.global_type)
+            typedb.GetDatabase().delete(module.global_type.typename);
+
+        // Remove symbols from old namespaces
+        for (let ns of module.namespaces)
+            typedb.RemoveModuleFromNamespace(ns.typename, module.modulename);
+
+        // Remove types declared in this file
+        for (let type of module.types)
+            typedb.GetDatabase().delete(type.typename);
+    }
+
+    module.loaded = false;
+    module.parsed = false;
+    module.resolved = false;
+    module.rootscope = null;
+    module.textDocument = null;
+    module.content = null;
+}
+
+export function GetSymbolLocation(modulename : string, typename : string, symbolname : string) : Location | null
+{
+    let asmodule = GetModule(modulename);
+    if (!asmodule)
+        return null;
+
+    if (!typename)
+        return _GetScopeSymbol(asmodule, asmodule.rootscope, symbolname);
+    if (typename.startsWith("__"))
+        typename = typename.substr(2);
+    return RecursiveFindScopeSymbol(asmodule, asmodule.rootscope, typename, symbolname);
+}
+
+export function GetSymbolLocationInScope(scope : ASScope, symbolname : string) : Location | null
+{
+    let checkScope = scope;
+    while(checkScope)
+    {
+        let sym = _GetScopeSymbol(scope.module, checkScope, symbolname);
+        if (sym)
+            return sym;
+        checkScope = checkScope.parentscope;
+    }
+    return null;
+}
+
+function RecursiveFindScopeSymbol(file : ASModule, scope : ASScope, typename : string, symbolname : string) : Location | null
+{
+    for (let subscope of scope.scopes)
+    {
+        let scopeType = subscope.getDatabaseType();
+        if (!scopeType)
+            continue;
+        if (scopeType.typename == typename)
+        {
+            let symbolLocation = _GetScopeSymbol(file, subscope, symbolname);
+            if (symbolLocation)
+                return symbolLocation;
+        }
+
+        let subLocation = RecursiveFindScopeSymbol(file, subscope, typename, symbolname);
+        if (subLocation)
+            return subLocation;
+    }
+
+    return null;
+}
+
+function _GetScopeSymbol(asmodule : ASModule, scope : ASScope, symbolname : string) : Location | null
+{
+    // Find variables
+    for (let scopevar of scope.variables)
+    {
+        if (scopevar.name != symbolname)
+            continue;
+        return asmodule.getLocation(scopevar.start_offset_name);
+    }
+
+    // Find functions
+    for (let innerscope of scope.scopes)
+    {
+        if(innerscope.scopetype != ASScopeType.Function)
+            continue;
+        let func = innerscope.getDatabaseFunction();
+        if (!func)
+            continue;
+        if (func.name != symbolname)
+            continue;
+        return asmodule.getLocation(func.moduleOffset);
+    }
+
+    // Find property accessors
+    for (let innerscope of scope.scopes)
+    {
+        if(innerscope.scopetype != ASScopeType.Function)
+            continue;
+        let func = innerscope.getDatabaseFunction();
+        if (!func)
+            continue;
+        if (func.name != "Get"+symbolname && func.name != "Set"+symbolname)
+            continue;
+        return asmodule.getLocation(func.moduleOffset);
+    }
+
+    return null;
+}
+
+export function GetTypeSymbolLocation(modulename : string, typename : string) : Location | null
+{
+    let asmodule = GetModule(modulename);
+    if (!asmodule)
+        return null;
+
+    let subscope = asmodule.rootscope.findScopeForType(typename);
+    if(!subscope)
+        return null;
+
+    let dbtype = subscope.getDatabaseType();
+    return asmodule.getLocation(dbtype.moduleOffset);
+}
+
+// Generate a database type for a scope
+function AddDBType(scope : ASScope, typename : string) : typedb.DBType
+{
+    let dbtype = new typedb.DBType();
+    dbtype.typename = typename;
+    dbtype.supertype = null;
+    dbtype.properties = new Array<typedb.DBProperty>();
+    dbtype.methods = new Array<typedb.DBMethod>();
+    dbtype.declaredModule = scope.module.modulename;
+    dbtype.documentation = null;
+    dbtype.isStruct = false;
+    dbtype.isEnum = false;
+    typedb.GetDatabase().set(dbtype.typename, dbtype);
+    return dbtype;
+}
+
+// Generate a database function for a scope
+function AddDBMethod(scope : ASScope, funcname : string) : typedb.DBMethod
+{
+    let dbfunc = new typedb.DBMethod();
+    dbfunc.name = funcname;
+    dbfunc.returnType = null;
+    dbfunc.argumentStr = null;
+    dbfunc.args = new Array<typedb.DBArg>();
+    dbfunc.declaredModule = scope.module.modulename;
+    dbfunc.documentation = null;
+    dbfunc.isPrivate = false;
+    dbfunc.isProtected = false;
+    dbfunc.isConstructor = false;
+    dbfunc.isConst = false;
+    dbfunc.isProperty = false;
+    dbfunc.isEvent = false;
+    return dbfunc;
+}
+
+// Add list of parameters to a function scope
+function AddParametersToFunction(scope : ASScope, statement : ASStatement, dbfunc : typedb.DBMethod, params : any)
+{
+    if (!params || params.length == 0)
+    {
+        dbfunc.argumentStr = "";
+        return;
+    }
+
+    dbfunc.argumentStr = statement.content.substring(
+        params[0].start, params[params.length-1].end
     );
 
-    return module;
+    for (let param of params)
+    {
+        // Create a local variable in the scope for the parameter
+        let asvar = new ASVariable();
+        asvar.name = param.name ? param.name.value : null;
+        asvar.typename = GetQualifiedTypename(param.typename);
+        asvar.node_expression = param.expression;
+        asvar.isArgument = true;
+        asvar.in_statement = true;
+
+        asvar.start_offset_type = statement.start_offset + param.typename.start;
+        asvar.end_offset_type = statement.start_offset + param.typename.end;
+
+        if (param.name)
+        {
+            asvar.start_offset_name = statement.start_offset + param.name.start;
+            asvar.end_offset_name = statement.start_offset + param.name.end;
+        }
+
+        if (param.expression)
+        {
+            asvar.start_offset_expression = statement.start_offset + param.expression.start;
+            asvar.end_offset_expression = statement.start_offset + param.expression.end;
+        }
+
+        if (asvar.name)
+            scope.variables.push(asvar);
+
+        // Add argument to type database
+        let dbarg = new typedb.DBArg();
+        dbarg.typename = asvar.typename;
+        dbarg.name = asvar.name ? asvar.name : "";
+        dbfunc.args.push(dbarg);
+    }
+}
+
+// Get the concatenated qualified typename
+function GetQualifiedTypename(typename : any) : string
+{
+    let strtype : string;
+    if (typename.const_qualifier)
+        strtype = typename.const_qualifier+" "+typename.value;
+    else
+        strtype = typename.value;
+    if (typename.ref_qualifier)
+        strtype += typename.ref_qualifier;
+    return strtype;
+}
+
+// Check if the macro contains a particular specifier
+function HasMacroSpecifier(macro : any, specifier : string) : boolean
+{
+    if (macro.name && macro.name.value == specifier)
+        return true;
+    if (macro.children)
+    {
+        for (let child of macro.children)
+        {
+            if (HasMacroSpecifier(child, specifier))
+                return true;
+        }
+    }
+    return false;
+}
+
+// Add a variable declaration to the scope
+function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : any, in_statement : boolean = false)
+{
+    // Add it as a local variable
+    let asvar = new ASVariable();
+    asvar.name = vardecl.name.value;
+    asvar.typename = GetQualifiedTypename(vardecl.typename);
+    asvar.node_expression = vardecl.expression;
+    asvar.in_statement = in_statement;
+
+    if (vardecl.documentation)
+        asvar.documentation = typedb.FormatDocumentationComment(vardecl.documentation);
+
+    asvar.start_offset_type = statement.start_offset + vardecl.typename.start;
+    asvar.end_offset_type = statement.start_offset + vardecl.typename.end;
+
+    asvar.start_offset_name = statement.start_offset + vardecl.name.start;
+    asvar.end_offset_name = statement.start_offset + vardecl.name.end;
+
+    if (vardecl.expression)
+    {
+        asvar.start_offset_expression = statement.start_offset + vardecl.expression.start;
+        asvar.end_offset_expression = statement.start_offset + vardecl.expression.end;
+    }
+
+    scope.variables.push(asvar);
+
+    // Add it to the type database
+    if (scope.dbtype)
+    {
+        let dbprop = new typedb.DBProperty();
+        dbprop.name = asvar.name;
+        dbprop.typename = asvar.typename;
+        dbprop.documentation = asvar.documentation;
+        dbprop.declaredModule = scope.module.modulename;
+        dbprop.moduleOffset = asvar.start_offset_name;
+        dbprop.isPrivate = asvar.isPrivate;
+        dbprop.isProtected = asvar.isProtected;
+        scope.dbtype.properties.push(dbprop);
+    }
+}
+
+function GenerateTypeInformation(scope : ASScope)
+{
+    if (scope.previous && scope.previous instanceof ASStatement && scope.previous.ast)
+    {
+        // Class definition in global scope
+        if (scope.previous.ast.type == node_types.ClassDefinition)
+        {
+            let classdef = scope.previous.ast;
+            let dbtype = AddDBType(scope, classdef.name.value);
+            dbtype.supertype = classdef.superclass ? classdef.superclass.value : "UObject";
+            if (classdef.documentation)
+                dbtype.documentation = typedb.FormatDocumentationComment(classdef.documentation);
+            dbtype.moduleOffset = scope.previous.start_offset + classdef.name.start;
+
+            scope.module.types.push(dbtype);
+            scope.dbtype = dbtype;
+        }
+        // Struct definition in global scope
+        else if (scope.previous.ast.type == node_types.StructDefinition)
+        {
+            let structdef = scope.previous.ast;
+            let dbtype = AddDBType(scope, structdef.name.value);
+            if (structdef.documentation)
+                dbtype.documentation = typedb.FormatDocumentationComment(structdef.documentation);
+            dbtype.moduleOffset = scope.previous.start_offset + structdef.name.start;
+            dbtype.isStruct = true;
+
+            scope.module.types.push(dbtype);
+            scope.dbtype = dbtype;
+        }
+        // Namespace definition in global scope
+        else if (scope.previous.ast.type == node_types.NamespaceDefinition)
+        {
+            let nsdef = scope.previous.ast;
+            let dbtype = AddDBType(scope, "__"+nsdef.name.value);
+            if (nsdef.documentation)
+                dbtype.documentation = typedb.FormatDocumentationComment(nsdef.documentation);
+            dbtype.moduleOffset = scope.previous.start_offset + nsdef.name.start;
+
+            scope.module.namespaces.push(dbtype);
+            scope.dbtype = dbtype;
+        }
+        // Enum definition in global scope
+        else if (scope.previous.ast.type == node_types.EnumDefinition)
+        {
+            let enumdef = scope.previous.ast;
+            let dbtype = AddDBType(scope, "__"+enumdef.name.value);
+            if (enumdef.documentation)
+                dbtype.documentation = typedb.FormatDocumentationComment(enumdef.documentation);
+            dbtype.moduleOffset = scope.previous.start_offset + enumdef.name.start;
+
+            scope.module.types.push(dbtype);
+            scope.dbtype = dbtype;
+        }
+        // Function declaration, either in a class or global
+        else if (scope.previous.ast.type == node_types.FunctionDecl)
+        {
+            let funcdef = scope.previous.ast;
+            let dbfunc = AddDBMethod(scope, funcdef.name.value);
+            if (funcdef.documentation)
+                dbfunc.documentation = typedb.FormatDocumentationComment(funcdef.documentation);
+            dbfunc.moduleOffset = scope.previous.start_offset + funcdef.name.start;
+
+            if (funcdef.returntype)
+                dbfunc.returnType = GetQualifiedTypename(funcdef.returntype);
+            else
+                dbfunc.returnType = "void";
+
+            AddParametersToFunction(scope, scope.previous, dbfunc, funcdef.parameters);
+
+            if (funcdef.macro)
+            {
+                // Mark as event
+                if (HasMacroSpecifier(funcdef.macro, "BlueprintEvent") || HasMacroSpecifier(funcdef.macro, "BlueprintOverride"))
+                    dbfunc.isEvent = true;
+            }
+
+            if (funcdef.access)
+            {
+                if (funcdef.access = "protected")
+                    dbfunc.isProtected = true;
+                else if (funcdef.access = "private")
+                    dbfunc.isPrivate = true;
+            }
+
+            if (funcdef.qualifiers)
+            {
+                for (let qual of funcdef.qualifiers)
+                {
+                    if (qual == "property")
+                        dbfunc.isProperty = true;
+                    else if (qual == "const")
+                        dbfunc.isConst = true;
+                }
+            }
+
+            scope.dbfunc = dbfunc;
+            if (scope.parentscope && scope.parentscope.dbtype)
+                scope.parentscope.dbtype.methods.push(dbfunc);
+        }
+        // Destructor declaration placed inside a class
+        else if (scope.previous.ast.type == node_types.DestructorDecl)
+        {
+            let destrdef = scope.previous.ast;
+            let dbfunc = AddDBMethod(scope, destrdef.name.value);
+            dbfunc.moduleOffset = scope.previous.start_offset + destrdef.name.start;
+            dbfunc.isConstructor = true;
+            scope.dbfunc = dbfunc;
+        }
+        // We're inside a for loop that may have some declarations in it
+        else if (scope.previous.ast.type == node_types.ForLoop)
+        {
+            let fordef = scope.previous.ast;
+            if (fordef.children[0])
+            {
+                if (fordef.children[0].type == node_types.VariableDecl)
+                {
+                    AddVarDeclToScope(scope, scope.previous, fordef.children[0], true);
+                }
+                else if (fordef.children[0].type == node_types.VariableDeclMulti)
+                {
+                    for (let child of fordef.children[0].children)
+                        AddVarDeclToScope(scope, scope.previous, child, true);
+                }
+            }
+        }
+    }
+
+    // Add variables for each declaration inside the scope
+    for (let statement of scope.statements)
+    {
+        if (!statement.ast)
+            continue;
+
+        if (statement.ast.type == node_types.VariableDecl)
+        {
+            AddVarDeclToScope(scope, statement, statement.ast);
+        }
+        else if (statement.ast.type == node_types.VariableDeclMulti)
+        {
+            for (let child of statement.ast.children)
+                AddVarDeclToScope(scope, statement, child);
+        }
+    }
+
+    // Recurse into subscopes
+    for (let subscope of scope.scopes)
+        GenerateTypeInformation(subscope);
+}
+
+function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType)
+{
+    let symbol = new ASSymbol;
+    symbol.type = type;
+    symbol.start = node.start + statement.start_offset;
+    symbol.end = node.end + statement.start_offset;
+
+    scope.symbols.push(symbol);
+}
+
+function ResolveScopeSymbols(scope : ASScope)
+{
+    // Look at each statement to see if it has symbols
+    for (let statement of scope.statements)
+    {
+        if (!statement.ast)
+            continue;
+
+        // Add symbols for parameters in function declarations
+        if (statement.ast.type == node_types.FunctionDecl)
+        {
+            if (statement.ast.parameters)
+            {
+                for (let param of statement.ast.parameters)
+                {
+                    if (param.name)
+                        AddIdentifierSymbol(scope, statement, param.name, ASSymbolType.Parameter);
+                }
+            }
+        }
+    }
+
+    // Recurse into subscopes
+    for (let subscope of scope.scopes)
+        ResolveScopeSymbols(subscope);
 }
 
 function ParseScopeIntoStatements(scope : ASScope)
 {
     let module = scope.module;
-    let content = module.textDocument.getText(scope.range);
-    let length = content.length;
+    let length = scope.end_offset - scope.start_offset;
 
     scope.parsed = true;
 
-    let linenum = scope.range.start.line;
-    let charnum = scope.range.start.character;
-
     let depth_brace = 0;
     let depth_paren = 0;
-    let scope_start : Position = null;
+    let scope_start = -1;
 
-    let statement_start : Position = Position.create(linenum, charnum);
+    let statement_start = scope.start_offset;
     let log_start = statement_start;
+    let cur_offset = scope.start_offset;
 
     let in_preprocessor_directive = false;
     let in_line_comment = false;
@@ -122,54 +894,35 @@ function ParseScopeIntoStatements(scope : ASScope)
         cur_element = element;
     }
 
-    function debugLog(text : string)
-    {
-        return;
-        console.log(module.textDocument.getText(Range.create(
-            log_start,
-            Position.create(linenum, charnum+1)
-        )));
-        console.log("== "+text);
-
-        log_start = Position.create(linenum, charnum);
-    }
-
     function finishStatement()
     {
-        if (statement_start == null)
-            return;
-
-        if (statement_start.line != linenum || statement_start.character != charnum)
+        if (statement_start != cur_offset)
         {
-            let range = Range.create(
-                statement_start,
-                Position.create(linenum, charnum)
-            );
-            let content = module.textDocument.getText(range);
-            //debugLog("statement");
-
+            let content = module.content.substring(statement_start, cur_offset);
             if (content.length != 0 && !/^[ \t\r\n]*$/.test(content))
             {
                 let statement = new ASStatement;
                 statement.content = content;
-                statement.range = range;
+                statement.start_offset = statement_start;
+                statement.end_offset = cur_offset;
+                statement.range = scope.module.getRange(statement_start, cur_offset);
 
                 scope.statements.push(statement);
                 finishElement(statement);
             }
         }
 
-        statement_start = Position.create(linenum, charnum+1);
+        statement_start = cur_offset+1;
     }
 
     function restartStatement()
     {
-        statement_start = Position.create(linenum, charnum+1);
+        statement_start = cur_offset+1;
     }
 
-    for (let offset = 0; offset < length; ++offset, ++charnum)
+    for (; cur_offset < scope.end_offset; ++cur_offset)
     {
-        let curchar = content[offset];
+        let curchar = scope.module.content[cur_offset];
 
         // Start the next line
         if (curchar == '\n')
@@ -180,8 +933,6 @@ function ParseScopeIntoStatements(scope : ASScope)
             if (in_line_comment)
                 in_line_comment = false;
 
-            linenum += 1;
-            charnum = -1;
             continue;
         }
 
@@ -190,10 +941,9 @@ function ParseScopeIntoStatements(scope : ASScope)
 
         if (in_block_comment)
         {
-            if (curchar == '/' && content[offset-1] == '*')
+            if (curchar == '/' && scope.module.content[cur_offset-1] == '*')
             {
                 in_block_comment = false;
-                //debugLog("stop_block_comment");
             }
             continue;
         }
@@ -202,7 +952,6 @@ function ParseScopeIntoStatements(scope : ASScope)
         {
             if (!in_escape_sequence && curchar == '\'')
             {
-                //debugLog("stop_sq_string");
                 in_sq_string = false;
             }
 
@@ -217,7 +966,6 @@ function ParseScopeIntoStatements(scope : ASScope)
         {
             if (!in_escape_sequence && curchar == '"')
             {
-                debugLog("start_sq_string");
                 in_dq_string = false;
             }
 
@@ -235,28 +983,24 @@ function ParseScopeIntoStatements(scope : ASScope)
         if (curchar == '"')
         {
             in_dq_string = true;
-            //debugLog("start_dq_string");
             continue;
         }
 
         if (curchar == '\'')
         {
             in_sq_string = true;
-            //debugLog("start_sq_string");
             continue;
         }
 
         // Comments
-        if (curchar == '/' && offset+1 < length && content[offset+1] == '/')
+        if (curchar == '/' && cur_offset+1 < scope.end_offset && scope.module.content[cur_offset+1] == '/')
         {
-            //debugLog("start_line_comment");
             in_line_comment = true;
             continue;
         }
 
-        if (curchar == '/' && offset+1 < length && content[offset+1] == '*')
+        if (curchar == '/' && cur_offset+1 < scope.end_offset && scope.module.content[cur_offset+1] == '*')
         {
-            //debugLog("start_block_comment");
             in_block_comment = true;
             continue;
         }
@@ -264,7 +1008,6 @@ function ParseScopeIntoStatements(scope : ASScope)
         // Preprocessor directives
         if (curchar == '#' && depth_brace == 0)
         {
-            //debugLog("start_directive");
             in_preprocessor_directive = true;
             continue;
         }
@@ -275,15 +1018,13 @@ function ParseScopeIntoStatements(scope : ASScope)
             if (depth_brace == 0)
             {
                 finishStatement();
-                scope_start = Position.create(linenum, charnum+1);
+                scope_start = cur_offset;
             }
 
             depth_brace += 1;
-            //debugLog("start_depth: "+depth_brace);
         }
         else if (curchar == '}')
         {
-            //debugLog("stop_depth: "+depth_brace);
             if (depth_brace == 0)
             {
                 // This is a brace mismatch error, we should actually ignore it
@@ -297,9 +1038,9 @@ function ParseScopeIntoStatements(scope : ASScope)
                 let subscope = new ASScope;
                 subscope.parentscope = scope;
                 subscope.module = scope.module;
-                subscope.range = Range.create(
-                    scope_start, Position.create(linenum, charnum)
-                );
+                subscope.start_offset = scope_start+1;
+                subscope.end_offset = cur_offset;
+                subscope.range = scope.module.getRange(subscope.start_offset, subscope.end_offset);
 
                 scope.scopes.push(subscope);
                 finishElement(subscope);
@@ -317,11 +1058,9 @@ function ParseScopeIntoStatements(scope : ASScope)
         if (curchar == '(')
         {
             depth_paren += 1;
-            //debugLog("start_paren_depth: "+depth_paren)
         }
         else if (curchar == ')')
         {
-            //debugLog("stop_paren_depth: "+depth_paren)
             depth_paren -= 1;
 
             // Ignore mismatched closing parens for this, can happen
@@ -345,18 +1084,28 @@ function DetermineScopeType(scope : ASScope)
 {
     // Determine what the type of this scope is based on the previous statement
     if (scope.parentscope)
+    {
+        // Scopes underneath a function are never anything but code scopes
+        if (scope.parentscope.scopetype == ASScopeType.Function)
+        {
+            scope.scopetype = ASScopeType.Code;
+            return;
+        }
+
+        // Default to the paren't scope type
         scope.scopetype = scope.parentscope.scopetype;
+    }
     else
+    {
+        // If we have no parent we are global
         scope.scopetype = ASScopeType.Global;
+    }
 
     if (scope.previous && scope.previous instanceof ASStatement)
     {
         if (scope.previous.ast)
         {
-            let ast_type = scope.previous.ast[0];
-            if (ast_type == node_types.AccessSpecifier)
-                ast_type = scope.previous.ast[2][0];
-
+            let ast_type = scope.previous.ast.type;
             if (ast_type == node_types.ClassDefinition)
             {
                 scope.scopetype = ASScopeType.Class;
@@ -369,11 +1118,19 @@ function DetermineScopeType(scope : ASScope)
             {
                 scope.scopetype = ASScopeType.Enum;
             }
+            else if (ast_type == node_types.NamespaceDefinition)
+            {
+                scope.scopetype = ASScopeType.Namespace;
+            }
             else if (ast_type == node_types.FunctionDecl)
             {
                 scope.scopetype = ASScopeType.Function;
             }
             else if (ast_type == node_types.ConstructorDecl)
+            {
+                scope.scopetype = ASScopeType.Function;
+            }
+            else if (ast_type == node_types.DestructorDecl)
             {
                 scope.scopetype = ASScopeType.Function;
             }
@@ -385,41 +1142,41 @@ function DetermineScopeType(scope : ASScope)
     }
 }
 
-function ParseAllStatements(scope : ASScope)
+function ParseAllStatements(scope : ASScope, debug : boolean = false)
 {
     // Determine what the type of this scope is based on the previous statement
     DetermineScopeType(scope);
 
     // Statements we detected should be parsed
     for (let statement of scope.statements)
-        ParseStatement(scope.scopetype, statement);
+        ParseStatement(scope.scopetype, statement, debug);
 
     // Also parse any subscopes we detected
     for (let subscope of scope.scopes)
-        ParseAllStatements(subscope)
+        ParseAllStatements(subscope, debug)
 }
 
 function DisambiguateStatement(ast : any) : any
 {
     // We always prefer a function declaration parse over a variable declaration one.
     // This can happen in class bodies because "FVector Test()" can be either a function or a variable with a constructor.
-    if (ast[0][0] == node_types.VariableDecl && ast[1][0] == node_types.FunctionDecl)
+    if (ast[0].type == node_types.VariableDecl && ast[1].type == node_types.FunctionDecl)
         return ast[1];
-    if (ast[1][0] == node_types.VariableDecl && ast[0][0] == node_types.FunctionDecl)
+    if (ast[1].type == node_types.VariableDecl && ast[0].type == node_types.FunctionDecl)
         return ast[0];
 
     // We prefer a variable declaration parse over a binary operation parse
     // This can happen when declaring variables of template types
     // eg "TArray<int> A" can be parsed as "(TArray < int) > A"
-    if (ast[0][0] == node_types.VariableDecl && ast[1][0] == node_types.BinaryOperation)
+    if (ast[0].type == node_types.VariableDecl && ast[1].type == node_types.BinaryOperation)
         return ast[0];
-    if (ast[1][0] == node_types.VariableDecl && ast[0][0] == node_types.BinaryOperation)
+    if (ast[1].type == node_types.VariableDecl && ast[0].type == node_types.BinaryOperation)
         return ast[1];
 
     return null;
 }
 
-function ParseStatement(scopetype : ASScopeType, statement : ASStatement)
+function ParseStatement(scopetype : ASScopeType, statement : ASStatement, debug : boolean = false)
 {
     statement.parsed = true;
     statement.ast = null;
@@ -454,11 +1211,16 @@ function ParseStatement(scopetype : ASScopeType, statement : ASStatement)
     }
     catch (error)
     {
-        console.log("statement: ");
-        console.log(statement.content);
-        console.log(error);
+        // Debugging for unparseable statements
+        if (debug)
+        {
+            console.log("Error Parsing Statement: ");
+            console.log(statement.content);
+            console.log(error);
+            throw "ParseError";
+        }
+
         parseError = true;
-        throw "ParseError";
     }
 
     if (!parseError)
@@ -482,51 +1244,16 @@ function ParseStatement(scopetype : ASScopeType, statement : ASStatement)
             {
                 statement.ast = parser.results[0];
 
-                // DEBUG
-                console.log("statement: ");
-                console.log(statement.content);
-                console.dir(parser.results, {depth:null});
-                throw "Ambiguous!";
+                // Debugging for ambiguous statements
+                if (debug)
+                {
+                    console.log("Ambiguous Statement: ");
+                    console.log(statement.content);
+                    console.dir(parser.results, {depth:null});
+                    throw "Ambiguous!";
+                }
             }
         }
     }
-
-    //console.dir(statement.ast, {depth: null});
 }
 
-
-let folder = "D:\\Split\\Split\\Script";
-//let folder = "D:\\Nuts\\Nuts\\Script";
-
-let modules : ASModule[] = [];
-glob(folder+"/**/*.as", null, function(err : any, files : any)
-{
-    for (let filename of files)
-    //let filename = "D:\\Split\\Split\\Script\\Core\\Interaction\\InteractionComponent.as";
-    //let filename = "D:\\Nuts\\Nuts\\Script\\Cake\\Environment\\Sky.as";
-    {
-        let content = fs.readFileSync(filename, 'utf8');
-        let doc = TextDocument.create("ile:///"+filename, "angelscript", 1, content)
-        let asmodule = CreateModule("Test", filename, doc);
-        modules.push(asmodule);
-    }
-
-    let startTime = performance.now()
-    for (let asmodule of modules)
-    {
-        ParseScopeIntoStatements(asmodule.rootscope);
-        /*for (let statement of asmodule.rootscope.scopes[4].scopes[5].statements)
-            console.dir(statement, {depth: 0});
-        return;*/
-    }
-
-    console.log("ParseScopeIntoStatements took " + (performance.now() - startTime) + " ms")
-
-    startTime = performance.now()
-    for (let asmodule of modules)
-    {
-        //console.log("module: "+asmodule.filename);
-        ParseAllStatements(asmodule.rootscope);
-    }
-    console.log("Nearley parse " + (performance.now() - startTime) + " ms")
-});

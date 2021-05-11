@@ -9,7 +9,9 @@ export class DBProperty
     isPrivate : boolean;
     isNoEdit : boolean = false;
     isEditOnly : boolean = false;
+
     declaredModule : string | null;
+    moduleOffset : number;
 
     fromJSON(name : string, input : any)
     {
@@ -114,6 +116,7 @@ export class DBMethod
     argumentStr : string;
     documentation : string;
     declaredModule : string;
+    moduleOffset : number;
     isProtected : boolean = false;
     isPrivate : boolean = false;
     isConstructor : boolean = false;
@@ -260,6 +263,7 @@ export class DBType
     isPrimitive : boolean = false;
 
     declaredModule : string;
+    moduleOffset : number;
 
     siblingTypes : Array<string>;
     subTypes : Array<string>;
@@ -278,6 +282,7 @@ export class DBType
         inst.namespaceResolved = this.namespaceResolved;
         inst.shadowedNamespace = this.shadowedNamespace;
         inst.declaredModule = this.declaredModule;
+        inst.moduleOffset = this.moduleOffset;
         if(this.siblingTypes)
             inst.siblingTypes = this.siblingTypes.slice();
         inst.subTypes = null;

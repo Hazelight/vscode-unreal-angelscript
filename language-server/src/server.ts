@@ -5,12 +5,13 @@ import {
 	Diagnostic, DiagnosticSeverity, InitializeResult, TextDocumentPositionParams, CompletionItem,
 	CompletionItemKind, SignatureHelp, Hover, DocumentSymbolParams, SymbolInformation,
 	WorkspaceSymbolParams, Definition, ExecuteCommandParams, VersionedTextDocumentIdentifier, Location,
-	TextDocumentSyncKind, DocumentHighlight
+	TextDocumentSyncKind, DocumentHighlight, SemanticTokensOptions, SemanticTokensLegend,
+	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
 
-import * as scriptfiles from './as_file';
+import * as scriptfiles from './as_parser';
 import * as completion from './completion';
 import * as typedb from './database';
 import * as fs from 'fs';
@@ -143,6 +144,14 @@ let shouldSendDiagnosticRelatedInformation: boolean = false;
 let RootPath : string = "";
 let RootUri : string = "";
 
+let SemanticTypes : any = {};
+let SemanticTypeList : Array<string> = [
+	"unused_param", "macro",
+];
+
+for (let i = 0, Count = SemanticTypeList.length; i < Count; ++i)
+	SemanticTypes[SemanticTypeList[i]] = i;
+
 // After the server has started the client sends an initialize request. The server receives
 // in the passed params the rootPath of the workspace plus the client capabilities.
 connection.onInitialize((_params): InitializeResult => {
@@ -153,15 +162,15 @@ connection.onInitialize((_params): InitializeResult => {
 	//connection.console.log("RootPath: "+RootPath);
 	//connection.console.log("RootUri: "+RootUri+" from "+_params.rootUri);
 
-	// Read all files in the workspace before we complete initialization, so we have completion on everything
+	// Initially read and parse all angelscript files in the workspace
 	glob(RootPath+"/**/*.as", null, function(err : any, files : any)
 	{
-		let modules : Array<scriptfiles.ASFile> = [];
 		for (let file of files)
 		{
-			let asfile = UpdateFileFromDisk(getFileUri(file));
-			if (asfile)
-				modules.push(asfile);
+			let uri = getFileUri(file);
+			let asmodule = scriptfiles.GetOrCreateModule(getModuleName(uri), file, uri);
+			scriptfiles.UpdateModuleFromDisk(asmodule);
+			scriptfiles.ParseModule(asmodule);
 		}
 	});
 
@@ -181,7 +190,15 @@ connection.onInitialize((_params): InitializeResult => {
 			documentSymbolProvider: true,
 			workspaceSymbolProvider: true,
 			definitionProvider: true,
-			implementationProvider: true
+			implementationProvider: true,
+			semanticTokensProvider: <SemanticTokensOptions> {
+				legend: <SemanticTokensLegend> {
+					tokenTypes: SemanticTypeList,
+					tokenModifiers: [],
+				},
+				range: false,
+				full: true,
+			},
 		}
 	}
 });
@@ -189,36 +206,31 @@ connection.onInitialize((_params): InitializeResult => {
 let InitialPostProcessDone = false;
 function RunInitialPostProcess()
 {
-	for (let file of scriptfiles.GetAllFiles())
+	/*for (let file of scriptfiles.GetAllFiles())
 	{
 		scriptfiles.PostProcessModule(file.modulename);
 		completion.ResolveAutos(file.rootscope);
-	}
+	}*/
 	InitialPostProcessDone = true;
 }
 
 connection.onDidChangeWatchedFiles((_change) => {
 	for(let change of _change.changes)
 	{
-		let file = UpdateFileFromDisk(change.uri);
-		if (file)
+		let module = scriptfiles.GetOrCreateModule(getModuleName(change.uri), getPathName(change.uri), change.uri);
+		if (module)
 		{
-			scriptfiles.PostProcessModule(file.modulename);
-			completion.ResolveAutos(file.rootscope);
+			scriptfiles.UpdateModuleFromDisk(module);
+			scriptfiles.ParseModule(module);
 		}
 	}
 });
 
-// This handler provides the initial list of the completion items.
 connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
 	let completions = completion.Complete(_textDocumentPosition);
-	//connection.console.log(JSON.stringify(completions));
 	return completions;
 });
 
-
-// This handler resolve additional information for the item selected in
-// the completion list.
 connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
 	return completion.Resolve(item);
 });
@@ -273,21 +285,34 @@ connection.onWorkspaceSymbol((_params : WorkspaceSymbolParams) : SymbolInformati
 	return completion.WorkspaceSymbols(_params.query);
 });
 
-function UpdateFileFromDisk(uri : string) : scriptfiles.ASFile
+connection.languages.semanticTokens.on(function(params : SemanticTokensParams) : SemanticTokens | null
 {
-	let filename = getPathName(uri);
-	let modulename = getModuleName(uri);
-	if (!fs.existsSync(filename))
-		return scriptfiles.UpdateContent(uri, modulename, "");
-
-	let stat = fs.lstatSync(filename);
-	if (!stat.isFile())
+	let builder = new SemanticTokensBuilder();
+	let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+	if (!asmodule)
 		return null;
-	
-	//connection.console.log("Update from disk: "+uri+" = "+modulename+" @ "+filename);
+	scriptfiles.ParseModule(asmodule);
+	scriptfiles.ResolveModule(asmodule);
+	HighlightSymbols(asmodule.rootscope, builder);
 
-	let content = fs.readFileSync(filename, 'utf8');
-	return scriptfiles.UpdateContent(uri, modulename, content);
+	return builder.build();
+});
+
+function HighlightSymbols(scope : scriptfiles.ASScope, builder : SemanticTokensBuilder)
+{
+	for (let symbol of scope.symbols)
+	{
+		let pos = scope.module.getPosition(symbol.start);
+		let length = symbol.end - symbol.start;
+
+		let type = SemanticTypes.unused_param;
+		let modifiers = 0;
+
+		builder.push(pos.line, pos.character, length, type, modifiers);
+	}
+
+    for (let subscope of scope.scopes)
+        HighlightSymbols(subscope, builder);
 }
 
 function getPathName(uri : string) : string
@@ -321,18 +346,6 @@ function getModuleName(uri : string) : string
 	return modulename;
 }
 
-/*documents.onDidChangeContent((change) => {
-	let content = change.document.getText();
-	let uri = change.document.uri;
-	let modulename = getModuleName(uri);
-
-	//connection.console.log("Update from CODE: "+uri);
-	
-	let file = scriptfiles.UpdateContent(uri, modulename, content, change.document);
-	completion.ResolveAutos(file.rootscope);
-	scriptfiles.PostProcessModule(modulename);
-});*/
-
 connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : string => {
 	let pos : TextDocumentPositionParams = params[0];
 
@@ -365,9 +378,9 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	let uri = params.textDocument.uri;
 	let modulename = getModuleName(uri);
 	
-	let file = scriptfiles.UpdateContent(uri, modulename, content, null);
-	scriptfiles.PostProcessModule(modulename);
-	completion.ResolveAutos(file.rootscope);
+	let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
+	scriptfiles.UpdateModuleFromContent(asmodule, content);
+	scriptfiles.ParseModule(asmodule);
  });
 
 // Listen on the connection

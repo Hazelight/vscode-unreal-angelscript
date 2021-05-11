@@ -5,7 +5,7 @@ import {
     Range, Position, MarkupKind
 } from 'vscode-languageserver';
 
-import * as scriptfiles from './as_file';
+import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 import { type } from 'os';
 
@@ -127,11 +127,12 @@ function ParseTerms(strTerm : string) : Array<ASTerm>
 function ExtractExpressionType(params : TextDocumentPositionParams, inScope : scriptfiles.ASScope) : ASExpressionType
 {
     let expressionType = new ASExpressionType();
-    let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
+    let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+    if (!asmodule)
+        return expressionType;
+    let pos = asmodule.getOffset(params.position) - 1;
     if (pos == -1 || !inScope)
         return expressionType;
-
-    let file = scriptfiles.GetFile(params.textDocument.uri);
 
     // Standard search for the left side of the expression
     {
@@ -139,11 +140,11 @@ function ExtractExpressionType(params : TextDocumentPositionParams, inScope : sc
         let completePos = pos;
         let commaFound = false;
         let brackets = 0;
-        let isInFunction = scriptfiles.IsInFunctionBody(inScope.scopetype);
+        let isInFunction = inScope.isInFunctionBody();
 
-        while (completePos > 0 && completePos > inScope.startPosInFile)
+        while (completePos > 0 && completePos > inScope.start_offset)
         {
-            let char = file.rootscope.content[completePos];
+            let char = asmodule.content[completePos];
             if (char == ';' || char == '{' || char == '}')
             {
                 expressionType.RValue = false;
@@ -189,12 +190,12 @@ function ExtractExpressionType(params : TextDocumentPositionParams, inScope : sc
                     return expressionType;
                 }
             }
-            else if (char == 'n' && pos >= 5 && file.rootscope.content.substr(completePos-5, 6) == "return")
+            else if (char == 'n' && pos >= 5 && asmodule.content.substr(completePos-5, 6) == "return")
             {
                 expressionType.LValue = false;
                 return expressionType;
             }
-            else if (char == 'e' && pos >= 3 && file.rootscope.content.substr(completePos-3, 4) == "case")
+            else if (char == 'e' && pos >= 3 && asmodule.content.substr(completePos-3, 4) == "case")
             {
                 expressionType.LValue = false;
                 return expressionType;
@@ -208,16 +209,17 @@ function ExtractExpressionType(params : TextDocumentPositionParams, inScope : sc
 
 function ExtractCompletingTerm(params : TextDocumentPositionParams) : [Array<ASTerm>, scriptfiles.ASScope]
 {
-    let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
-    if (pos == -1)
+    let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+    if (!asmodule)
         return [[], null];
+    let pos = asmodule.getOffset(params.position) - 1;
     return ExtractCompletingTermAt(pos, params.textDocument.uri);
 }
 
 function ExtractCompletingTermAt(pos : number, uri : string) : [Array<ASTerm>, scriptfiles.ASScope]
 {
-    let file = scriptfiles.GetFile(uri);
-    if (file == null)
+    let asmodule = scriptfiles.GetModuleByUri(uri);
+    if (asmodule == null)
         return [[], null];
     let termstart = pos;
     let brackets = 0;
@@ -226,7 +228,7 @@ function ExtractCompletingTermAt(pos : number, uri : string) : [Array<ASTerm>, s
     let squarebrackets = 0;
     while (termstart > 0)
     {
-        let char = file.rootscope.content[termstart];
+        let char = asmodule.content[termstart];
         let end = false;
 
         switch(char)
@@ -280,12 +282,12 @@ function ExtractCompletingTermAt(pos : number, uri : string) : [Array<ASTerm>, s
         termstart -= 1;
     }
 
-    let fullTerm = file.rootscope.content.substring(termstart, pos+1).trim();
-    let scope = file.GetScopeAt(pos);
+    let fullTerm = asmodule.content.substring(termstart, pos+1).trim();
+    let scope = asmodule.getScopeAt(pos);
 
     if (termstart >= 7)
     {
-        let importBefore = file.rootscope.content.substr(termstart-7, 7);
+        let importBefore = asmodule.content.substr(termstart-7, 7);
         if (importBefore == "import ")
         {
             return [[
@@ -401,7 +403,7 @@ function GetGlobalScopeTypes(scope : scriptfiles.ASScope, includeClass : boolean
         if (checkScope.scopetype == scriptfiles.ASScopeType.Global
             || (includeClass && checkScope.scopetype == scriptfiles.ASScopeType.Class))
         {
-            let dbscope = typedb.GetType(checkScope.typename);
+            let dbscope = checkScope.getDatabaseType();
             if(dbscope)
                 types.push(dbscope);
         }
@@ -413,11 +415,11 @@ function GetGlobalScopeTypes(scope : scriptfiles.ASScope, includeClass : boolean
 
 function GetScopeCompletions(initialTerm : string, scope : scriptfiles.ASScope, completions : Array<CompletionItem>)
 {
-    if (scope.scopetype == scriptfiles.ASScopeType.Class && CanCompleteTo(initialTerm, "this"))
+    if (scope.scopetype == scriptfiles.ASScopeType.Class && CanCompleteTo(initialTerm, "this") && scope.getDatabaseType())
     {
         completions.push({
                 label: "this",
-                detail: scope.typename,
+                detail: scope.getDatabaseType().typename,
                 kind : CompletionItemKind.Keyword
         });
     }
@@ -448,7 +450,11 @@ function GetVariableType(variable : string, scope : scriptfiles.ASScope) : strin
     if (scope.scopetype == scriptfiles.ASScopeType.Class)
     {
         if (variable == "this")
-            return scope.typename;
+        {
+            let dbtype = scope.getDatabaseType();
+            if (dbtype)
+                return dbtype.typename;
+        }
     }
 
     for (let scopevar of scope.variables)
@@ -510,21 +516,6 @@ function ResolvePropertyType(term : string, type : typedb.DBType, scope : script
         }
     }
 
-    return null;
-}
-
-function GetFunctionRetType(name : string, scope : scriptfiles.ASScope) : string | null
-{
-    for (let subscope of scope.subscopes)
-    {
-        if (subscope.scopetype == scriptfiles.ASScopeType.Function && subscope.funcname == name)
-        {
-            return subscope.funcreturn;
-        }
-    }
-
-    if (scope.parentscope)
-        return GetFunctionRetType(name, scope.parentscope);
     return null;
 }
 
@@ -641,15 +632,18 @@ function GetTypeFromTerm(initialTerm : Array<ASTerm>, startIndex : number, endIn
             case ASTermType.Namespace:
                 if (curname == "Super")
                 {
-                    if (curscope != null && curscope.getSuperTypeForScope())
+                    if (curscope != null)
                     {
-                        curtype = typedb.GetType(curscope.getSuperTypeForScope());
+                        let scopetype = curscope.getDatabaseType();
+                        if (scopetype != null)
+                            curtype = typedb.GetType(scopetype.supertype);
+                        else
+                            curtype = null;
                         curname = null;
                         curscope = null;
                         if (curtype == null)
                             return null;
                     }
-
                 }
                 else if (curname != null)
                 {
@@ -707,10 +701,11 @@ function isEditScope(inScope : scriptfiles.ASScope) : boolean
 {
     if (!inScope)
         return false;
-    let funcScope = inScope.getFunctionScope();
+    let funcScope = inScope.getParentFunctionScope();
     if (funcScope != null)
     {
-        if (funcScope.funcname != "ConstructionScript")
+        let dbFunc = funcScope.getDatabaseFunction();
+        if (!dbFunc || dbFunc.name != "ConstructionScript")
             return false;
     }
     else if (inScope.scopetype != scriptfiles.ASScopeType.Class)
@@ -722,15 +717,26 @@ function isEditScope(inScope : scriptfiles.ASScope) : boolean
 
 function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DBProperty, inScope : scriptfiles.ASScope) : boolean
 {
-    if (prop.isPrivate)
+    if (prop.isPrivate || prop.isProtected)
     {
-        if (!inScope || !inScope.hasPrivateAccessTo(curtype.typename))
+        if (!inScope)
             return false;
-    }
-    else if (prop.isProtected)
-    {
-        if (!inScope || !inScope.hasProtectedAccessTo(curtype.typename))
+        let dbtype = inScope.getParentType();
+        if (!dbtype)
             return false;
+
+        if (prop.isPrivate)
+        {
+            // Needs to be in this class to have access
+            if (!curtype || dbtype.typename != curtype.typename)
+                return false;
+        }
+        else if (prop.isProtected)
+        {
+            // Needs to be in a subclass to have access
+            if (!curtype || !dbtype.inheritsFrom(curtype.typename))
+                return false;
+        }
     }
 
     if (prop.isEditOnly)
@@ -750,15 +756,26 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DB
 
 function isFunctionAccessibleFromScope(curtype : typedb.DBType, func : typedb.DBMethod, inScope : scriptfiles.ASScope) : boolean
 {
-    if (func.isPrivate)
+    if (func.isPrivate || func.isProtected)
     {
-        if (!inScope || !inScope.hasPrivateAccessTo(curtype.typename))
+        if (!inScope)
             return false;
-    }
-    else if (func.isProtected)
-    {
-        if (!inScope || !inScope.hasProtectedAccessTo(curtype.typename))
+        let dbtype = inScope.getParentType();
+        if (!dbtype)
             return false;
+
+        if (func.isPrivate)
+        {
+            // Needs to be in this class to have access
+            if (!curtype || dbtype.typename != curtype.typename)
+                return false;
+        }
+        else if (func.isProtected)
+        {
+            // Needs to be in a subclass to have access
+            if (!curtype || !dbtype.inheritsFrom(curtype.typename))
+                return false;
+        }
     }
 
     if (func.isDefaultsOnly)
@@ -856,7 +873,7 @@ function AddScopeKeywords(keywords : Array<string>, completingStr : string, comp
 
 function AddKeywordCompletions(completingStr : string, completions : Array<CompletionItem>, scope : scriptfiles.ASScope, expressionType : ASExpressionType)
 {
-    let inFunctionBody = scope && scope.getFunctionScope() != null;
+    let inFunctionBody = scope && scope.getParentFunctionScope() != null;
 
     AddScopeKeywords([
         "float", "bool", "int", "double",
@@ -916,7 +933,8 @@ function AddKeywordCompletions(completingStr : string, completions : Array<Compl
             ], completingStr, completions);
         }
 
-        if (!scope.isStruct)
+        let scopeType = scope.getDatabaseType();
+        if (scopeType && !scopeType.isStruct)
         {
             if (expressionType.LValue)
             {
@@ -938,14 +956,14 @@ function ImportCompletion(term : string) : Array<CompletionItem>
     if (dotPos != -1)
         untilDot = term.substr(0, dotPos+1);
 
-    for (let file of scriptfiles.GetAllFiles())
+    for (let asmodule of scriptfiles.GetAllModules())
     {
-        if (CanCompleteTo(term, file.modulename))
+        if (CanCompleteTo(term, asmodule.modulename))
         {
             completions.push({
-                label: file.modulename,
+                label: asmodule.modulename,
                 kind: CompletionItemKind.File,
-                insertText: file.modulename.substr(untilDot.length),
+                insertText: asmodule.modulename.substr(untilDot.length),
             });
         }
     }
@@ -961,6 +979,7 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
         return ImportCompletion(initialTerm[0].name);
 
     let completions = new Array<CompletionItem>();
+    let scopeType = inScope ? inScope.getDatabaseType() : null;
 
     // Add completions local to the angelscript scope
     let allowScopeCompletions = initialTerm.length == 1;
@@ -981,7 +1000,7 @@ export function Complete(params : TextDocumentPositionParams) : Array<Completion
         let globaltypes = GetGlobalScopeTypes(inScope, true);
         for(let globaltype of globaltypes)
         {
-            let showEvents = !inScope || inScope.scopetype != scriptfiles.ASScopeType.Class || globaltype.typename != inScope.typename;
+            let showEvents = !inScope || inScope.scopetype != scriptfiles.ASScopeType.Class || !scopeType || globaltype.typename != scopeType.typename;
             AddCompletionsFromType(globaltype, initialTerm[0].name, completions, inScope, showEvents);
         }
 
@@ -1012,7 +1031,7 @@ function AddSignatureCompletions(initialTerm : string, params : TextDocumentPosi
 {
     let typeOfScope : typedb.DBType = null;
     if (inScope && inScope.scopetype == scriptfiles.ASScopeType.Class)
-        typeOfScope = typedb.GetType(inScope.typename);
+        typeOfScope = inScope.getDatabaseType();
 
     // Check if we're inside a function call and complete argument names
     let signatures = GetMethodSignaturesAroundPosition(params);
@@ -1086,25 +1105,23 @@ function NoBreakingSpaces(decl : string) : string
 
 function AddMethodOverrideSnippets(positionParams : TextDocumentPositionParams, initialTerm : string, completions : Array<CompletionItem>, inScope : scriptfiles.ASScope)
 {
-    let typeOfScope : typedb.DBType = null;
-    if (inScope && inScope.scopetype == scriptfiles.ASScopeType.Class)
-        typeOfScope = typedb.GetType(inScope.typename);
+    let typeOfScope = inScope ? inScope.getDatabaseType() : null;
     if (!typeOfScope || !typeOfScope.supertype)
         return;
     if (initialTerm.length == 0)
         return;
 
+    let asmodule = scriptfiles.GetModuleByUri(positionParams.textDocument.uri);
     let position = positionParams.position;
-    let document = scriptfiles.GetDocument(positionParams.textDocument.uri);
 
-    let prevLineText = document.getText(
+    let prevLineText = asmodule.textDocument.getText(
         Range.create(
             Position.create(position.line-1, 0),
             Position.create(position.line, 0)
         )
     );
 
-    let curLineText = document.getText(
+    let curLineText = asmodule.textDocument.getText(
         Range.create(
             Position.create(position.line, 0),
             Position.create(position.line+1, 0)
@@ -1335,14 +1352,15 @@ class MethodSignatures
 
 function GetMethodSignaturesAroundPosition(params : TextDocumentPositionParams) : MethodSignatures
 {
-    let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
+    let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+    if (asmodule == null)
+        return null;
+
+    let pos = asmodule.getOffset(params.position) - 1;
     let originalPos = pos;
     if (pos < 0)
         return null;
 
-    let file = scriptfiles.GetFile(params.textDocument.uri);
-    if (file == null)
-        return null;
 
     // Find the opening bracket in front of our current pos
     let brackets = 0;
@@ -1350,7 +1368,7 @@ function GetMethodSignaturesAroundPosition(params : TextDocumentPositionParams) 
     let isStartOfArg = true;
     while (true)
     {
-        let char = file.rootscope.content[pos];
+        let char = asmodule.content[pos];
         if (char == ';' || char == '{' || char == '}')
             return null;
         if (char == ')')
@@ -1393,6 +1411,8 @@ function GetMethodSignaturesAroundPosition(params : TextDocumentPositionParams) 
     signatures.paramCount = GetActiveParameterCount(originalPos, params.textDocument.uri);
     signatures.isStartOfArg = isStartOfArg;
 
+    let scopeType = scope.getDatabaseType();
+
     let foundFunc = false;
     for (let type of checkTypes)
     {
@@ -1401,7 +1421,7 @@ function GetMethodSignaturesAroundPosition(params : TextDocumentPositionParams) 
             // Ignore functions from the class if we're in the
             // class' scope. Since we're most likely completing
             // an override function declaration at this point.
-            if (type.typename == scope.typename)
+            if (scopeType && type.typename == scopeType.typename)
             {
                 // Switch to the parent type so we can complete overrides for its functions
                 type = type.supertype ? typedb.GetType(type.supertype) : null;
@@ -1517,7 +1537,11 @@ function GetScopeHover(initialTerm : string, scope : scriptfiles.ASScope) : stri
     if (scope.scopetype == scriptfiles.ASScopeType.Class)
     {
         if (initialTerm == "this")
-            return "```angelscript\n"+scope.typename+" this\n```";
+        {
+            let typeOfScope = scope.getDatabaseType();
+            if (typeOfScope)
+                return "```angelscript\n"+typeOfScope.typename+" this\n```";
+        }
     }
 
     if (scope.parentscope)
@@ -1525,79 +1549,85 @@ function GetScopeHover(initialTerm : string, scope : scriptfiles.ASScope) : stri
     return null;
 }
 
-function AddScopeSymbols(file: scriptfiles.ASFile, scope : scriptfiles.ASScope, symbols: Array<SymbolInformation>)
+function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.ASScope, symbols: Array<SymbolInformation>)
 {
-    let scopeSymbol = <SymbolInformation> {
-        name : scope.typename,
-        location : file.GetLocationRange(scope.startPosInFile, scope.endPosInFile),
-    };
-
-    if (scope.scopetype == scriptfiles.ASScopeType.Class)
+    let scopeType = scope.getDatabaseType();
+    if (scopeType)
     {
-        scopeSymbol.kind = SymbolKind.Class;
-        symbols.push(scopeSymbol);
+        let scopeSymbol = <SymbolInformation> {
+            name : scopeType.typename,
+            location : asmodule.getLocationRange(scope.start_offset, scope.end_offset),
+        };
 
-        for (let classVar of scope.variables)
+        if (scope.scopetype == scriptfiles.ASScopeType.Class)
         {
-            if (classVar.isArgument)
-                continue;
+            scopeSymbol.kind = SymbolKind.Class;
+            symbols.push(scopeSymbol);
 
-            symbols.push(<SymbolInformation> {
-                name : classVar.name,
-                kind : SymbolKind.Variable,
-                location : file.GetLocation(classVar.posInFile),
-                containerName : scope.typename,
-            });
+            for (let classVar of scope.variables)
+            {
+                if (classVar.isArgument)
+                    continue;
+
+                symbols.push(<SymbolInformation> {
+                    name : classVar.name,
+                    kind : SymbolKind.Variable,
+                    location : asmodule.getLocationRange(classVar.start_offset_name, classVar.end_offset_name),
+                    containerName : scopeType.typename,
+                });
+            }
+        }
+        else if (scope.scopetype == scriptfiles.ASScopeType.Enum)
+        {
+            scopeSymbol.kind = SymbolKind.Enum;
+            symbols.push(scopeSymbol);
         }
     }
-    else if (scope.scopetype == scriptfiles.ASScopeType.Enum)
-    {
-        scopeSymbol.kind = SymbolKind.Enum;
-        symbols.push(scopeSymbol);
-    }
-    else if (scope.scopetype == scriptfiles.ASScopeType.Function)
-    {
-        scopeSymbol.name = scope.funcname+"()";
-        if (scope.parentscope.scopetype == scriptfiles.ASScopeType.Class)
-        {
-            scopeSymbol.kind = SymbolKind.Method;
-            scopeSymbol.containerName = scope.parentscope.typename;
-        }
-        else
-        {
-            scopeSymbol.kind = SymbolKind.Function;
-        }
 
-        symbols.push(scopeSymbol);
+    let scopeFunc = scope.getDatabaseFunction();
+    if (scopeFunc)
+    {
+        let scopeSymbol = <SymbolInformation> {
+            name : scopeFunc.name+"()",
+            location : asmodule.getLocationRange(scope.start_offset, scope.end_offset),
+        };
+
+        if (scope.scopetype == scriptfiles.ASScopeType.Function)
+        {
+            if (scope.parentscope.scopetype == scriptfiles.ASScopeType.Class)
+            {
+                scopeSymbol.kind = SymbolKind.Method;
+                scopeSymbol.containerName = scope.parentscope.getDatabaseType().typename;
+            }
+            else
+            {
+                scopeSymbol.kind = SymbolKind.Function;
+            }
+
+            symbols.push(scopeSymbol);
+        }
     }
 
-    for (let subscope of scope.subscopes)
-    {
-        AddScopeSymbols(file, subscope, symbols);
-    }
+    for (let subscope of scope.scopes)
+        AddScopeSymbols(asmodule, subscope, symbols);
 }
 
 export function DocumentSymbols( uri : string ) : SymbolInformation[]
 {
     let symbols = new Array<SymbolInformation>();
-    let file = scriptfiles.GetFile(uri);
-    if (!file)
+    let asmodule = scriptfiles.GetModuleByUri(uri);
+    if (!asmodule)
         return symbols;
 
-    AddScopeSymbols(file, file.rootscope, symbols);
-
+    AddScopeSymbols(asmodule, asmodule.rootscope, symbols);
     return symbols;
 }
 
 export function WorkspaceSymbols( query : string ) : SymbolInformation[]
 {
     let symbols = new Array<SymbolInformation>();
-
-    for ( let file of scriptfiles.GetAllFiles())
-    {
-        AddScopeSymbols(file, file.rootscope, symbols);
-    }
-
+    for (let asmodule of scriptfiles.GetAllModules())
+        AddScopeSymbols(asmodule, asmodule.rootscope, symbols);
     return symbols;
 }
 
@@ -1615,22 +1645,22 @@ function FormatHoverDocumentation(doc : string) : string
 
 export function GetHover(params : TextDocumentPositionParams) : Hover
 {
-    let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position);
-    if (pos < 0)
+    let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+    if (asmodule == null)
         return null;
 
-    let file = scriptfiles.GetFile(params.textDocument.uri);
-    if (file == null)
+    let pos = asmodule.getOffset(params.position);
+    if (pos < 0)
         return null;
 
     // Find the end of the identifier
     while (true)
     {
-        let char = file.rootscope.content[pos];
+        let char = asmodule.content[pos];
         if (!/[A-Za-z0-9_]/.test(char))
             break;
         pos += 1;
-        if(pos >= file.rootscope.content.length)
+        if(pos >= asmodule.content.length)
             break;
     }
 
@@ -1857,16 +1887,10 @@ function ExpandCheckedTypes(checkTypes : Array<typedb.DBType>)
 
 function GetScopeUnrealType(scope : scriptfiles.ASScope) : string
 {
-    // First walk upwards until we find the class we're in
-    let inClass : string;
-
-    let classscope = scope;
-    while(classscope && classscope.scopetype != scriptfiles.ASScopeType.Class)
-        classscope = classscope.parentscope;
-
-    if (!classscope)
+    let insideType = scope.getParentType();
+    if (!insideType)
         return "";
-    return GetUnrealTypeFor(classscope.typename);
+    return GetUnrealTypeFor(insideType.typename);
 }
 
 export function GetUnrealTypeFor(typename : string) : string
@@ -1884,22 +1908,22 @@ export function GetUnrealTypeFor(typename : string) : string
 
 export function GetCompletionTypeAndMember(params : TextDocumentPositionParams) : Array<string>
 {
-    let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
-    if (pos < 0)
+    let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+    if (asmodule == null)
         return null;
 
-    let file = scriptfiles.GetFile(params.textDocument.uri);
-    if (file == null)
+    let pos = asmodule.getOffset(params.position);
+    if (pos < 0)
         return null;
 
     // Find the end of the identifier
     while (true)
     {
-        let char = file.rootscope.content[pos];
+        let char = asmodule.content[pos];
         if (!/[A-Za-z0-9_]/.test(char))
             break;
         pos += 1;
-        if(pos >= file.rootscope.content.length)
+        if(pos >= asmodule.content.length)
             break;
     }
 
@@ -1928,22 +1952,22 @@ export function GetCompletionTypeAndMember(params : TextDocumentPositionParams) 
 
 export function GetDefinition(params : TextDocumentPositionParams) : Definition
 {
-    let pos = scriptfiles.ResolvePosition(params.textDocument.uri, params.position) - 1;
-    if (pos < 0)
+    let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+    if (asmodule == null)
         return null;
 
-    let file = scriptfiles.GetFile(params.textDocument.uri);
-    if (file == null)
+    let pos = asmodule.getOffset(params.position);
+    if (pos < 0)
         return null;
 
     // Find the end of the identifier
     while (true)
     {
-        let char = file.rootscope.content[pos];
+        let char = asmodule.content[pos];
         if (!/[A-Za-z0-9_]/.test(char))
             break;
         pos += 1;
-        if(pos >= file.rootscope.content.length)
+        if(pos >= asmodule.content.length)
             break;
     }
 
@@ -2016,8 +2040,12 @@ export function GetDefinition(params : TextDocumentPositionParams) : Definition
         let dbtype = typedb.GetType(term[0].name);
         if(!dbtype)
             dbtype = typedb.GetType("__"+term[0].name);
-        if (!dbtype && term[0].name == "Super" && scope.getSuperTypeForScope())
-            dbtype = typedb.GetType(scope.getSuperTypeForScope());
+        if (!dbtype && term[0].name == "Super")
+        {
+            let scopetype = scope.getParentType();
+            if (scopetype)
+                dbtype = typedb.GetType(scopetype.supertype);
+        }
 
         if (dbtype && dbtype.declaredModule)
         {
@@ -2086,7 +2114,7 @@ let re_literal_int = /^-?[0-9]+$/;
 
 export function ResolveAutos(root : scriptfiles.ASScope)
 {
-    for (let vardesc of root.variables)
+    /*for (let vardesc of root.variables)
     {
         if (vardesc.typename.indexOf("auto") == -1)
             continue;
@@ -2144,13 +2172,13 @@ export function ResolveAutos(root : scriptfiles.ASScope)
     for (let subscope of root.subscopes)
     {
         ResolveAutos(subscope);
-    }
+    }*/
 }
 
 function GetActiveParameterCount(pos : number, uri : string) : number
 {
-    let file = scriptfiles.GetFile(uri);
-    if (file == null)
+    let asmodule = scriptfiles.GetModuleByUri(uri);
+    if (asmodule == null)
         return null;
 
     let paramCount = 0;
@@ -2159,7 +2187,7 @@ function GetActiveParameterCount(pos : number, uri : string) : number
     let brackets = 0;
     while (termstart > 0)
     {
-        let char = file.rootscope.content[termstart];
+        let char = asmodule.content[termstart];
         let end = false;
 
         switch(char)

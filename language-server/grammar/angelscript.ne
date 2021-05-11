@@ -48,39 +48,158 @@ const lexer = moo.compile({
             for_token: "for",
             case_token: "case",
             cast_token: "Cast",
+            namespace_token: "namespace",
             ufunction: 'UFUNCTION',
             uproperty: 'UPROPERTY',
             uclass: 'UCLASS',
             ustruct: 'USTRUCT',
+
+            // This is a hack to help disambiguate syntax.
+            // A statement of `TArray<int> Var` might be parsed as
+            // ((TArray < int) > Var) as well, so we hardcode the template types
+            // we know to avoid this in most situations.
+            template_basetype: ['TArray', 'TMap', 'TSet', 'TSubclassOf', 'TSoftObjectPtr', 'TSoftClassPtr', 'TInstigated', 'TPerPlayer'],
         })
     },
     number: /[0-9]+/,
 });
 
+// A compound node containing multiple child nodes
 function Compound(d, node_type, children)
 {
-    let start = -1;
-    let end = -1;
+    let node = {
+        type: node_type,
+        start: -1,
+        end: -1,
+        children: children,
+    };
+    ComputeStartAndEnd(node, d);
+    return node;
+}
 
+// Extend the range of the compound to the new item
+function ExtendedCompound(d, node)
+{
+    ComputeStartAndEnd(node, d);
+    return node;
+}
+
+// An identifier based off a single lexer token
+function Identifier(token)
+{
+    return {
+        type: n.Identifier,
+        start: token.offset,
+        end: token.offset + token.text.length,
+        value: token.value,
+    };
+}
+
+// An literal based off a single lexer token
+function Literal(node_type, token)
+{
+    return {
+        type: node_type,
+        start: token.offset,
+        end: token.offset + token.text.length,
+        value: token.value,
+    };
+}
+
+// An identifier taken from a quoted string
+function IdentifierFromString(token)
+{
+    return {
+        type: n.Identifier,
+        start: token.offset + 1,
+        end: token.offset + token.text.length - 1,
+        value: token.value.substring(1, token.value.length-1),
+    };
+}
+
+// An identifier based on multiple lexer tokens or child nodes together
+function CompoundIdentifier(tokens, children)
+{
+    return CompoundLiteral(n.Identifier, tokens, children);
+}
+
+// A literal based on multiple lexer tokens or child nodes together
+function CompoundLiteral(node_type, tokens, children)
+{
+    let node = {
+        type: node_type,
+        start: -1,
+        end: -1,
+        value: "",
+        children: children,
+    };
+
+    MergeValue(node, tokens);
+    return node;
+}
+
+function MergeValue(node, d)
+{
     for (let part of d)
     {
         if (!part)
             continue;
-        if (start == -1)
-            start = part.start;
-        end = part.end;
-    }
 
-    return {
-        type: node_type:
-        start: start,
-        end: end,
-        chlidren: children,
-    };
+        if (Array.isArray(part))
+        {
+            MergeValue(node, part);
+        }
+        else if (part.hasOwnProperty("offset"))
+        {
+            // This is a token
+            if (node.start == -1)
+                node.start = part.offset;
+            node.end = part.offset + part.text.length;
+            node.value += part.value;
+        }
+        else
+        {
+            // This is a node
+            if (node.start == -1)
+                node.start = part.start;
+            node.end = part.end;
+            node.value += part.value;
+        }
+    }
 }
 
-function Identifier(node_type, start, end)
+function ComputeStartAndEnd(node, d)
 {
+    for (let part of d)
+    {
+        if (!part)
+            continue;
+
+        if (Array.isArray(part))
+        {
+            ComputeStartAndEnd(node, part);
+        }
+        else if (part.hasOwnProperty("offset"))
+        {
+            // This is a token
+            if (node.start == -1)
+                node.start = part.offset;
+            node.end = part.offset + part.text.length;
+        }
+        else
+        {
+            // This is a node
+            if (node.start == -1)
+                node.start = part.start;
+            node.end = part.end;
+        }
+    }
+}
+
+// Operator type node
+function Operator(token)
+{
+    return token.value;
 }
 
 %}
@@ -106,39 +225,45 @@ statement -> assignment {% id %}
 statement -> var_decl {% id %}
 
 assignment -> lvalue _ "=" _ expression_or_assignment {%
-    function (d) { return [n.Assignment, d[0], d[4][0]]; }
+    function (d) { return Compound(d, n.Assignment, [d[0], d[4][0]]); }
 %}
 assignment -> lvalue _ %compound_assignment _ (expression | assignment) {%
-    function (d) { return [n.CompoundAssignment, d[0], d[2], d[4][0]]; }
+    function (d) { return {
+        ...Compound(d, n.CompoundAssignment, [d[0], d[4][0]]),
+        operator: Operator(d[2]),
+    }; }
 %}
 
 expression_or_assignment -> expression {% id %}
 expression_or_assignment -> assignment {% id %}
 
 statement -> %if_token _ %lparen _ expression_or_assignment _ %rparen optional_statement {%
-    function (d) { return [n.IfStatement, d[4], d[7]]; }
+    function (d) { return Compound(d, n.IfStatement, [d[4], d[7]]); }
 %}
 
 statement -> %return_token _ expression_or_assignment {%
-    function (d) { return [n.ReturnStatement, d[2]]; }
+    function (d) { return Compound(d, n.ReturnStatement, [d[2]]); }
 %}
 
 statement -> %else_token _ statement {%
-    function (d) { return [n.ElseStatement, d[2]]; }
+    function (d) { return Compound(d, n.ElseStatement, [d[2]]); }
 %}
 
 statement -> %case_token _ case_label _ %colon optional_statement {%
-    function (d) { return [n.CaseStatement, d[2], d[5]]; }
+    function (d) { return Compound(d, n.CaseStatement, [d[2], d[5]]); }
 %}
 
 statement -> %default_token %colon optional_statement {%
-    function (d) { return [n.CaseStatement, d[0], d[2]]; }
+    function (d) { return Compound(d, n.CaseStatement, [d[0], d[2]]); }
 %}
 
 statement -> %for_token _ %lparen (_ for_declaration):? _ %semicolon optional_expression _ %semicolon for_comma_expression_list _ %rparen optional_statement {%
-    function (d) { return [n.ForLoop, d[3] ? d[3][1] : null, d[6], d[9], d[12]]; }
+    function (d) { return Compound(d, n.ForLoop, [d[3] ? d[3][1] : null, d[6], d[9], d[12]]); }
 %}
-for_declaration -> var_decl | expression | assignment {% id %}
+for_declaration -> var_decl {% id %}
+for_declaration -> expression {% id %}
+for_declaration -> assignment {% id %}
+
 for_comma_expression_list -> null {%
     function (d) { return null; }
 %}
@@ -150,191 +275,231 @@ for_comma_expression_list -> _ for_comma_expression (_ "," _ for_comma_expressio
         exprs = [d[1]];
         for (let part of d[2])
             exprs.push(part[3]);
-        return [n.CommaExpression, exprs];
+        return Compound(d, n.CommaExpression, exprs);
     }
 %}
 for_comma_expression -> expression {% id %}
 for_comma_expression -> assignment {% id %}
 
 statement -> %for_token _ %lparen _ typename _ %identifier _ %colon _ expression _ %rparen optional_statement {%
-    function (d) { return [n.ForEachLoop, d[4], d[6], d[10], d[13]]; }
+    function (d) { return Compound(d, n.ForEachLoop, [d[4], Identifier(d[6]), d[10], d[13]]); }
 %}
 
 statement -> %while_token _ %lparen _ expression _ %rparen optional_statement {%
-    function (d) { return [n.WhileLoop, d[4], d[7]]; }
+    function (d) { return Compound(d, n.WhileLoop, [d[4], d[7]]); }
 %}
 
 global_statement -> %import_token _ %identifier (%dot %identifier):* {%
     function (d) {
-        let modulename = d[2].value;
+        let tokens = [d[2]];
         for (let part of d[3])
-            modulename += "."+part[1].value;
-        return [n.ImportStatement, modulename];
+        {
+            tokens.push(part[0]);
+            tokens.push(part[1]);
+        }
+        return Compound(d, n.ImportStatement, CompoundIdentifier(tokens, null));
     }
 %}
 global_statement -> %import_token _ function_signature _ "from" _ (%dqstring | %sqstring) {%
     function (d) {
-        return [n.ImportFunctionStatement, d[6], d[2][0]];
+        return Compound(d, n.ImportFunctionStatement, [d[2], IdentifierFromString(d[6][0])]);
     }
 %}
 
-global_statement -> ufunction_macro:? function_signature {%
-    function (d) { return [n.FunctionDecl, {
-        ...d[1],
-        macro: d[0],
-    }]; }
-%}
-global_statement -> delegate_decl {% id %}
-global_statement -> event_decl {% id %}
-global_statement -> var_decl {% id %}
-global_statement -> ustruct_macro:? %struct_token _ %identifier {%
-    function (d) { return [n.StructDefinition, {
-        name: d[4],
-        macro: d[0]
-    }]; }
-%}
-global_statement -> uclass_macro:? %class_token _ %identifier ( _ %colon _ %identifier ):? {%
-    function (d) { return [n.ClassDefinition, {
-        name: d[4],
-        macro: d[0],
-        superclass: d[9],
-    }]; }
-%}
-global_statement -> %enum_token _ %identifier {%
-    function (d) { return [n.EnumDefinition, {
-        name: d[2]
-    }]; }
-%}
-
-global_statement -> "asset" _ %identifier _ "of" _ %identifier {%
-    function (d) { return [n.AssetDefinition, d[2], d[6]]; }
-%}
-
-global_statement -> "settings" _ %identifier _ "for" _ %identifier {%
-    function (d) { return [n.AssetDefinition, d[2], d[6]]; }
-%}
-
-class_statement -> uproperty_macro:? (access_specifier _):? var_decl {%
+global_declaration -> ufunction_macro:? function_signature {%
     function (d) {
-        return [ d[2][0], { ...d[2][1], access: d[1] ? d[1][0] : null, macro: d[0] } ];
+        return ExtendedCompound(d, {
+            ...d[1],
+            macro: d[0],
+        });
+    }
+%}
+global_declaration -> delegate_decl {% id %}
+global_declaration-> event_decl {% id %}
+global_declaration -> var_decl {% id %}
+global_declaration -> ustruct_macro:? %struct_token _ %identifier {%
+    function (d) { return {
+        ...Compound(d, n.StructDefinition, null),
+        name: Identifier(d[3]),
+        macro: d[0],
+    }}
+%}
+global_declaration -> uclass_macro:? %class_token _ %identifier ( _ %colon _ %identifier ):? {%
+    function (d) { return {
+        ...Compound(d, n.ClassDefinition, null),
+        name: Identifier(d[3]),
+        macro: d[0],
+        superclass: d[4] ? Identifier(d[4][3]) : null,
+    }}
+%}
+global_declaration -> %enum_token _ %identifier {%
+    function (d) { return {
+        ...Compound(d, n.EnumDefinition, null),
+        name: Identifier(d[2]),
+    }}
+%}
+
+global_declaration -> "asset" _ %identifier _ "of" _ %identifier {%
+    function (d) { return Compound(d, n.AssetDefinition, [Identifier(d[2]), Identifier(d[6])]); }
+%}
+
+global_declaration -> "settings" _ %identifier _ "for" _ %identifier {%
+    function (d) { return Compound(d, n.AssetDefinition, [Identifier(d[2]), Identifier(d[6])]); }
+%}
+
+global_declaration -> %namespace_token _ %identifier {%
+    function (d) { return {
+        ...Compound(d, n.NamespaceDefinition, null),
+        name: Identifier(d[2]),
+    }; }
+%}
+
+class_declaration -> uproperty_macro:? (access_specifier _):? var_decl {%
+    function (d) {
+        return ExtendedCompound(d, {
+            ...d[2],
+            access: d[1] ? d[1][0].value : null,
+            macro: d[0],
+        });
     }
 %}
 
-class_statement -> ufunction_macro:? (access_specifier _):? function_signature {%
-    function (d) { return [n.FunctionDecl, {
-        ...d[2],
-        macro: d[0],
-        access: d[1] ? d[1][0] : null,
-    }]; }
+class_declaration -> ufunction_macro:? (access_specifier _):? function_signature {%
+    function (d) {
+        return ExtendedCompound(d, {
+            ...d[2],
+            access: d[1] ? d[1][0].value : null,
+            macro: d[0],
+        });
+    }
 %}
 
-class_statement -> access_specifier _ ufunction_macro function_signature {%
-    function (d) { return [n.FunctionDecl, {
-        ...d[4],
-        macro: d[2],
-        access: d[0],
-    }]; }
+class_declaration -> access_specifier _ ufunction_macro function_signature {%
+    function (d) {
+        return ExtendedCompound(d, {
+            ...d[3],
+            access: d[0].value,
+            macro: d[2],
+        });
+    }
 %}
 
-class_statement -> constructor_decl {% id %}
-class_statement -> destructor_decl {% id %}
+class_declaration -> constructor_decl {% id %}
+class_declaration -> destructor_decl {% id %}
+
 class_statement -> %default_token _ expression {%
-    function (d) { return [n.DefaultStatement, d[2]]; }
+    function (d) { return Compound(d, n.DefaultStatement, [d[2]]); }
 %}
 class_statement -> %default_token _ assignment {%
-    function (d) { return [n.DefaultStatement, d[2]]; }
+    function (d) { return Compound(d, n.DefaultStatement, [d[2]]); }
 %}
 
 var_decl -> typename _ %identifier {%
-    function (d) { return [n.VariableDecl, {
-        name: d[2],
+    function (d) { return {
+        ...Compound(d, n.VariableDecl, null),
+        name: Identifier(d[2]),
         typename: d[0],
-        expression: null,
-    }]; }
+    }; }
 %}
 var_decl -> typename _ %identifier _ "=" _ expression {%
-    function (d) { return [n.VariableDecl, {
-        name: d[2],
+    function (d) { return {
+        ...Compound(d, n.VariableDecl, null),
+        name: Identifier(d[2]),
         typename: d[0],
         expression: d[6],
         inline_assignment: true,
-    }]; }
+    }; }
 %}
 var_decl -> typename _ %identifier _ %lparen _ argumentlist _ %rparen {%
-    function (d) { return [n.VariableDecl, {
-        name: d[2],
+    function (d) { return {
+        ...Compound(d, n.VariableDecl, null),
+        name: Identifier(d[2]),
         typename: d[0],
         expression: d[6],
         inline_constructor: true,
-    }]; }
+    }; }
 %}
 
 var_decl -> typename _ var_decl_multi_part (_ %comma _ var_decl_multi_part):+ {%
     function (d) {
         let vars = [d[2]];
+        vars[0].typename = d[0];
         if (d[3])
         {
             for (let part of d[3])
-                vars.push(part[2]);
+            {
+                part[3].typename = d[0];
+                vars.push(part[3]);
+            }
         }
-        
-        return [n.VariableDeclMulti, {
-            typename: d[0],
-            variables: vars,
-        }]; }
+
+        return Compound(d, n.VariableDeclMulti, vars);
+    }
 %}
 
 var_decl_multi_part -> %identifier (_ "=" _ expression):? {%
     function (d) {
         if (d[2])
-            return { name: d[0], expression: d[2][2], inline_assignment: true };
+            return {
+                ...Compound(d, n.VariableDecl, null),
+                name: Identifier(d[0]),
+                expression: d[1][2],
+                inline_assignment: true
+            };
         else
-            return { name: d[0] };
+            return {
+                ...Compound(d, n.VariableDecl, null),
+                name: Identifier(d[0]),
+                expression: null,
+            };
     }
 %}
 
 delegate_decl -> "delegate" _ function_signature {%
-    function (d) { return [n.DelegateDecl, {
-        ...d[2]
-    }]; }
+    function (d) { return Compound(d, n.DelegateDecl, [d[2]]); }
 %}
 event_decl -> "event" _ function_signature {%
-    function (d) { return [n.EventDecl, {
-        ...d[2],
-        macro: d[0],
-    }]; }
+    function (d) { return Compound(d, n.EventDecl, [d[2]]); }
 %}
 constructor_decl -> %identifier _ %lparen _ parameter_list _ %rparen {%
-    function (d) { return [n.ConstructorDecl, {
-        name: d[0],
+    function (d) { return {
+        ...Compound(d, n.ConstructorDecl, null),
+        name: Identifier(d[0]),
         parameters: d[4],
-    }]; }
+    }; }
 %}
-destructor_decl -> "~" %identifier _ %lparen _ parameter_list _ %rparen {%
-    function (d) { return [n.DestructorDecl, d[1]]; }
+destructor_decl -> "~" %identifier _ %lparen _ %rparen {%
+    function (d) { return {
+        ...Compound(d, n.DestructorDecl, null),
+        name: CompoundIdentifier([d[0], d[1]]),
+    }; }
 %}
 
 function_signature -> function_return _ %identifier _ %lparen _ parameter_list _ %rparen func_qualifiers {%
     function (d) { return {
-        name: d[2],
+        ...Compound(d, n.FunctionDecl, null),
+        name: Identifier(d[2]),
         returntype: d[0],
         parameters: d[6],
         qualifiers: d[9],
     }; }
 %}
-function_return -> typename | %void_token {% id %}
+function_return -> typename {% id %}
+function_return -> %void_token {%
+    function (d) { return null; }
+%}
 
 ufunction_macro -> %ufunction _ %lparen _ macro_list _ %rparen _ {%
-    function (d) { return d[4]; }
+    function (d) { return Compound(d, n.Macro, d[4]); }
 %}
 uproperty_macro -> %uproperty _ %lparen _ macro_list _ %rparen _ {%
-    function (d) { return d[4]; }
+    function (d) { return Compound(d, n.Macro, d[4]); }
 %}
 uclass_macro -> %uclass _ %lparen _ macro_list _ %rparen _ {%
-    function (d) { return d[4]; }
+    function (d) { return Compound(d, n.Macro, d[4]); }
 %}
 ustruct_macro -> %ustruct _ %lparen _ macro_list _ %rparen _ {%
-    function (d) { return d[4]; }
+    function (d) { return Compound(d, n.Macro, d[4]); }
 %}
 
 parameter_list -> null {%
@@ -353,15 +518,27 @@ parameter_list -> parameter (_ "," _ parameter):* {%
 %}
 
 parameter -> typename {%
-    function (d) { return [d[0], null, null]; }
+    function (d) { return {
+        ...Compound(d, n.Parameter, null),
+        typename: d[0],
+    }; }
 %}
 
 parameter -> typename _ %identifier {%
-    function (d) { return [d[0], d[2], null]; }
+    function (d) { return {
+        ...Compound(d, n.Parameter, null),
+        typename: d[0],
+        name: Identifier(d[2]),
+    }; }
 %}
 
 parameter -> typename _ %identifier _ "=" _ expression {%
-    function (d) { return [d[0], d[2], d[6]]; }
+    function (d) { return {
+        ...Compound(d, n.Parameter, null),
+        typename: d[0],
+        name: Identifier(d[2]),
+        expression: d[6],
+    }; }
 %}
 
 macro_list -> null {%
@@ -380,117 +557,120 @@ macro_list -> macro_argument (_ "," _ macro_argument):* {%
 %}
 
 macro_argument -> macro_identifier {% 
-    function (d) { return [d[0], null]; }
+    function (d) { return {
+        ...Compound(d, n.MacroArgument, null),
+        name: d[0],
+    }; }
 %}
 macro_argument -> macro_identifier _ "=" _ macro_value {%
-    function (d) { return [d[0], d[4]]; }
+    function (d) { return {
+        ...Compound(d, n.MacroArgument, null),
+        name: d[0],
+        value: d[4],
+    }; }
 %}
 macro_argument -> macro_identifier _ "=" _ %lparen _ macro_list _ %rparen {%
-    function (d) { return [d[0], d[6]]; }
+    function (d) { return {
+        ...Compound(d, n.MacroArgument, d[6]),
+        name: d[0],
+    }; }
 %}
 
 macro_identifier -> %identifier {%
-    function (d) { return [n.Identifier, d[0]]; }
+    function (d) { return Identifier(d[0]); }
 %}
 macro_identifier -> %dqstring {%
-    function (d) { return [n.ConstString, d[0]]; }
+    function (d) { return IdentifierFromString(d[0]); }
 %}
 macro_identifier -> %sqstring {%
-    function (d) { return [n.ConstString, d[0]]; }
+    function (d) { return IdentifierFromString(d[0]); }
 %}
 
 macro_value -> macro_identifier {% id %}
 macro_value -> (%identifier _ "|" _):+ %identifier {%
     function (d) {
-        let value = d[1];
-        if (d[0])
-        {
-            let strValue = "";
-            for (let part of d[0])
-            {
-                if (part[0].offset < value.offset)
-                    value.offset = part[0].offset;
-                strValue += part[0].value;
-                strValue += "|";
-            }
-            strValue += d[1].value;
-            value.value = strValue;
-        }
-        return [n.Identifier, value];
+        return CompoundIdentifier(d, null);
     }
 %}
 
 macro_value -> (%identifier _ "::" _):+ %identifier {%
     function (d) {
-        let value = d[1];
-        if (d[0])
-        {
-            let strValue = "";
-            for (let part of d[0])
-            {
-                if (part[0].offset < value.offset)
-                    value.offset = part[0].offset;
-                strValue += part[0].value;
-                strValue += "::";
-            }
-            strValue += d[1].value;
-            value.value = strValue;
-        }
-        return [n.Identifier, value];
+        return CompoundIdentifier(d, null);
     }
 %}
 
 macro_value -> ("-" _):? const_number {%
     function (d) {
-        let value = d[1];
-        if (d[0])
-        {
-            value[1].value = d[0][0].value + d[1][1].value;
-            value[1].offset = d[0][0].offset;
-        }
-        return value;
+        if (!d[0])
+            return d[1];
+        return CompoundLiteral(
+            d[1].type,
+            d,
+            null
+        );
     }
 %}
 
 expression -> expr_ternary {% id %}
 
 expr_ternary -> expr_binary_logic _ %ternary _ expr_ternary _ %colon _ expr_ternary {%
-    function (d) { return [n.TernaryOperation, d[0], d[4], d[8]]; }
+    function (d) { return Compound(d, n.TernaryOperation, [d[0], d[4], d[8]]); }
 %}
 expr_ternary -> expr_binary_logic {% id %}
 
 expr_binary_logic -> expr_binary_logic _ %op_binary_logic _ expr_binary_bitwise {%
-    function (d) { return [n.BinaryOperation, d[2], d[0], d[4]]; }
+    function (d) { return {
+        ...Compound(d, n.BinaryOperation, [d[0], d[4]]),
+        operator: Operator(d[2]),
+    };}
 %}
 expr_binary_logic -> expr_binary_bitwise {% id %}
 
 expr_binary_bitwise -> expr_binary_bitwise _ %op_binary_bitwise _ expr_binary_compare {%
-    function (d) { return [n.BinaryOperation, d[2], d[0], d[4]]; }
+    function (d) { return {
+        ...Compound(d, n.BinaryOperation, [d[0], d[4]]),
+        operator: Operator(d[2]),
+    };}
 %}
 expr_binary_bitwise -> expr_binary_compare {% id %}
 
 expr_binary_compare -> expr_binary_compare _ %op_binary_compare _ expr_binary_sum {%
-    function (d) { return [n.BinaryOperation, d[2], d[0], d[4]]; }
+    function (d) { return {
+        ...Compound(d, n.BinaryOperation, [d[0], d[4]]),
+        operator: Operator(d[2]),
+    };}
 %}
 expr_binary_compare -> expr_binary_sum {% id %}
 
 expr_binary_sum -> expr_binary_sum _ %op_binary_sum _ expr_binary_product {%
-    function (d) { return [n.BinaryOperation, d[2], d[0], d[4]]; }
+    function (d) { return {
+        ...Compound(d, n.BinaryOperation, [d[0], d[4]]),
+        operator: Operator(d[2]),
+    };}
 %}
 expr_binary_sum -> expr_binary_product {% id %}
 
 expr_binary_product -> expr_binary_product _ %op_binary_product _ expr_unary {%
-    function (d) { return [n.BinaryOperation, d[2], d[0], d[4]]; }
+    function (d) { return {
+        ...Compound(d, n.BinaryOperation, [d[0], d[4]]),
+        operator: Operator(d[2]),
+    };}
 %}
 expr_binary_product -> expr_unary {% id %}
 
 expr_unary -> unary_operator _ expr_unary {%
-    function (d) { return [n.UnaryOperation, d[0], d[2]]; }
+    function (d) { return {
+        ...Compound(d, n.UnaryOperation, [d[2]]),
+        operator: Operator(d[0]),
+    };}
 %}
 expr_unary -> expr_postfix {% id %}
 
 expr_postfix -> expr_postfix _ %postfix_operator {%
-    function (d) { return [n.PostfixOperation, d[2], d[0]]; }
+    function (d) { return {
+        ...Compound(d, n.PostFixOperation, [d[0]]),
+        operator: Operator(d[2]),
+    };}
 %}
 expr_postfix -> expr_leaf {% id %}
 
@@ -498,94 +678,100 @@ expr_leaf -> lvalue {% id %}
 expr_leaf -> constant {% id %}
 
 lvalue -> %identifier {%
-    function(d, l) { return [n.Identifier, d[0]] }
+    function(d, l) { return Identifier(d[0]); }
 %}
 
 lvalue -> lvalue _ "." _ %identifier {%
-    function (d) { return [n.MemberAccess, d[0], d[4]]; }
+    function (d) { return Compound(d, n.MemberAccess, [d[0], Identifier(d[4])]); }
 %}
 lvalue -> "(" _ expression _ ")" {%
     function (d) { return d[2]; }
 %}
 lvalue -> lvalue _ "(" _ argumentlist _ ")" {%
-    function (d) { return [n.FunctionCall, d[0], d[4]]; }
+    function (d) { return Compound(d, n.FunctionCall, [d[0], d[4]]); }
 %}
 lvalue -> lvalue _ "[" _ expression _ "]" {%
-    function (d) { return [n.IndexOperator, d[0], d[4]]; }
+    function (d) { return Compound(d, n.IndexOperator, [d[0], d[4]]); }
 %}
 lvalue -> template_typename _ "(" _ argumentlist _ ")" {%
-    function (d) { return [n.ConstructorCall, d[0], d[4]]; }
+    function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
 %}
 
 lvalue -> %cast_token _ "<" _ typename _ ">" _ %lparen _ expression _ %rparen {%
-    function (d) { return [n.CastOperation, d[4], d[10]]; }
+    function (d) { return Compound(d, n.CastOperation, [d[4], d[10]]); }
 %}
 
 lvalue -> namespace_access {% id %}
 namespace_access -> namespace_access _ "::" _ %identifier {%
-    function (d) { return [n.NamespaceAccess, d[0], d[4]]; }
+    function (d) { return Compound(d, n.NamespaceAccess, [d[0], d[4]]); }
 %}
 namespace_access -> %identifier _ "::" _ %identifier {%
-    function (d) { return [n.NamespaceAccess, d[0], d[4]]; }
+    function (d) { return Compound(d, n.NamespaceAccess, [d[0], d[4]]); }
 %}
 
 argumentlist -> null {%
-    function(d) { return []; }
+    function(d) { return null; }
 %}
-argumentlist -> argument {%
-    function(d) { return [d[0]]; }
-%}
-argumentlist -> argument _ "," _ argumentlist {%
-    function(d) { return [d[0]].concat(d[4]); }
+argumentlist -> (argument _ "," _ ):* argument {%
+    function(d) { 
+        let args = [];
+        if (d[0])
+        {
+            for (let part of d[0])
+                args.push(part[0]);
+        }
+        args.push(d[1]);
+        return Compound(d, n.ArgumentList, args);
+    }
 %}
 
 argument -> expression {% id %}
 argument -> %identifier _ "=" _ expression {%
-    function (d) { return [n.NamedArgument, d[0], d[4]]; }
+    function (d) { return Compound(d, n.NamedArgument, [Identifier(d[0]), d[4]]); }
 %}
 
 const_number -> %number {%
-    function(d) { return [n.ConstInteger, d[0] ]; }
+    function(d) { return Literal(n.ConstInteger, d[0]); }
 %}
 
 const_number -> %hex_number {%
-    function(d) { return [n.ConstHexInteger, d[0] ]; }
+    function(d) { return Literal(n.ConstHexInteger, d[0]); }
 %}
 
 const_number -> %number "." %number "f" {%
-    function(d) { return [n.ConstFloat, d[0].value+"."+d[2].value+"f"]; }
+    function(d) { return CompoundLiteral(n.ConstFloat, d, null); }
 %}
 
 const_number -> "." %number "f" {%
-    function(d) { return [n.ConstFloat, "0."+d[1].value+"f"]; }
+    function(d) { return CompoundLiteral(n.ConstFloat, d, null); }
 %}
 
 const_number -> %number "." "f" {%
-    function(d) { return [n.ConstFloat, d[0].value+".f"]; }
+    function(d) { return CompoundLiteral(n.ConstFloat, d, null); }
 %}
 
 const_number -> %number "." %number {%
-    function(d) { return [n.ConstDouble, d[0].value+"."+d[2].value]; }
+    function(d) { return CompoundLiteral(n.ConstDouble, d, null); }
 %}
 
 const_number -> "." %number {%
-    function(d) { return [n.ConstDouble, "0."+d[1].value]; }
+    function(d) { return CompoundLiteral(n.ConstDouble, d, null); }
 %}
 
 const_number -> %number "." {%
-    function(d) { return [n.ConstDouble, d[0].value+".0"]; }
+    function(d) { return CompoundLiteral(n.ConstDouble, d, null); }
 %}
 
 constant -> %dqstring {%
-    function(d) { return [n.ConstString, d[0]]; }
+    function(d) { return Literal(n.ConstString, d[0]); }
 %}
 
 constant -> %sqstring {%
-    function(d) { return [n.ConstString, d[0]]; }
+    function(d) { return Literal(n.ConstString, d[0]); }
 %}
 
 constant -> "n" %dqstring {%
-    function(d) { return [n.ConstName, d[1]]; }
+    function(d) { return CompoundLiteral(n.ConstName, d, null); }
 %}
 
 constant -> const_number {% id %}
@@ -597,17 +783,17 @@ unary_operator
 {% id %}
 
 typename -> const_qualifier:? unqualified_typename ref_qualifiers:? {%
-    function (d) { return {
+    function (d) { return ExtendedCompound(d, {
         ...d[1],
         const_qualifier: d[0],
         ref_qualifier: d[2],
-    }}
+    });}
 %}
 
 unqualified_typename -> typename_identifier {%
     function (d) { return {
-        name: d[0].value,
-        token: d[0],
+        ...Compound(d, n.Typename, null),
+        value: d[0].value,
     }}
 %}
 
@@ -615,59 +801,36 @@ unqualified_typename -> template_typename {% id %}
 
 template_typename -> typename_identifier _ "<" _ template_subtypes _ ">" {%
     function (d) {
-        let name = d[0].value;
-        name += "<";
-        for (let i = 0; i < d[4].length; ++i)
-        {
-            if (i != 0) name += ",";
-            name += d[4][i].name;
-        }
-        name += ">";
         return {
-            name: name,
-            token: d[0],
+            ...CompoundLiteral(n.Typename, d, null),
             basetype: d[0],
             subtypes: d[4],
         };
-}%}
+    }
+%}
 
 template_typename -> typename_identifier _ "<" _ template_subtypes_unterminated _ ">>" {%
     function (d) {
-        let name = d[0].value;
-        name += "<";
-        for (let i = 0; i < d[4].length; ++i)
-        {
-            if (i != 0) name += ",";
-            name += d[4][i].name;
-        }
-        name += ">";
         return {
-            name: name,
-            token: d[0],
+            ...CompoundLiteral(n.Typename, d, null),
             basetype: d[0],
             subtypes: d[4],
         };
-}%}
+    }
+%}
 
 typename_unterminated -> const_qualifier:? typename_identifier _ "<" _ template_subtypes _ {%
     function (d) {
-        let name = d[1].value;
-        name += "<";
-        for (let i = 0; i < d[5].length; ++i)
-        {
-            if (i != 0) name += ",";
-            name += d[5][i].name;
-        }
-        name += ">";
-        return {
-            name: name,
-            token: d[1],
-            const_qualifier: d[0],
-            ref_qualifier: null,
-            basetype: d[1],
-            subtypes: d[5],
+        let node = {
+            ...CompoundLiteral(n.Typename, d, null),
+            basetype: d[0],
+            subtypes: d[4],
         };
-}%}
+        node.value += ">";
+        node.end += 1;
+        return node;
+    }
+%}
 
 template_subtypes -> typename (_ "," _ typename):* {%
     function (d) {
@@ -693,28 +856,12 @@ template_subtypes_unterminated -> (typename _ "," _):* typename_unterminated {%
     }
 %}
 
+typename_identifier -> %template_basetype {%
+    function (d) { return Literal(n.Typename, d[0]); }
+%}
+
 typename_identifier -> (%identifier _ %ns _ ):* %identifier {%
-    function (d)
-    {
-        if (d[0])
-        {
-            let token = {};
-            token.value = "";
-            for (let part of d[0])
-            {
-                if (!token.offset)
-                    token.offset = part[0].offset;
-                token.value += part[0].value;
-                token.value += "::";
-            }
-            token.value += d[1].value;
-            return token;
-        }
-        else
-        {
-            return d[1];
-        }
-    }
+    function (d) { return CompoundLiteral(n.Typename, d, null); }
 %}
 
 const_qualifier -> %const_token _ {%
@@ -725,15 +872,15 @@ ref_qualifiers -> _ "&" ("in" | "out" | "inout"):? {%
 %}
 
 func_qualifiers -> null {%
-    function(d) { return []; }
+    function(d) { return null; }
 %}
 func_qualifiers -> _ (func_qualifier __ ):* func_qualifier {%
     function(d) {
-        let quals = [d[2]];
+        let quals = [d[2].value];
         if (d[1])
         {
             for (let part of d[1])
-                quals.push(part[1]);
+                quals.push(part[1].value);
         }
         return quals;
     }
@@ -765,26 +912,15 @@ case_label -> %lparen _ case_label _ %rparen {%
 %}
 case_label -> ("-" _):? %number {%
     function (d) {
-        let value = d[1];
-        if (d[0])
-        {
-            value.value = d[0][0].value + value.value;
-            value.offset = d[0][0].offset;
-        }
-        return value;
+        return CompoundLiteral(
+            n.ConstInteger,
+            d,
+            null
+        );
     }
 %}
 case_label -> %identifier (_ %ns _ %identifier):* {%
-    function (d)
-    {
-        let name = d[0].value;
-        if (d[1])
-        {
-            for (let sub of d[1])
-                name += "::"+sub[3].value;
-        }
-        return [name, d[0]];
-    }
+    function (d) { return CompoundIdentifier(d, null); }
 %}
 
 enum_statement -> _ {%
@@ -806,30 +942,42 @@ enum_statement -> enum_decl (_ "," _ enum_decl):* {%
 
 enum_decl -> %identifier {% id %}
 enum_decl -> %identifier _ "=" _ enum_value {%
-    function (d) { return [d[0], d[4]]; }
+    function (d) { return {
+        ...Compound(d, n.EnumValue, null),
+        name: Identifier(d[0]),
+        value: d[4],
+   }; }
 %}
 
 enum_value -> %identifier (_ %ns _ %identifier):* {%
-    function (d)
-    {
-        let name = d[0].value;
-        if (d[1])
-        {
-            for (let sub of d[1])
-                name += "::"+sub[3].value;
-        }
-        return [name, d[0]];
-    }
+    function (d) { return CompoundIdentifier(d, null); }
 %}
 
 enum_value -> ("-" _):? %number {%
     function (d) {
-        let value = d[1];
-        if (d[0])
+        return CompoundLiteral(
+            n.ConstInteger,
+            d,
+            null
+        );
+    }
+%}
+
+comment_documentation -> %WS:* (%block_comment %WS:? | %line_comment %WS:?):* {%
+    function (d) {
+        if (d[1])
         {
-            value.value = d[0][0].value + value.value;
-            value.offset = d[0][0].offset;
+            let comment = "";
+            for (let part of d[1])
+            {
+                if (part[0].type == 'block_comment')
+                    comment += part[0].value.substring(2, part[0].value.length - 2);
+                else
+                    comment += part[0].value.substring(2, part[0].value.length);
+                comment += "\n";
+            }
+            return comment;
         }
-        return value;
+        return null;
     }
 %}
