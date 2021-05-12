@@ -162,7 +162,9 @@
             {
                 "language": "angelscript",
                 "scopes": {
-                    "unused_param": ["comment"]
+                    "as_unused_param": ["comment"],
+                    "as_macro": ["macro"],
+                    "as_invalid": ["invalid"]
                 }
             }
         ]

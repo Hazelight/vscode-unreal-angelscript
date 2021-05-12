@@ -157,7 +157,7 @@ function MergeValue(node, d)
             node.end = part.offset + part.text.length;
             node.value += part.value;
         }
-        else
+        else if (part.start)
         {
             // This is a node
             if (node.start == -1)
@@ -186,7 +186,7 @@ function ComputeStartAndEnd(node, d)
                 node.start = part.offset;
             node.end = part.offset + part.text.length;
         }
-        else
+        else if (part.start)
         {
             // This is a node
             if (node.start == -1)
@@ -257,9 +257,12 @@ statement -> %default_token %colon optional_statement {%
     function (d) { return Compound(d, n.CaseStatement, [d[0], d[2]]); }
 %}
 
-statement -> %for_token _ %lparen (_ for_declaration):? _ %semicolon optional_expression _ %semicolon for_comma_expression_list _ %rparen optional_statement {%
-    function (d) { return Compound(d, n.ForLoop, [d[3] ? d[3][1] : null, d[6], d[9], d[12]]); }
+statement -> %for_token _ %lparen (_ for_declaration):? _ %semicolon optional_expression (_ %semicolon for_comma_expression_list):? _ %rparen optional_statement {%
+    function (d) {
+        return Compound(d, n.ForLoop, [d[3] ? d[3][1] : null, d[6], d[7] ? d[7][2] : null, d[10]]);
+    }
 %}
+
 for_declaration -> var_decl {% id %}
 for_declaration -> expression {% id %}
 for_declaration -> assignment {% id %}
@@ -401,13 +404,13 @@ var_decl -> typename _ %identifier {%
         typename: d[0],
     }; }
 %}
-var_decl -> typename _ %identifier _ "=" _ expression {%
+var_decl -> typename _ %identifier _ "=" (_ expression):? {%
     function (d) { return {
         ...Compound(d, n.VariableDecl, null),
         name: Identifier(d[2]),
         typename: d[0],
-        expression: d[6],
-        inline_assignment: true,
+        expression: d[5] ? d[5][1] : null,
+        inline_assignment: d[5] ? true : false,
     }; }
 %}
 var_decl -> typename _ %identifier _ %lparen _ argumentlist _ %rparen {%
@@ -668,7 +671,7 @@ expr_unary -> expr_postfix {% id %}
 
 expr_postfix -> expr_postfix _ %postfix_operator {%
     function (d) { return {
-        ...Compound(d, n.PostFixOperation, [d[0]]),
+        ...Compound(d, n.PostfixOperation, [d[0]]),
         operator: Operator(d[2]),
     };}
 %}
@@ -794,6 +797,7 @@ unqualified_typename -> typename_identifier {%
     function (d) { return {
         ...Compound(d, n.Typename, null),
         value: d[0].value,
+        name: d[0],
     }}
 %}
 
@@ -823,8 +827,8 @@ typename_unterminated -> const_qualifier:? typename_identifier _ "<" _ template_
     function (d) {
         let node = {
             ...CompoundLiteral(n.Typename, d, null),
-            basetype: d[0],
-            subtypes: d[4],
+            basetype: d[1],
+            subtypes: d[5],
         };
         node.value += ">";
         node.end += 1;
@@ -880,7 +884,7 @@ func_qualifiers -> _ (func_qualifier __ ):* func_qualifier {%
         if (d[1])
         {
             for (let part of d[1])
-                quals.push(part[1].value);
+                quals.push(part[0].value);
         }
         return quals;
     }
@@ -963,7 +967,7 @@ enum_value -> ("-" _):? %number {%
     }
 %}
 
-comment_documentation -> %WS:* (%block_comment %WS:? | %line_comment %WS:?):* {%
+comment_documentation -> %WS:* (%block_comment %WS:? | %line_comment %WS:? | %preprocessor_statement %WS:?):* {%
     function (d) {
         if (d[1])
         {
@@ -972,9 +976,10 @@ comment_documentation -> %WS:* (%block_comment %WS:? | %line_comment %WS:?):* {%
             {
                 if (part[0].type == 'block_comment')
                     comment += part[0].value.substring(2, part[0].value.length - 2);
-                else
+                else if (part[0].type == 'line_comment')
                     comment += part[0].value.substring(2, part[0].value.length);
-                comment += "\n";
+                if (comment.length > 0)
+                    comment += "\n";
             }
             return comment;
         }

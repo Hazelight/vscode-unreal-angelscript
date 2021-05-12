@@ -161,7 +161,7 @@ function MergeValue(node, d)
             node.end = part.offset + part.text.length;
             node.value += part.value;
         }
-        else
+        else if (part.start)
         {
             // This is a node
             if (node.start == -1)
@@ -190,7 +190,7 @@ function ComputeStartAndEnd(node, d)
                 node.start = part.offset;
             node.end = part.offset + part.text.length;
         }
-        else
+        else if (part.start)
         {
             // This is a node
             if (node.start == -1)
@@ -255,8 +255,13 @@ var grammar = {
     {"name": "statement$ebnf$1$subexpression$1", "symbols": ["_", "for_declaration"]},
     {"name": "statement$ebnf$1", "symbols": ["statement$ebnf$1$subexpression$1"], "postprocess": id},
     {"name": "statement$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "statement", "symbols": [(lexer.has("for_token") ? {type: "for_token"} : for_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "statement$ebnf$1", "_", (lexer.has("semicolon") ? {type: "semicolon"} : semicolon), "optional_expression", "_", (lexer.has("semicolon") ? {type: "semicolon"} : semicolon), "for_comma_expression_list", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
-        function (d) { return Compound(d, n.ForLoop, [d[3] ? d[3][1] : null, d[6], d[9], d[12]]); }
+    {"name": "statement$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("semicolon") ? {type: "semicolon"} : semicolon), "for_comma_expression_list"]},
+    {"name": "statement$ebnf$2", "symbols": ["statement$ebnf$2$subexpression$1"], "postprocess": id},
+    {"name": "statement$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "statement", "symbols": [(lexer.has("for_token") ? {type: "for_token"} : for_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "statement$ebnf$1", "_", (lexer.has("semicolon") ? {type: "semicolon"} : semicolon), "optional_expression", "statement$ebnf$2", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
+        function (d) {
+            return Compound(d, n.ForLoop, [d[3] ? d[3][1] : null, d[6], d[7] ? d[7][2] : null, d[10]]);
+        }
         },
     {"name": "for_declaration", "symbols": ["var_decl"], "postprocess": id},
     {"name": "for_declaration", "symbols": ["expression"], "postprocess": id},
@@ -413,13 +418,16 @@ var grammar = {
             typename: d[0],
         }; }
         },
-    {"name": "var_decl", "symbols": ["typename", "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"="}, "_", "expression"], "postprocess": 
+    {"name": "var_decl$ebnf$1$subexpression$1", "symbols": ["_", "expression"]},
+    {"name": "var_decl$ebnf$1", "symbols": ["var_decl$ebnf$1$subexpression$1"], "postprocess": id},
+    {"name": "var_decl$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "var_decl", "symbols": ["typename", "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"="}, "var_decl$ebnf$1"], "postprocess": 
         function (d) { return {
             ...Compound(d, n.VariableDecl, null),
             name: Identifier(d[2]),
             typename: d[0],
-            expression: d[6],
-            inline_assignment: true,
+            expression: d[5] ? d[5][1] : null,
+            inline_assignment: d[5] ? true : false,
         }; }
         },
     {"name": "var_decl", "symbols": ["typename", "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
@@ -431,11 +439,11 @@ var grammar = {
             inline_constructor: true,
         }; }
         },
-    {"name": "var_decl$ebnf$1$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma), "_", "var_decl_multi_part"]},
-    {"name": "var_decl$ebnf$1", "symbols": ["var_decl$ebnf$1$subexpression$1"]},
-    {"name": "var_decl$ebnf$1$subexpression$2", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma), "_", "var_decl_multi_part"]},
-    {"name": "var_decl$ebnf$1", "symbols": ["var_decl$ebnf$1", "var_decl$ebnf$1$subexpression$2"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "var_decl", "symbols": ["typename", "_", "var_decl_multi_part", "var_decl$ebnf$1"], "postprocess": 
+    {"name": "var_decl$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma), "_", "var_decl_multi_part"]},
+    {"name": "var_decl$ebnf$2", "symbols": ["var_decl$ebnf$2$subexpression$1"]},
+    {"name": "var_decl$ebnf$2$subexpression$2", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma), "_", "var_decl_multi_part"]},
+    {"name": "var_decl$ebnf$2", "symbols": ["var_decl$ebnf$2", "var_decl$ebnf$2$subexpression$2"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
+    {"name": "var_decl", "symbols": ["typename", "_", "var_decl_multi_part", "var_decl$ebnf$2"], "postprocess": 
         function (d) {
             let vars = [d[2]];
             vars[0].typename = d[0];
@@ -680,7 +688,7 @@ var grammar = {
     {"name": "expr_unary", "symbols": ["expr_postfix"], "postprocess": id},
     {"name": "expr_postfix", "symbols": ["expr_postfix", "_", (lexer.has("postfix_operator") ? {type: "postfix_operator"} : postfix_operator)], "postprocess": 
         function (d) { return {
-            ...Compound(d, n.PostFixOperation, [d[0]]),
+            ...Compound(d, n.PostfixOperation, [d[0]]),
             operator: Operator(d[2]),
         };}
         },
@@ -789,6 +797,7 @@ var grammar = {
         function (d) { return {
             ...Compound(d, n.Typename, null),
             value: d[0].value,
+            name: d[0],
         }}
         },
     {"name": "unqualified_typename", "symbols": ["template_typename"], "postprocess": id},
@@ -816,8 +825,8 @@ var grammar = {
         function (d) {
             let node = {
                 ...CompoundLiteral(n.Typename, d, null),
-                basetype: d[0],
-                subtypes: d[4],
+                basetype: d[1],
+                subtypes: d[5],
             };
             node.value += ">";
             node.end += 1;
@@ -884,7 +893,7 @@ var grammar = {
             if (d[1])
             {
                 for (let part of d[1])
-                    quals.push(part[1].value);
+                    quals.push(part[0].value);
             }
             return quals;
         }
@@ -991,6 +1000,9 @@ var grammar = {
     {"name": "comment_documentation$ebnf$2$subexpression$1$ebnf$2", "symbols": [(lexer.has("WS") ? {type: "WS"} : WS)], "postprocess": id},
     {"name": "comment_documentation$ebnf$2$subexpression$1$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "comment_documentation$ebnf$2$subexpression$1", "symbols": [(lexer.has("line_comment") ? {type: "line_comment"} : line_comment), "comment_documentation$ebnf$2$subexpression$1$ebnf$2"]},
+    {"name": "comment_documentation$ebnf$2$subexpression$1$ebnf$3", "symbols": [(lexer.has("WS") ? {type: "WS"} : WS)], "postprocess": id},
+    {"name": "comment_documentation$ebnf$2$subexpression$1$ebnf$3", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "comment_documentation$ebnf$2$subexpression$1", "symbols": [(lexer.has("preprocessor_statement") ? {type: "preprocessor_statement"} : preprocessor_statement), "comment_documentation$ebnf$2$subexpression$1$ebnf$3"]},
     {"name": "comment_documentation$ebnf$2", "symbols": ["comment_documentation$ebnf$2", "comment_documentation$ebnf$2$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
     {"name": "comment_documentation", "symbols": ["comment_documentation$ebnf$1", "comment_documentation$ebnf$2"], "postprocess": 
         function (d) {
@@ -1001,9 +1013,10 @@ var grammar = {
                 {
                     if (part[0].type == 'block_comment')
                         comment += part[0].value.substring(2, part[0].value.length - 2);
-                    else
+                    else if (part[0].type == 'line_comment')
                         comment += part[0].value.substring(2, part[0].value.length);
-                    comment += "\n";
+                    if (comment.length > 0)
+                        comment += "\n";
                 }
                 return comment;
             }

@@ -146,7 +146,7 @@ let RootUri : string = "";
 
 let SemanticTypes : any = {};
 let SemanticTypeList : Array<string> = [
-	"unused_param", "macro",
+	"unused_param", "macro", "invalid",
 ];
 
 for (let i = 0, Count = SemanticTypeList.length; i < Count; ++i)
@@ -193,7 +193,7 @@ connection.onInitialize((_params): InitializeResult => {
 			implementationProvider: true,
 			semanticTokensProvider: <SemanticTokensOptions> {
 				legend: <SemanticTokensLegend> {
-					tokenTypes: SemanticTypeList,
+					tokenTypes:SemanticTypeList.map(t => "as_"+t),
 					tokenModifiers: [],
 				},
 				range: false,
@@ -293,26 +293,38 @@ connection.languages.semanticTokens.on(function(params : SemanticTokensParams) :
 		return null;
 	scriptfiles.ParseModule(asmodule);
 	scriptfiles.ResolveModule(asmodule);
-	HighlightSymbols(asmodule.rootscope, builder);
+	HighlightSymbols(asmodule, builder);
 
 	return builder.build();
 });
 
-function HighlightSymbols(scope : scriptfiles.ASScope, builder : SemanticTokensBuilder)
+function HighlightSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTokensBuilder)
 {
-	for (let symbol of scope.symbols)
+	for (let symbol of asmodule.symbols)
 	{
-		let pos = scope.module.getPosition(symbol.start);
+		let pos = asmodule.getPosition(symbol.start);
 		let length = symbol.end - symbol.start;
 
-		let type = SemanticTypes.unused_param;
-		let modifiers = 0;
+		let type = -1;
+		switch (symbol.type)
+		{
+			case scriptfiles.ASSymbolType.Parameter:
+				type = SemanticTypes.unused_param;
+			break;
+			case scriptfiles.ASSymbolType.Typename:
+				type = SemanticTypes.invalid;
+			break;
+			case scriptfiles.ASSymbolType.TemplateBaseType:
+				type = SemanticTypes.macro;
+			break;
+		}
 
+		if (type == -1)
+			continue;
+
+		let modifiers = 0;
 		builder.push(pos.line, pos.character, length, type, modifiers);
 	}
-
-    for (let subscope of scope.scopes)
-        HighlightSymbols(subscope, builder);
 }
 
 function getPathName(uri : string) : string

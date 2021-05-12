@@ -842,14 +842,14 @@ export function RemoveModuleFromNamespace(namespace : string, modulename : strin
     dbtype.methods = keepMethods;
 }
 
-export function MergeNamespaceToDB(newtype : DBType, removeOldMethods : boolean = true)
+export function MergeNamespaceToDB(newtype : DBType, removeOldMethods : boolean = true) : DBType
 {
     // Check if we already have a database entry for this namespace
     let dbtype = database.get(newtype.typename);
     if (!dbtype || (dbtype.declaredModule == newtype.declaredModule && removeOldMethods))
     {
         database.set(newtype.typename, newtype);
-        return;
+        return newtype;
     }
 
     // Remove old methods from the same module that we are replacing
@@ -878,4 +878,6 @@ export function MergeNamespaceToDB(newtype : DBType, removeOldMethods : boolean 
     // Now that we're merging methods this type is no longer exclusive to this module
     if (dbtype.declaredModule != newtype.declaredModule)
         dbtype.declaredModule = null;
+
+    return dbtype;
 }

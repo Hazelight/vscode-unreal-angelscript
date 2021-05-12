@@ -54,6 +54,7 @@ export class ASModule
     global_type : typedb.DBType = null;
     namespaces : Array<typedb.DBType> = [];
     types : Array<typedb.DBType> = [];
+    symbols : Array<ASSymbol> = [];
 
     getOffset(position : Position) : number
     {
@@ -119,8 +120,11 @@ export class ASVariable
     isArgument : boolean = false;
     isPrivate : boolean = false;
     isProtected : boolean = false;
+    isAuto : boolean = false;
+    isIterator : boolean = false;
 
     in_statement : boolean = false;
+    node_typename : any = null;
     node_expression : any = null;
 
     start_offset_type : number = -1;
@@ -134,6 +138,9 @@ export class ASVariable
 export enum ASSymbolType
 {
     Parameter,
+    VariableDeclName,
+    Typename,
+    TemplateBaseType,
 };
 
 export class ASSymbol
@@ -155,11 +162,12 @@ export class ASScope extends ASElement
     statements : Array<ASStatement> = [];
     scopes : Array<ASScope> = [];
 
+    element_head : ASElement = null;
+
     scopetype : ASScopeType = null;
     parentscope : ASScope = null;
 
     variables : Array<ASVariable> = [];
-    symbols : Array<ASSymbol> = [];
 
     dbtype : typedb.DBType = null;
     dbfunc : typedb.DBMethod = null;
@@ -414,6 +422,7 @@ function ClearModule(module : ASModule)
 
     module.loaded = false;
     module.parsed = false;
+    module.symbols = [];
     module.resolved = false;
     module.rootscope = null;
     module.textDocument = null;
@@ -522,7 +531,7 @@ export function GetTypeSymbolLocation(modulename : string, typename : string) : 
 }
 
 // Generate a database type for a scope
-function AddDBType(scope : ASScope, typename : string) : typedb.DBType
+function AddDBType(scope : ASScope, typename : string, addToDatabase = true) : typedb.DBType
 {
     let dbtype = new typedb.DBType();
     dbtype.typename = typename;
@@ -533,7 +542,9 @@ function AddDBType(scope : ASScope, typename : string) : typedb.DBType
     dbtype.documentation = null;
     dbtype.isStruct = false;
     dbtype.isEnum = false;
-    typedb.GetDatabase().set(dbtype.typename, dbtype);
+
+    if (addToDatabase)
+        typedb.GetDatabase().set(dbtype.typename, dbtype);
     return dbtype;
 }
 
@@ -576,6 +587,7 @@ function AddParametersToFunction(scope : ASScope, statement : ASStatement, dbfun
         asvar.name = param.name ? param.name.value : null;
         asvar.typename = GetQualifiedTypename(param.typename);
         asvar.node_expression = param.expression;
+        asvar.node_typename = param.typename;
         asvar.isArgument = true;
         asvar.in_statement = true;
 
@@ -635,13 +647,15 @@ function HasMacroSpecifier(macro : any, specifier : string) : boolean
 }
 
 // Add a variable declaration to the scope
-function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : any, in_statement : boolean = false)
+function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : any, in_statement : boolean = false) : ASVariable
 {
     // Add it as a local variable
     let asvar = new ASVariable();
     asvar.name = vardecl.name.value;
     asvar.typename = GetQualifiedTypename(vardecl.typename);
     asvar.node_expression = vardecl.expression;
+    asvar.node_typename = vardecl.typename;
+    asvar.isAuto = vardecl.typename.value == 'auto';
     asvar.in_statement = in_statement;
 
     if (vardecl.documentation)
@@ -674,6 +688,30 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
         dbprop.isProtected = asvar.isProtected;
         scope.dbtype.properties.push(dbprop);
     }
+
+    return asvar;
+}
+
+// Extend a scope to include a previous statement
+function ExtendScopeToStatement(scope : ASScope, statement : ASStatement)
+{
+    scope.start_offset = statement.start_offset;
+    scope.range.start = statement.range.start;
+}
+
+// Create a fake scope to contain variables that are valid in a specif range
+function CreateFakeVariableScope(scope : ASScope, statement : ASStatement) : ASScope
+{
+    let fakescope = new ASScope;
+    fakescope.module = scope.module;
+    fakescope.parentscope = scope;
+    fakescope.start_offset = statement.start_offset;
+    fakescope.end_offset = statement.end_offset;
+    fakescope.range = statement.range;
+    fakescope.parsed = true;
+
+    scope.scopes.push(fakescope);
+    return fakescope;
 }
 
 function GenerateTypeInformation(scope : ASScope)
@@ -710,7 +748,7 @@ function GenerateTypeInformation(scope : ASScope)
         else if (scope.previous.ast.type == node_types.NamespaceDefinition)
         {
             let nsdef = scope.previous.ast;
-            let dbtype = AddDBType(scope, "__"+nsdef.name.value);
+            let dbtype = AddDBType(scope, "__"+nsdef.name.value, false);
             if (nsdef.documentation)
                 dbtype.documentation = typedb.FormatDocumentationComment(nsdef.documentation);
             dbtype.moduleOffset = scope.previous.start_offset + nsdef.name.start;
@@ -775,6 +813,8 @@ function GenerateTypeInformation(scope : ASScope)
             scope.dbfunc = dbfunc;
             if (scope.parentscope && scope.parentscope.dbtype)
                 scope.parentscope.dbtype.methods.push(dbfunc);
+
+            ExtendScopeToStatement(scope, scope.previous);
         }
         // Destructor declaration placed inside a class
         else if (scope.previous.ast.type == node_types.DestructorDecl)
@@ -802,6 +842,34 @@ function GenerateTypeInformation(scope : ASScope)
                 }
             }
         }
+        // We're inside a for loop that may have some declarations in it
+        else if (scope.previous.ast.type == node_types.ForEachLoop)
+        {
+            let fordef = scope.previous.ast;
+
+            // Add a local variable for the loop iterator
+            let asvar = new ASVariable();
+            asvar.name = fordef.children[1].value;
+            asvar.typename = GetQualifiedTypename(fordef.children[0]);
+            asvar.node_typename = fordef.children[0];
+            asvar.node_expression = fordef.children[2];
+            asvar.isAuto = fordef.children[0].value == 'auto';
+            asvar.isIterator = true;
+            asvar.in_statement = true;
+
+            asvar.start_offset_type = scope.previous.start_offset + fordef.children[0].start;
+            asvar.end_offset_type = scope.previous.start_offset + fordef.children[0].end;
+
+            asvar.start_offset_name = scope.previous.start_offset + fordef.children[1].start;
+            asvar.end_offset_name = scope.previous.start_offset + fordef.children[1].end;
+
+            asvar.start_offset_expression = scope.previous.start_offset + fordef.children[2].start;
+            asvar.end_offset_expression = scope.previous.start_offset + fordef.children[2].end;
+
+            scope.variables.push(asvar);
+
+            ExtendScopeToStatement(scope, scope.previous);
+        }
     }
 
     // Add variables for each declaration inside the scope
@@ -812,18 +880,43 @@ function GenerateTypeInformation(scope : ASScope)
 
         if (statement.ast.type == node_types.VariableDecl)
         {
+            // Add variables for declaration statements
             AddVarDeclToScope(scope, statement, statement.ast);
         }
         else if (statement.ast.type == node_types.VariableDeclMulti)
         {
+            // Add variables for multiple declarations in one statement (eg `int X, Y;`)
             for (let child of statement.ast.children)
                 AddVarDeclToScope(scope, statement, child);
+        }
+        else if (statement.ast.type == node_types.ForLoop)
+        {
+            // Add variables declared inside a for loop to a fake scope covering the for loop
+            let fakescope = CreateFakeVariableScope(scope, statement);
+            let for_variables : Array<ASVariable> = [];
+            let fordef = statement.ast;
+            if (fordef.children[0])
+            {
+                if (fordef.children[0].type == node_types.VariableDecl)
+                {
+                    AddVarDeclToScope(fakescope, statement, fordef.children[0], true);
+                }
+                else if (fordef.children[0].type == node_types.VariableDeclMulti)
+                {
+                    for (let child of fordef.children[0].children)
+                        AddVarDeclToScope(fakescope, statement, child, true);
+                }
+            }
         }
     }
 
     // Recurse into subscopes
     for (let subscope of scope.scopes)
         GenerateTypeInformation(subscope);
+
+    // If this was a namespace, merge it after we've generated everything and update the dbtype
+    if (scope.scopetype == ASScopeType.Namespace && scope.dbtype)
+        scope.dbtype = typedb.MergeNamespaceToDB(scope.dbtype, false);
 }
 
 function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType)
@@ -833,34 +926,68 @@ function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : an
     symbol.start = node.start + statement.start_offset;
     symbol.end = node.end + statement.start_offset;
 
-    scope.symbols.push(symbol);
+    scope.module.symbols.push(symbol);
+}
+
+function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any)
+{
+    if (node.basetype)
+    {
+        AddIdentifierSymbol(scope, statement, node.basetype, ASSymbolType.TemplateBaseType);
+        for (let child of node.subtypes)
+            AddTypenameSymbol(scope, statement, child);
+    }
+    else
+    {
+        AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename);
+    }
 }
 
 function ResolveScopeSymbols(scope : ASScope)
 {
     // Look at each statement to see if it has symbols
-    for (let statement of scope.statements)
+    let element = scope.element_head;
+    while (element)
     {
-        if (!statement.ast)
-            continue;
-
-        // Add symbols for parameters in function declarations
-        if (statement.ast.type == node_types.FunctionDecl)
+        if (element instanceof ASStatement)
         {
-            if (statement.ast.parameters)
+            if (element.ast)
+                ResolveNodeSymbols(scope, element, element.ast);
+        }
+        else if (element instanceof ASScope)
+        {
+            ResolveScopeSymbols(element);
+        }
+        element = element.next;
+    }
+}
+
+function ResolveNodeSymbols(scope : ASScope, statement : ASStatement, node : any)
+{
+    // Add symbols for parameters in function declarations
+    if (node.type == node_types.FunctionDecl)
+    {
+        if (node.parameters)
+        {
+            for (let param of node.parameters)
             {
-                for (let param of statement.ast.parameters)
-                {
-                    if (param.name)
-                        AddIdentifierSymbol(scope, statement, param.name, ASSymbolType.Parameter);
-                }
+                if (param.name)
+                    AddIdentifierSymbol(scope, statement, param.name, ASSymbolType.Parameter);
             }
         }
     }
-
-    // Recurse into subscopes
-    for (let subscope of scope.scopes)
-        ResolveScopeSymbols(subscope);
+    else if (node.type == node_types.VariableDecl)
+    {
+        if (node.name)
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.VariableDeclName);
+        if (node.typename)
+            AddTypenameSymbol(scope, statement, node.typename);
+    }
+    else if (node.type == node_types.VariableDeclMulti)
+    {
+        for (let child of node.children)
+            ResolveNodeSymbols(scope, statement, child);
+    }
 }
 
 function ParseScopeIntoStatements(scope : ASScope)
@@ -888,6 +1015,8 @@ function ParseScopeIntoStatements(scope : ASScope)
     let cur_element : ASElement = null;
     function finishElement(element : ASElement)
     {
+        if (!scope.element_head)
+            scope.element_head = element;
         element.previous = cur_element;
         if (cur_element)
             cur_element.next = element;
@@ -1199,6 +1328,7 @@ function ParseStatement(scopetype : ASScopeType, statement : ASStatement, debug 
             parser.restore(parser_enum_statement_initial);
         break;
         case ASScopeType.Function:
+        case ASScopeType.Code:
             parser = parser_statement;
             parser.restore(parser_statement_initial);
         break
