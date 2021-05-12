@@ -1,5 +1,5 @@
 import { TextDocument, } from "vscode-languageserver-textdocument";
-import { Range, Position, CodeLensResolveRequest, Location, } from "vscode-languageserver";
+import { Range, Position, Location, UniquenessLevel, } from "vscode-languageserver";
 
 import * as fs from 'fs';
 import * as nearley from 'nearley';
@@ -168,6 +168,7 @@ export class ASScope extends ASElement
     parentscope : ASScope = null;
 
     variables : Array<ASVariable> = [];
+    variablesByName : Map<string, ASVariable> = new Map<string, ASVariable>();
 
     dbtype : typedb.DBType = null;
     dbfunc : typedb.DBMethod = null;
@@ -241,6 +242,19 @@ export class ASScope extends ASElement
             {
                 return dbType;
             }
+            checkscope = checkscope.parentscope;
+        }
+        return null;
+    }
+
+    getNamespaceParentType() : typedb.DBType
+    {
+        let checkscope : ASScope = this;
+        while (checkscope != null)
+        {
+            let dbType = checkscope.getDatabaseType();
+            if (dbType && checkscope.scopetype == ASScopeType.Namespace)
+                return dbType;
             checkscope = checkscope.parentscope;
         }
         return null;
@@ -374,6 +388,9 @@ export function ResolveModule(module : ASModule)
     if (module.resolved)
         return;
     module.resolved = true;
+
+    // Resolve autos to the correct types
+    ResolveAutos(module.rootscope);
 
     // Resolve symbols used in the scope
     ResolveScopeSymbols(module.rootscope);
@@ -607,7 +624,10 @@ function AddParametersToFunction(scope : ASScope, statement : ASStatement, dbfun
         }
 
         if (asvar.name)
+        {
             scope.variables.push(asvar);
+            scope.variablesByName.set(asvar.name, asvar);
+        }
 
         // Add argument to type database
         let dbarg = new typedb.DBArg();
@@ -627,6 +647,19 @@ function GetQualifiedTypename(typename : any) : string
         strtype = typename.value;
     if (typename.ref_qualifier)
         strtype += typename.ref_qualifier;
+    return strtype;
+}
+
+// Create a qualified typename with qualifiers from a node but a custom typename
+function CopyQualifiersToTypename(qualifiers_from : any, typename : string) : string
+{
+    let strtype : string;
+    if (qualifiers_from.const_qualifier)
+        strtype = qualifiers_from.const_qualifier+" "+typename;
+    else
+        strtype = typename;
+    if (qualifiers_from.ref_qualifier)
+        strtype += qualifiers_from.ref_qualifier;
     return strtype;
 }
 
@@ -673,7 +706,16 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
         asvar.end_offset_expression = statement.start_offset + vardecl.expression.end;
     }
 
+    if (vardecl.access)
+    {
+        if (vardecl.access == "private")
+            asvar.isPrivate = true;
+        else if (vardecl.access == "protected")
+            asvar.isProtected = true;
+    }
+
     scope.variables.push(asvar);
+    scope.variablesByName.set(asvar.name, asvar);
 
     // Add it to the type database
     if (scope.dbtype)
@@ -687,6 +729,7 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
         dbprop.isPrivate = asvar.isPrivate;
         dbprop.isProtected = asvar.isProtected;
         scope.dbtype.properties.push(dbprop);
+        scope.dbtype.addSymbol(dbprop);
     }
 
     return asvar;
@@ -793,9 +836,9 @@ function GenerateTypeInformation(scope : ASScope)
 
             if (funcdef.access)
             {
-                if (funcdef.access = "protected")
+                if (funcdef.access == "protected")
                     dbfunc.isProtected = true;
-                else if (funcdef.access = "private")
+                else if (funcdef.access == "private")
                     dbfunc.isPrivate = true;
             }
 
@@ -812,7 +855,10 @@ function GenerateTypeInformation(scope : ASScope)
 
             scope.dbfunc = dbfunc;
             if (scope.parentscope && scope.parentscope.dbtype)
+            {
                 scope.parentscope.dbtype.methods.push(dbfunc);
+                scope.parentscope.dbtype.addSymbol(dbfunc);
+            }
 
             ExtendScopeToStatement(scope, scope.previous);
         }
@@ -867,6 +913,7 @@ function GenerateTypeInformation(scope : ASScope)
             asvar.end_offset_expression = scope.previous.start_offset + fordef.children[2].end;
 
             scope.variables.push(asvar);
+            scope.variablesByName.set(asvar.name, asvar);
 
             ExtendScopeToStatement(scope, scope.previous);
         }
@@ -891,7 +938,7 @@ function GenerateTypeInformation(scope : ASScope)
         }
         else if (statement.ast.type == node_types.ForLoop)
         {
-            // Add variables declared inside a for loop to a fake scope covering the for loop
+            // Add variables declared inside a for loop to a fake scope covering the for loop's header statement
             let fakescope = CreateFakeVariableScope(scope, statement);
             let for_variables : Array<ASVariable> = [];
             let fordef = statement.ast;
@@ -941,6 +988,468 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any)
     {
         AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename);
     }
+}
+
+function ResolveAutos(scope : ASScope)
+{
+    for (let asvar of scope.variables)
+    {
+        if (!asvar.isAuto)
+            continue;
+        if (!asvar.node_expression)
+            continue;
+
+        let resolvedType = ResolveTypeFromExpression(scope, asvar.node_expression);
+        if (resolvedType && asvar.isIterator)
+            resolvedType = ResolveIteratorType(resolvedType);
+        if (resolvedType)
+            asvar.typename = CopyQualifiersToTypename(asvar.node_typename, resolvedType.typename);
+    }
+
+    for (let subscope of scope.scopes)
+        ResolveAutos(subscope);
+}
+
+function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.DBType
+{
+    if (!node)
+        return null;
+
+    switch (node.type)
+    {
+        // X
+        case node_types.Identifier:
+        {
+            return ResolveTypeFromIdentifier(scope, node.value);
+        }
+        break;
+        // 0.f
+        case node_types.ConstFloat:
+        {
+            return typedb.GetType("float");
+        }
+        break;
+        // 0.0
+        case node_types.ConstDouble:
+        {
+            return typedb.GetType("double");
+        }
+        // 0
+        case node_types.ConstInteger:
+        case node_types.ConstnHexInteger:
+        {
+            return typedb.GetType("int");
+        }
+        break;
+        // "X"
+        case node_types.ConstString:
+        {
+            return typedb.GetType("FString");
+        }
+        break;
+        // n"X"
+        case node_types.ConstName:
+        {
+            return typedb.GetType("FName");
+        }
+        break;
+        // X.Y
+        case node_types.MemberAccess:
+        {
+            let left_type = ResolveTypeFromExpression(scope, node.children[0]);
+            if (!left_type || !node.children[1])
+                return null;
+            return ResolvePropertyType(left_type, node.children[1].value);
+        }
+        break;
+        // X::Y()
+        case node_types.NamespaceAccess:
+        {
+            if (!node.children[0] || !node.children[1] || !node.children[0].value)
+                return null;
+            let nsType = typedb.GetType("__"+node.children[0].value);
+            if (!nsType)
+                return null;
+            return ResolvePropertyType(nsType, node.children[1].value);
+        }
+        break;
+        // X()
+        case node_types.FunctionCall:
+        {
+            let left_func = ResolveFunctionFromExpression(scope, node.children[0]);
+            if (!left_func)
+                return null;
+            return typedb.GetType(left_func.returnType);
+        }
+        break;
+        // TType<TSubType>()
+        case node_types.ConstructorCall:
+            if (!node.children[0] || !node.children[0].value)
+                return null;
+            return typedb.GetType(node.children[0].value);
+        break;
+        // X[]
+        case node_types.IndexOperator:
+        {
+            let left_type = ResolveTypeFromExpression(scope, node.children[0]);
+            if (!left_type)
+                return null;
+            return ResolveTypeFromOperator(scope, left_type, null, "opIndex");
+        }
+        break;
+        // Cast<X>()
+        case node_types.CastOperation:
+        {
+            if (!node.children[0] || !node.children[0].value)
+                return null;
+            return typedb.GetType(node.children[0].value);
+        }
+        break;
+        // X * Y
+        case node_types.BinaryOperation:
+        {
+            if (!node.operator)
+                return null;
+
+            let left_type = ResolveTypeFromExpression(scope, node.children[0]);
+            let right_type = ResolveTypeFromExpression(scope, node.children[1]);
+            return ResolveTypeFromOperator(scope, left_type, right_type, getBinaryOperatorOverloadMethod(node.operator));
+        }
+        break;
+        // -X
+        case node_types.UnaryOperation:
+        {
+            if (!node.operator)
+                return null;
+            let left_type = ResolveTypeFromExpression(scope, node.children[0]);
+            return ResolveTypeFromOperator(scope, left_type, null, getUnaryOperatorOverloadMethod(node.operator));
+        }
+        break;
+        // X++
+        case node_types.PostfixOperation:
+        {
+            if (!node.operator)
+                return null;
+            let left_type = ResolveTypeFromExpression(scope, node.children[0]);
+            return ResolveTypeFromOperator(scope, left_type, null, getPostfixOperatorOverloadMethod(node.operator));
+        }
+        break;
+        // X ? Y : Z
+        case node_types.TernaryOperation:
+        {
+            let left_type = ResolveTypeFromExpression(scope, node.children[1]);
+            if (left_type)
+                return left_type;
+            let right_type = ResolveTypeFromExpression(scope, node.children[2]);
+            if (right_type)
+                return right_type;
+            return null;
+        }
+        break;
+    }
+    return null;
+}
+
+function getBinaryOperatorOverloadMethod(operator : any) : string
+{
+    switch (operator)
+    {
+        case "+": return "opAdd";
+        case "-": return "opSub";
+        case "*": return "opMul";
+        case "/": return "opDiv";
+        case "%": return "opMod";
+        case "**": return "opPow";
+        case "&": return "opAnd";
+        case "|": return "opOr";
+        case "^": return "opXor";
+        case "<<": return "opShl";
+        case ">>": return "opShr";
+        case ">>>": return "opUShr";
+        case "==": return "BOOLEAN";
+        case "!=": return "BOOLEAN";
+        case "<": return "BOOLEAN";
+        case ">": return "BOOLEAN";
+        case ">=": return "BOOLEAN";
+        case "<=": return "BOOLEAN";
+        case "&&": return "BOOLEAN";
+        case "||": return "BOOLEAN";
+    }
+
+    return operator;
+}
+
+function getUnaryOperatorOverloadMethod(operator : any) : string
+{
+    switch (operator)
+    {
+        case "-": return "opNeg";
+        case "~": return "opCom";
+        case "++": return "opPreInc";
+        case "--": return "opPreDec";
+        case "!": return "BOOLEAN";
+    }
+
+    return operator;
+}
+
+function getPostfixOperatorOverloadMethod(operator : any) : string
+{
+    switch (operator)
+    {
+        case "++": return "opPostInc";
+        case "--": return "opPostDec";
+    }
+
+    return operator;
+}
+
+function ResolveIteratorType(dbtype : typedb.DBType) : typedb.DBType
+{
+    // Check if we have an iterator method
+    let iterator_sym = dbtype.findFirstSymbol("Iterator");
+    if (iterator_sym && iterator_sym instanceof typedb.DBMethod)
+    {
+        // Check the return type of the method
+        let return_type = typedb.GetType(iterator_sym.returnType);
+        if (!return_type)
+            return dbtype;
+
+        // Check the Proceed method of the iterator and take its return value as the type
+        let proceed_sym = return_type.findFirstSymbol("Proceed");
+        if (proceed_sym && proceed_sym instanceof typedb.DBMethod)
+        {
+            let proceed_return = typedb.GetType(proceed_sym.returnType);
+            if (proceed_return)
+                return proceed_return;
+        }
+    }
+
+    return dbtype;
+}
+
+function ResolvePropertyType(dbtype : typedb.DBType, name : string) : typedb.DBType
+{
+    if (!dbtype || !name)
+        return null;
+
+    // Find property with this name
+    let usedSymbol = dbtype.findFirstSymbol(name);
+    if (usedSymbol && usedSymbol instanceof typedb.DBProperty)
+        return typedb.GetType(usedSymbol.typename);
+
+    // Find get accessor
+    let getAccessor = dbtype.findFirstSymbol("Get"+name);
+    if (getAccessor && getAccessor instanceof typedb.DBMethod)
+    {
+        if (getAccessor.isProperty)
+            return typedb.GetType(getAccessor.returnType);
+    }
+
+    // Find set accessor
+    let setAccessor = dbtype.findFirstSymbol("Set"+name);
+    if (setAccessor && setAccessor instanceof typedb.DBMethod)
+    {
+        if (setAccessor.isProperty && setAccessor.args.length != 0)
+            return typedb.GetType(setAccessor.args[0].typename);
+    }
+
+    return null;
+}
+
+function ResolveTypeFromIdentifier(scope : ASScope, identifier : string) : typedb.DBType
+{
+    // Find a local variable by this name
+    let checkscope = scope;
+    while (checkscope && checkscope.isInFunctionBody())
+    {
+        let usedVariable = checkscope.variablesByName.get(identifier);
+        if (usedVariable)
+            return typedb.GetType(usedVariable.typename);
+        checkscope = checkscope.parentscope;
+    }
+
+    // Find a symbol in the class we're in
+    let insideType = scope.getParentType();
+    if (insideType)
+    {
+        let usedType = ResolvePropertyType(insideType, identifier);
+        if (usedType)
+            return usedType;
+    }
+
+    // Find a symbol in the namespace we're in
+    let nsType = scope.getNamespaceParentType();
+    if (nsType)
+    {
+        let usedType = ResolvePropertyType(nsType, identifier);
+        if (usedType)
+            return usedType;
+    }
+
+    // Find a symbol in global scope
+    let globalType = scope.module.global_type;
+    if (globalType)
+    {
+        let usedType = ResolvePropertyType(globalType, identifier);
+        if (usedType)
+            return usedType;
+    }
+
+    return null;
+}
+
+function ResolveTypeFromOperator(scope : ASScope, leftType : typedb.DBType, rightType : typedb.DBType, operator : string) : typedb.DBType
+{
+    if (!operator)
+        return null;
+
+    // Some operators always return bools
+    if (operator == "BOOLEAN")
+        return typedb.GetType("bool");
+
+    // If both types are primitives we upgrade to the highest
+    if (leftType && leftType.isPrimitive && rightType && rightType.isPrimitive)
+    {
+        if (leftType.typename == "double")
+            return leftType;
+        if (rightType.typename == "double")
+            return rightType;
+        if (leftType.typename == "float")
+            return leftType;
+        if (rightType.typename == "float")
+            return rightType;
+        return leftType;
+    }
+
+    // Try the operator overload for the left side
+    if (leftType)
+    {
+        let sym = leftType.findFirstSymbol(operator);
+        if (sym && sym instanceof typedb.DBMethod)
+            return typedb.GetType(sym.returnType);
+    }
+
+    // Try the operator overload for the right side
+    if (rightType)
+    {
+        let sym_r = rightType.findFirstSymbol(operator+"_r");
+        if (sym_r && sym_r instanceof typedb.DBMethod)
+            return typedb.GetType(sym_r.returnType);
+    }
+
+    return null;
+}
+
+function ResolveFunctionFromExpression(scope : ASScope, node : any) : typedb.DBMethod
+{
+    if (!node)
+        return null;
+
+    switch (node.type)
+    {
+        // X()
+        case node_types.Identifier:
+        {
+            return ResolveFunctionFromIdentifier(scope, node.value);
+        }
+        break;
+        // X.Y()
+        case node_types.MemberAccess:
+        {
+            if (!node.children[0] || !node.children[1])
+                return null;
+            let left_type = ResolveTypeFromExpression(scope, node.children[0]);
+            if (!left_type)
+                return null;
+            return ResolveFunctionFromType(scope, left_type, node.children[1].value, true);
+        }
+        break;
+        // X::Y()
+        case node_types.NamespaceAccess:
+        {
+            if (!node.children[0] || !node.children[1] || !node.children[0].value)
+                return null;
+            let nsType = typedb.GetType("__"+node.children[0].value);
+            if (!nsType)
+                return null;
+            return ResolveFunctionFromType(scope, nsType, node.children[1].value);
+        }
+        break;
+    }
+    return null;
+}
+
+function ResolveFunctionFromType(scope : ASScope, dbtype : typedb.DBType, name : string, allowUCS = false) : typedb.DBMethod
+{
+    if (!dbtype || !name)
+        return null;
+
+    // Find property with this name
+    let usedSymbol = dbtype.findFirstSymbol(name);
+    if (usedSymbol && usedSymbol instanceof typedb.DBMethod)
+        return usedSymbol;
+
+    if (allowUCS)
+    {
+        // Check if this is a UCS call in the namespace
+        let nsType = scope.getNamespaceParentType();
+        if (nsType)
+        {
+            let usedSymbol = nsType.findFirstSymbol(name);
+            if (usedSymbol && usedSymbol instanceof typedb.DBMethod)
+            {
+                if (usedSymbol.args.length != 0 && typedb.CleanTypeName(usedSymbol.args[0].typename) == dbtype.typename)
+                    return usedSymbol;
+            }
+        }
+
+        // Find a symbol in global scope
+        let globalType = scope.module.global_type;
+        if (globalType)
+        {
+            let usedSymbol = globalType.findFirstSymbol(name);
+            if (usedSymbol && usedSymbol instanceof typedb.DBMethod)
+            {
+                if (usedSymbol.args.length != 0 && typedb.CleanTypeName(usedSymbol.args[0].typename) == dbtype.typename)
+                    return usedSymbol;
+            }
+        }
+    }
+
+    return null;
+}
+
+function ResolveFunctionFromIdentifier(scope : ASScope, identifier : string) : typedb.DBMethod
+{
+    // Find a symbol in the class we're in
+    let insideType = scope.getParentType();
+    if (insideType)
+    {
+        let usedFunc = ResolveFunctionFromType(scope, insideType, identifier, true);
+        if (usedFunc)
+            return usedFunc;
+    }
+
+    // Find a symbol in the namespace we're in
+    let nsType = scope.getNamespaceParentType();
+    if (nsType)
+    {
+        let usedFunc = ResolveFunctionFromType(scope, nsType, identifier);
+        if (usedFunc)
+            return usedFunc;
+    }
+
+    // Find a symbol in global scope
+    let globalType = scope.module.global_type;
+    if (globalType)
+    {
+        let usedFunc = ResolveFunctionFromType(scope, globalType, identifier);
+        if (usedFunc)
+            return usedFunc;
+    }
+
+    return null;
 }
 
 function ResolveScopeSymbols(scope : ASScope)

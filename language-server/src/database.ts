@@ -1,6 +1,11 @@
 import { GetCompletionTypeAndMember } from "./completion";
 
-export class DBProperty
+export interface DBSymbol
+{
+    name : string,
+};
+
+export class DBProperty implements DBSymbol
 {
     name : string;
     typename : string;
@@ -108,7 +113,7 @@ export class DBArg
     }
 };
 
-export class DBMethod
+export class DBMethod implements DBSymbol
 {
     name : string;
     returnType : string;
@@ -268,6 +273,8 @@ export class DBType
     siblingTypes : Array<string>;
     subTypes : Array<string>;
 
+    symbols: Map<string, Array<DBSymbol>> = new Map<string, Array<DBSymbol>>();
+
     createTemplateInstance(actualTypes : Array<string>) : DBType
     {
         if (actualTypes.length != this.subTypes.length)
@@ -289,11 +296,19 @@ export class DBType
 
         inst.properties = [];
         for (let prop of this.properties)
-            inst.properties.push(prop.createTemplateInstance(this.subTypes, actualTypes));
+        {
+            let newProp = prop.createTemplateInstance(this.subTypes, actualTypes);
+            inst.properties.push(newProp);
+            inst.addSymbol(newProp);
+        }
 
         inst.methods = [];
         for (let mth of this.methods)
-            inst.methods.push(mth.createTemplateInstance(this.subTypes, actualTypes));
+        {
+            let newMethod = mth.createTemplateInstance(this.subTypes, actualTypes);
+            inst.methods.push(newMethod);
+            inst.addSymbol(newMethod);
+        }
 
         return inst;
     }
@@ -315,6 +330,7 @@ export class DBType
             let prop = new DBProperty();
             prop.fromJSON(key, input.properties[key]);
             this.properties.push(prop);
+            this.addSymbol(prop);
         }
         this.methods = new Array<DBMethod>();
         for (let key in input.methods)
@@ -322,6 +338,7 @@ export class DBType
             let func = new DBMethod();
             func.fromJSON(input.methods[key]);
             this.methods.push(func);
+            this.addSymbol(func);
         }
 
         if ('subtypes' in input)
@@ -646,6 +663,99 @@ export class DBType
         }
         return false;
     }
+
+    findFirstSymbol(name : string, depth = 100) : DBSymbol | null
+    {
+        let syms = this.symbols.get(name);
+        if (syms && syms.length != 0)
+            return syms[0];
+        if (depth == 0)
+            return null;
+
+        if (this.supertype)
+        {
+            let dbsuper = GetType(this.supertype);
+            if (dbsuper)
+            {
+                let sym = dbsuper.findFirstSymbol(name, depth-1);
+                if (sym)
+                    return sym;
+            }
+        }
+
+        if (this.siblingTypes)
+        {
+            for (let sibling of this.siblingTypes)
+            {
+                let dbsibling = GetType(this.supertype);
+                if (dbsibling)
+                {
+                    let sym = dbsibling.findFirstSymbol(name, depth-1);
+                    if (sym)
+                        return sym;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    findSymbols(name : string, depth = 100) : Array<DBSymbol>
+    {
+        let result : Array<DBSymbol> = [];
+        this.findSymbolsInternal(result, name, depth);
+        return result;
+    }
+
+    private findSymbolsInternal(result : Array<DBSymbol>, name : string, depth : number)
+    {
+        let syms = this.symbols.get(name);
+        for (let sym of syms)
+            result.push(sym);
+
+        if (depth == 0)
+            return;
+
+        if (this.supertype)
+        {
+            let dbsuper = GetType(this.supertype);
+            if (dbsuper)
+                dbsuper.findSymbols(name, depth-1);
+        }
+
+        if (this.siblingTypes)
+        {
+            for (let sibling of this.siblingTypes)
+            {
+                let dbsibling = GetType(this.supertype);
+                if (dbsibling)
+                    dbsibling.findSymbols(name, depth-1);
+            }
+        }
+    }
+
+    addSymbol(symbol : DBSymbol)
+    {
+        let syms = this.symbols.get(symbol.name);
+        if (!syms)
+        {
+            syms = new Array<DBSymbol>();
+            this.symbols.set(symbol.name, syms);
+        }
+
+        syms.push(symbol);
+    }
+
+    removeSymbol(symbol : DBSymbol)
+    {
+        let syms = this.symbols.get(symbol.name);
+        if (syms)
+        {
+            let index = syms.indexOf(symbol);
+            if (index != -1)
+                syms.splice(index, 1);
+        }
+    }
 };
 
 export let database = new Map<string, DBType>();
@@ -831,12 +941,19 @@ export function RemoveModuleFromNamespace(namespace : string, modulename : strin
     }
 
     // Remove old methods from the same module that we are replacing
-    let keepMethods = [];
+    let keepMethods : Array<DBMethod> = [];
+    let removeMethods : Array<DBMethod> = [];
     for (let method of dbtype.methods)
     {
         if (method.declaredModule != modulename)
             keepMethods.push(method);
+        else
+            removeMethods.push(method);
     }
+
+    // Remove symbols for old methods
+    for (let method of removeMethods)
+        dbtype.removeSymbol(method);
 
     // Replace method list in type
     dbtype.methods = keepMethods;
@@ -853,13 +970,16 @@ export function MergeNamespaceToDB(newtype : DBType, removeOldMethods : boolean 
     }
 
     // Remove old methods from the same module that we are replacing
-    let keepMethods = [];
+    let keepMethods : Array<DBMethod> = [];
+    let removeMethods : Array<DBMethod> = [];
     if (removeOldMethods)
     {
         for (let method of dbtype.methods)
         {
             if (method.declaredModule != newtype.declaredModule)
                 keepMethods.push(method);
+            else
+                removeMethods.push(method);
         }
     }
     else
@@ -870,10 +990,17 @@ export function MergeNamespaceToDB(newtype : DBType, removeOldMethods : boolean 
 
     // Add all the new methods we're adding
     for (let method of newtype.methods)
+    {
         keepMethods.push(method);
+        dbtype.addSymbol(method);
+    }
 
     // Replace method list in type
     dbtype.methods = keepMethods;
+
+    // Remove symbols for old methods
+    for (let method of removeMethods)
+        dbtype.removeSymbol(method);
 
     // Now that we're merging methods this type is no longer exclusive to this module
     if (dbtype.declaredModule != newtype.declaredModule)

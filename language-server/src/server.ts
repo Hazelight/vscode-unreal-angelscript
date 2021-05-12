@@ -171,6 +171,7 @@ connection.onInitialize((_params): InitializeResult => {
 			let asmodule = scriptfiles.GetOrCreateModule(getModuleName(uri), file, uri);
 			scriptfiles.UpdateModuleFromDisk(asmodule);
 			scriptfiles.ParseModule(asmodule);
+			scriptfiles.ResolveModule(asmodule);
 		}
 	});
 
@@ -222,6 +223,7 @@ connection.onDidChangeWatchedFiles((_change) => {
 		{
 			scriptfiles.UpdateModuleFromDisk(module);
 			scriptfiles.ParseModule(module);
+			scriptfiles.ResolveModule(module);
 		}
 	}
 });
@@ -393,6 +395,7 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
 	scriptfiles.UpdateModuleFromContent(asmodule, content);
 	scriptfiles.ParseModule(asmodule);
+	scriptfiles.ResolveModule(asmodule);
  });
 
 // Listen on the connection

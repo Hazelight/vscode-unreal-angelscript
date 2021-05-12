@@ -884,15 +884,19 @@ func_qualifiers -> _ (func_qualifier __ ):* func_qualifier {%
         if (d[1])
         {
             for (let part of d[1])
-                quals.push(part[0].value);
+                quals.push(part.value);
         }
         return quals;
     }
 %}
 
-func_qualifier -> "const" | "final" | "override" | "property" {% id %}
+func_qualifier -> ("const" | "final" | "override" | "property") {% 
+    function (d) { return d[0][0]; }
+%}
 
-access_specifier -> "private" | "protected" | "public" {% id %}
+access_specifier -> ("private" | "protected" | "public") {%
+    function (d) { return d[0][0]; }
+%}
 
 _ -> (%WS | %line_comment | %block_comment | %preprocessor_statement):* {%
     function (d) { return null; }

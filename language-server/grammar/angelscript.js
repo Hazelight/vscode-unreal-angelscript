@@ -893,18 +893,24 @@ var grammar = {
             if (d[1])
             {
                 for (let part of d[1])
-                    quals.push(part[0].value);
+                    quals.push(part.value);
             }
             return quals;
         }
         },
-    {"name": "func_qualifier", "symbols": [{"literal":"const"}]},
-    {"name": "func_qualifier", "symbols": [{"literal":"final"}]},
-    {"name": "func_qualifier", "symbols": [{"literal":"override"}]},
-    {"name": "func_qualifier", "symbols": [{"literal":"property"}], "postprocess": id},
-    {"name": "access_specifier", "symbols": [{"literal":"private"}]},
-    {"name": "access_specifier", "symbols": [{"literal":"protected"}]},
-    {"name": "access_specifier", "symbols": [{"literal":"public"}], "postprocess": id},
+    {"name": "func_qualifier$subexpression$1", "symbols": [{"literal":"const"}]},
+    {"name": "func_qualifier$subexpression$1", "symbols": [{"literal":"final"}]},
+    {"name": "func_qualifier$subexpression$1", "symbols": [{"literal":"override"}]},
+    {"name": "func_qualifier$subexpression$1", "symbols": [{"literal":"property"}]},
+    {"name": "func_qualifier", "symbols": ["func_qualifier$subexpression$1"], "postprocess":  
+        function (d) { return d[0][0]; }
+        },
+    {"name": "access_specifier$subexpression$1", "symbols": [{"literal":"private"}]},
+    {"name": "access_specifier$subexpression$1", "symbols": [{"literal":"protected"}]},
+    {"name": "access_specifier$subexpression$1", "symbols": [{"literal":"public"}]},
+    {"name": "access_specifier", "symbols": ["access_specifier$subexpression$1"], "postprocess": 
+        function (d) { return d[0][0]; }
+        },
     {"name": "_$ebnf$1", "symbols": []},
     {"name": "_$ebnf$1$subexpression$1", "symbols": [(lexer.has("WS") ? {type: "WS"} : WS)]},
     {"name": "_$ebnf$1$subexpression$1", "symbols": [(lexer.has("line_comment") ? {type: "line_comment"} : line_comment)]},
