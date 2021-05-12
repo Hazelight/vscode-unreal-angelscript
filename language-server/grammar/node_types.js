@@ -19,6 +19,7 @@ module.exports = {
     NamedArgument: indexed ? i++ : "NamedArgument",
     IndexOperator: indexed ? i++ : "IndexOperator",
     CommaExpression: indexed ? i++ : "CommaExpression",
+    This: indexed ? i++ : "This",
 
     ConstInteger: indexed ? i++ : "ConstInteger",
     ConstHexInteger: indexed ? i++ : "ConstHexInteger",
@@ -26,6 +27,8 @@ module.exports = {
     ConstDouble: indexed ? i++ : "ConstDouble",
     ConstString: indexed ? i++ : "ConstString",
     ConstName: indexed ? i++ : "ConstName",
+    ConstBool: indexed ? i++ : "ConstBool",
+    ConstNullptr: indexed ? i++ : "ConstNullptr",
 
     IfStatement: indexed ? i++ : "IfStatement",
     ElseStatement: indexed ? i++ : "ElseStatement",
@@ -34,6 +37,8 @@ module.exports = {
     ImportFunctionStatement: indexed ? i++ : "ImportFunctionStatement",
     DefaultStatement: indexed ? i++ : "DefaultStatement",
     CaseStatement: indexed ? i++ : "CaseStatement",
+    ContinueStatement: indexed ? i++ : "ContinueStatement",
+    BreakStatement: indexed ? i++ : "BreakStatement",
 
     StructDefinition: indexed ? i++ : "StructDefinition",
     ClassDefinition: indexed ? i++ : "ClassDefinition",

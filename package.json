@@ -162,8 +162,8 @@
             {
                 "language": "angelscript",
                 "scopes": {
-                    "as_unused_param": ["comment"],
-                    "as_macro": ["macro"],
+                    "as_typename": ["comment"],
+                    "as_template_base_type": ["macro"],
                     "as_invalid": ["invalid"]
                 }
             }

@@ -35,6 +35,8 @@ const lexer = moo.compile({
             if_token: "if",
             enum_token: "enum",
             return_token: "return",
+            continue_token: "continue",
+            break_token: "break",
             import_token: "import",
             class_token: "class",
             struct_token: "struct",
@@ -53,6 +55,9 @@ const lexer = moo.compile({
             uproperty: 'UPROPERTY',
             uclass: 'UCLASS',
             ustruct: 'USTRUCT',
+            bool_token: ['true', 'false'],
+            nullptr_token: 'nullptr',
+            this_token: 'this',
 
             // This is a hack to help disambiguate syntax.
             // A statement of `TArray<int> Var` might be parsed as
@@ -255,6 +260,14 @@ statement -> %case_token _ case_label _ %colon optional_statement {%
 
 statement -> %default_token %colon optional_statement {%
     function (d) { return Compound(d, n.CaseStatement, [d[0], d[2]]); }
+%}
+
+statement -> %continue_token {%
+    function (d) { return Literal(n.ContinueStatement, d[0]); }
+%}
+
+statement -> %break_token {%
+    function (d) { return Literal(n.BreakStatement, d[0]); }
 %}
 
 statement -> %for_token _ %lparen (_ for_declaration):? _ %semicolon optional_expression (_ %semicolon for_comma_expression_list):? _ %rparen optional_statement {%
@@ -684,6 +697,10 @@ lvalue -> %identifier {%
     function(d, l) { return Identifier(d[0]); }
 %}
 
+lvalue -> %this_token {% 
+    function (d) { return Literal(n.This, d[0]); }
+%}
+
 lvalue -> lvalue _ "." _ %identifier {%
     function (d) { return Compound(d, n.MemberAccess, [d[0], Identifier(d[4])]); }
 %}
@@ -706,16 +723,23 @@ lvalue -> %cast_token _ "<" _ typename _ ">" _ %lparen _ expression _ %rparen {%
 
 lvalue -> namespace_access {% id %}
 namespace_access -> namespace_access _ "::" _ %identifier {%
-    function (d) { return Compound(d, n.NamespaceAccess, [d[0], d[4]]); }
+    function (d) { return Compound(d, n.NamespaceAccess, [d[0], Identifier(d[4])]); }
 %}
 namespace_access -> %identifier _ "::" _ %identifier {%
-    function (d) { return Compound(d, n.NamespaceAccess, [d[0], d[4]]); }
+    function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), Identifier(d[4])]); }
+%}
+
+lvalue -> %identifier _ "::" {%
+    function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]); }
+%}
+lvalue -> %identifier _ ":" {%
+    function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]); }
 %}
 
 argumentlist -> null {%
     function(d) { return null; }
 %}
-argumentlist -> (argument _ "," _ ):* argument {%
+argumentlist -> (argument _ "," _ ):* argument ",":? {%
     function(d) { 
         let args = [];
         if (d[0])
@@ -778,6 +802,14 @@ constant -> "n" %dqstring {%
 %}
 
 constant -> const_number {% id %}
+
+constant -> %bool_token {% 
+    function (d) { return Literal(n.ConstBool, d[0]); }
+%}
+
+constant -> %nullptr_token {% 
+    function (d) { return Literal(n.ConstNullptr, d[0]); }
+%}
 
 unary_operator
     -> %op_binary_sum

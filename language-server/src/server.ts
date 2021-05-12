@@ -146,7 +146,7 @@ let RootUri : string = "";
 
 let SemanticTypes : any = {};
 let SemanticTypeList : Array<string> = [
-	"unused_param", "macro", "invalid",
+	"typename", "template_base_type", "invalid",
 ];
 
 for (let i = 0, Count = SemanticTypeList.length; i < Count; ++i)
@@ -310,14 +310,14 @@ function HighlightSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTok
 		let type = -1;
 		switch (symbol.type)
 		{
-			case scriptfiles.ASSymbolType.Parameter:
-				type = SemanticTypes.unused_param;
-			break;
-			case scriptfiles.ASSymbolType.Typename:
+			case scriptfiles.ASSymbolType.UnknownError:
 				type = SemanticTypes.invalid;
 			break;
+			case scriptfiles.ASSymbolType.Typename:
+				type = SemanticTypes.typename;
+			break;
 			case scriptfiles.ASSymbolType.TemplateBaseType:
-				type = SemanticTypes.macro;
+				type = SemanticTypes.template_base_type;
 			break;
 		}
 

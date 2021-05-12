@@ -1,5 +1,22 @@
 import { GetCompletionTypeAndMember } from "./completion";
 
+export enum DBAllowSymbol
+{
+    Any,
+    PropertyOnly,
+    FunctionOnly,
+};
+
+export function AllowsFunctions(Type : DBAllowSymbol)
+{
+    return Type != DBAllowSymbol.PropertyOnly;
+}
+
+export function AllowsProperties(Type : DBAllowSymbol)
+{
+    return Type != DBAllowSymbol.FunctionOnly;
+}
+
 export interface DBSymbol
 {
     name : string,
@@ -664,11 +681,22 @@ export class DBType
         return false;
     }
 
-    findFirstSymbol(name : string, depth = 100) : DBSymbol | null
+    findFirstSymbol(name : string, allow_symbols = DBAllowSymbol.Any, depth = 100) : DBSymbol | null
     {
         let syms = this.symbols.get(name);
         if (syms && syms.length != 0)
-            return syms[0];
+        {
+            if (allow_symbols == DBAllowSymbol.Any)
+                return syms[0];
+
+            for (let sym of syms)
+            {
+                if (allow_symbols != DBAllowSymbol.FunctionOnly && sym instanceof DBProperty)
+                    return sym;
+                if (allow_symbols != DBAllowSymbol.PropertyOnly && sym instanceof DBMethod)
+                    return sym;
+            }
+        }
         if (depth == 0)
             return null;
 
@@ -677,7 +705,7 @@ export class DBType
             let dbsuper = GetType(this.supertype);
             if (dbsuper)
             {
-                let sym = dbsuper.findFirstSymbol(name, depth-1);
+                let sym = dbsuper.findFirstSymbol(name, allow_symbols, depth-1);
                 if (sym)
                     return sym;
             }
@@ -690,7 +718,7 @@ export class DBType
                 let dbsibling = GetType(this.supertype);
                 if (dbsibling)
                 {
-                    let sym = dbsibling.findFirstSymbol(name, depth-1);
+                    let sym = dbsibling.findFirstSymbol(name, allow_symbols, depth-1);
                     if (sym)
                         return sym;
                 }
