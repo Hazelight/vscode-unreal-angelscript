@@ -363,6 +363,11 @@ export class ASStatement extends ASElement
     generatedTypes : boolean = false;
 }
 
+let ASKeywords = [
+    "for", "if", "enum", "return", "continue", "break", "import", "class", "struct", "default",
+    "void", "const", "delegate", "event", "else", "while", "for", "case", "Cast", "namespace",
+    "UFUNCTION", "UPROPERTY", "UCLASS", "USTRUCT", "nullptr", "true", "false", "this",
+];
 let ModuleDatabase = new Map<string, ASModule>();
 let ModulesByUri = new Map<string, ASModule>();
 
@@ -428,7 +433,6 @@ export function ParseModule(module : ASModule, debug : boolean = false)
     module.rootscope.module = module;
     module.rootscope.start_offset = 0;
     module.rootscope.end_offset = module.textDocument.getText().length;
-    module.rootscope.range = module.getRange(module.rootscope.start_offset, module.rootscope.end_offset);
 
     // Parse content of file into distinct statements
     ParseScopeIntoStatements(module.rootscope);
@@ -834,7 +838,6 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
 function ExtendScopeToStatement(scope : ASScope, statement : ASStatement)
 {
     scope.start_offset = statement.start_offset;
-    scope.range.start = statement.range.start;
 }
 
 function GenerateTypeInformation(scope : ASScope)
@@ -1094,7 +1097,6 @@ function MoveStatementToSubScope(scope : ASScope, statement : ASStatement, optio
         if (!move_main_statement && optional_statement)
             subscope.start_offset += optional_statement.start;
         subscope.end_offset = statement.end_offset;
-        subscope.range = scope.module.getRange(subscope.start_offset, subscope.end_offset);
         subscope.scopetype = ASScopeType.Code;
         subscope.parsed = true;
 
@@ -1133,6 +1135,9 @@ function MoveStatementToSubScope(scope : ASScope, statement : ASStatement, optio
             prevStatement.next = nextStatement;
         if (nextStatement)
             nextStatement.previous = prevStatement;
+
+        if (scope.element_head == statement)
+            scope.element_head = nextStatement;
 
         statement.previous = null;
         statement.next = subscope.element_head;
@@ -1211,20 +1216,54 @@ function AddUnknownSymbol(scope : ASScope, statement: ASStatement, node : any, h
     AddIdentifierSymbol(scope, statement, node, ASSymbolType.UnknownError);
 }
 
-function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any) : ASSymbol
+function DoesTypenameExist(name : string) : boolean
+{
+    // Could be a type
+    let dbtype = typedb.GetType(name);
+    if (dbtype)
+        return true;
+
+    // Could be an enum
+    let nsType = typedb.GetType("__"+name);
+    if (nsType && nsType.isEnum)
+        return true;
+
+    return false;
+}
+
+function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any, errorOnUnknown = true) : ASSymbol
 {
     if (!node)
         return null;
     if (node.basetype)
     {
-        let baseSymbol = AddIdentifierSymbol(scope, statement, node.basetype, ASSymbolType.TemplateBaseType, null, node.basetype.value);
+        let baseSymbol : ASSymbol = null;
+        if (errorOnUnknown && !DoesTypenameExist(node.basetype.value))
+        {
+            let hasPotentialCompletions = false;
+            AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
+        }
+        else
+        {
+            baseSymbol = AddIdentifierSymbol(scope, statement, node.basetype, ASSymbolType.TemplateBaseType, null, node.basetype.value);
+        }
+
         for (let child of node.subtypes)
-            AddTypenameSymbol(scope, statement, child);
+            AddTypenameSymbol(scope, statement, child, errorOnUnknown);
         return baseSymbol;
     }
     else
     {
-        return AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
+        if (errorOnUnknown && !DoesTypenameExist(node.name.value))
+        {
+            let hasPotentialCompletions = false;
+            AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
+            return null;
+        }
+        else
+        {
+            return AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
+        }
     }
 }
 
@@ -1906,7 +1945,9 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         break;
         // void X(...)
         case node_types.FunctionDecl:
+        case node_types.ConstructorDecl:
         {
+            // Add symbols for all parameters of the function
             if (node.parameters)
             {
                 for (let param of node.parameters)
@@ -1922,6 +1963,14 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         DetectNodeSymbols(scope, statement, param.expression, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
                 }
             }
+
+            // Add the function name
+            if (node.name)
+            {
+                let insideType = scope.dbtype ? scope.dbtype.typename : null;
+                let symType = scope.dbtype ? ASSymbolType.MemberFunction : ASSymbolType.GlobalFunction;
+                AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value);
+            }
         }
         break;
         // Type X;
@@ -1933,7 +1982,11 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
             // Add the name of the variable
             if (node.name)
-                AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.LocalVariable, null, node.name.value);
+            {
+                let insideType = scope.dbtype ? scope.dbtype.typename : null;
+                let symType = scope.dbtype ? ASSymbolType.MemberVariable : ASSymbolType.LocalVariable;
+                AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value);
+            }
             // Detect inside the expression that initializes the variable
             if (node.expression)
             {
@@ -2103,27 +2156,31 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             }
         }
     }
-
-    // It could be a type as well
-    let symType = typedb.GetType(node.value);
-    if (symType)
+    
+    // We might be typing a typename at the start of a declaration, which accidentally got parsed as an identifier due to incompleteness
+    if (node == statement.ast && scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 2))
     {
-        AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, symType.typename);
+        // It could be a type as well
+        let symType = typedb.GetType(node.value);
+        if (symType)
+        {
+            AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, symType.typename);
 
-        // We do not return the symbol here, because we tried to parse a typename as an identifier
-        // This should only happen on incomplete statements.
-        return null;
-    }
+            // We do not return the symbol here, because we tried to parse a typename as an identifier
+            // This should only happen on incomplete statements.
+            return null;
+        }
 
-    // We could be typing a namespace
-    let nsType = typedb.GetType("__"+node.value);
-    if (nsType)
-    {
-        AddIdentifierSymbol(scope, statement, node, ASSymbolType.Namespace, null, nsType.typename);
+        // We could be typing a namespace
+        let nsType = typedb.GetType("__"+node.value);
+        if (nsType)
+        {
+            AddIdentifierSymbol(scope, statement, node, ASSymbolType.Namespace, null, nsType.typename);
 
-        // We do not return the symbol here, because we tried to parse a namespace as an identifier
-        // This should only happen on incomplete statements.
-        return null;
+            // We do not return the symbol here, because we tried to parse a namespace as an identifier
+            // This should only happen on incomplete statements.
+            return null;
+        }
     }
 
     // This symbol is entirely unknown, maybe emit an invalid symbol so the user knows
@@ -2209,6 +2266,13 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
         if (dbtype[1].typename.startsWith(identifierPrefix))
             return true;
         if (dbtype[1].typename.startsWith("__"+identifierPrefix))
+            return true;
+    }
+
+    // Maybe we're typing a keyword?
+    for (let kw of ASKeywords)
+    {
+        if (kw.startsWith(identifierPrefix))
             return true;
     }
 
@@ -2379,7 +2443,6 @@ function ParseScopeIntoStatements(scope : ASScope)
                 statement.content = content;
                 statement.start_offset = statement_start;
                 statement.end_offset = cur_offset;
-                statement.range = scope.module.getRange(statement_start, cur_offset);
 
                 scope.statements.push(statement);
                 finishElement(statement);
@@ -2514,7 +2577,6 @@ function ParseScopeIntoStatements(scope : ASScope)
                 subscope.module = scope.module;
                 subscope.start_offset = scope_start+1;
                 subscope.end_offset = cur_offset;
-                subscope.range = scope.module.getRange(subscope.start_offset, subscope.end_offset);
 
                 scope.scopes.push(subscope);
                 finishElement(subscope);
@@ -2622,15 +2684,210 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
     DetermineScopeType(scope);
 
     // Statements we detected should be parsed
-    for (let statement of scope.statements)
+    for (let i = 0, count = scope.statements.length; i < count; ++i)
     {
-        if (statement)
-            ParseStatement(scope.scopetype, statement, debug);
+        let statement = scope.statements[i];
+        if (!statement)
+            continue;
+
+        ParseStatement(scope.scopetype, statement, debug);
+
+        // The statement failed to parse, and we are currently editing
+        // inside it. It's likely that we are typing a new statement in front of
+        // the next statement, but haven't typed the semicolon yet.
+        // In this case we will try to split it into two statements instead.
+        if (!statement.ast && scope.module.isEditingInside(statement.start_offset, statement.end_offset))
+        {
+            let splitContent = SplitStatementBasedOnEdit(statement.content, scope.module.lastEdit - statement.start_offset);
+            if (splitContent && splitContent.length != 0)
+            {
+                let orig_start = statement.start_offset;
+                let orig_end = statement.end_offset;
+
+                // Replace current statement with first split element
+                statement.content = splitContent[0];
+                statement.end_offset = statement.start_offset + statement.content.length;
+                statement.parsed = false;
+                ParseStatement(scope.scopetype, statement, debug);
+
+                // Add new statements for each element in the split
+                let splitOffset = statement.end_offset;
+                let prevStatement = statement;
+                for (let splitIndex = 1; splitIndex < splitContent.length; ++splitIndex)
+                {
+                    let newStatement = new ASStatement();
+                    newStatement.content = splitContent[splitIndex];
+                    newStatement.start_offset = splitOffset;
+                    newStatement.end_offset = splitOffset + newStatement.content.length;
+
+                    newStatement.previous = prevStatement;
+                    newStatement.next = prevStatement.next;
+
+                    if (prevStatement.next)
+                        prevStatement.next.previous = newStatement;
+                    prevStatement.next = newStatement;
+
+                    scope.statements.push(newStatement);
+
+                    ParseStatement(scope.scopetype, newStatement, debug);
+                }
+            }
+        }
     }
 
     // Also parse any subscopes we detected
     for (let subscope of scope.scopes)
         ParseAllStatements(subscope, debug)
+}
+
+function SplitStatementBasedOnEdit(content : string, editOffset : number) : Array<string>
+{
+    // Find the first linebreak after the edit position that completes all brackets before the edit position
+    let length = content.length;
+
+    let in_preprocessor_directive = false;
+    let in_line_comment = false;
+    let in_block_comment = false;
+    let in_dq_string = false;
+    let in_sq_string = false;
+    let in_escape_sequence = false;
+
+    let depth_brace = 0;
+    let depth_paren = 0;
+    let depth_squarebracket = 0;
+
+    for (let splitIndex = 0; splitIndex < length; ++splitIndex)
+    {
+        let curchar = content[splitIndex];
+        if (curchar == '\n')
+        {
+            if (in_preprocessor_directive)
+                in_preprocessor_directive = false;
+
+            if (in_line_comment)
+                in_line_comment = false;
+        }
+
+        if (in_line_comment)
+            continue;
+
+        if (in_block_comment)
+        {
+            if (curchar == '/' && content[splitIndex-1] == '*')
+            {
+                in_block_comment = false;
+            }
+            continue;
+        }
+
+        if (in_sq_string)
+        {
+            if (!in_escape_sequence && curchar == '\'')
+            {
+                in_sq_string = false;
+            }
+
+            if (curchar == '\\')
+                in_escape_sequence = true;
+            else
+                in_escape_sequence = false;
+            continue;
+        }
+
+        if (in_dq_string)
+        {
+            if (!in_escape_sequence && curchar == '"')
+            {
+                in_dq_string = false;
+            }
+
+            if (curchar == '\\')
+                in_escape_sequence = true;
+            else
+                in_escape_sequence = false;
+            continue;
+        }
+
+        if (in_preprocessor_directive)
+            continue;
+
+        // String Literals
+        if (curchar == '"')
+        {
+            in_dq_string = true;
+            continue;
+        }
+
+        if (curchar == '\'')
+        {
+            in_sq_string = true;
+            continue;
+        }
+
+        // Comments
+        if (curchar == '/' && splitIndex+1 < length && content[splitIndex+1] == '/')
+        {
+            in_line_comment = true;
+            continue;
+        }
+
+        if (curchar == '/' && splitIndex+1 < length && content[splitIndex+1] == '*')
+        {
+            in_block_comment = true;
+            continue;
+        }
+
+        // Preprocessor directives
+        if (curchar == '#' && depth_brace == 0)
+        {
+            in_preprocessor_directive = true;
+            continue;
+        }
+
+        if (curchar == '{')
+            depth_brace += 1;
+        else if (curchar == '}')
+            depth_brace -= 1;
+
+        if (curchar == '(')
+            depth_paren += 1;
+        else if (curchar == ')')
+            depth_paren -= 1;
+
+        if (curchar == '[')
+            depth_squarebracket += 1;
+        else if (curchar == ']')
+            depth_squarebracket -= 1;
+
+        // Once we encounter a linebreak that is both after the
+        // edit position, and also all parens and brackets have been closed,
+        // we split it into two statements.
+        if (splitIndex > editOffset && curchar == '\n'
+            && depth_brace == 0 && depth_paren == 0 && depth_squarebracket == 0)
+        {
+            return [
+                content.substring(0, splitIndex+1),
+                content.substring(splitIndex+1),
+            ];
+        }
+    }
+
+    // We didn't find a valid split that satisfies the bracket condition,
+    // but we should still fall back to splitting after the line that we
+    // are currently editing, in case that creates something valid.
+    for (let splitIndex = editOffset; splitIndex < length; ++splitIndex)
+    {
+        let curchar = content[splitIndex];
+        if (curchar == '\n')
+        {
+            return [
+                content.substring(0, splitIndex+1),
+                content.substring(splitIndex+1),
+            ];
+        }
+    }
+
+    return null;
 }
 
 function DisambiguateStatement(ast : any) : any

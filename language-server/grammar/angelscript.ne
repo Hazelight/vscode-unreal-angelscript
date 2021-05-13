@@ -746,7 +746,7 @@ lvalue -> %lparen _ %rparen {%
     function (d) { return null; }
 %}
 # INCOMPLETE: Attempts to parse an incomplete member access while the user is typing
-expression -> expression _ (%op_binary_product | %op_binary_sum | %op_binary_bitwise | %op_binary_compare | %op_binary_logic) {%
+expression -> expression _ (%op_binary_product | %op_binary_sum | %op_binary_bitwise | %op_binary_compare | %op_binary_logic | %lparen | %lsqbracket) {%
     function (d) { return {
         ...Compound(d, n.BinaryOperation, [d[0], null]),
         operator: Operator(d[2][0]),

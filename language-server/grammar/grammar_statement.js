@@ -752,6 +752,8 @@ var grammar = {
     {"name": "expression$subexpression$1", "symbols": [(lexer.has("op_binary_bitwise") ? {type: "op_binary_bitwise"} : op_binary_bitwise)]},
     {"name": "expression$subexpression$1", "symbols": [(lexer.has("op_binary_compare") ? {type: "op_binary_compare"} : op_binary_compare)]},
     {"name": "expression$subexpression$1", "symbols": [(lexer.has("op_binary_logic") ? {type: "op_binary_logic"} : op_binary_logic)]},
+    {"name": "expression$subexpression$1", "symbols": [(lexer.has("lparen") ? {type: "lparen"} : lparen)]},
+    {"name": "expression$subexpression$1", "symbols": [(lexer.has("lsqbracket") ? {type: "lsqbracket"} : lsqbracket)]},
     {"name": "expression", "symbols": ["expression", "_", "expression$subexpression$1"], "postprocess": 
         function (d) { return {
             ...Compound(d, n.BinaryOperation, [d[0], null]),
