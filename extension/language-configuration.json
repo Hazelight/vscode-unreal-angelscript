@@ -19,11 +19,6 @@
         ["\"", "\""],
         ["n\"", "\""],
         ["'", "'"],
-        ["Cast<", ">"],
-        ["TArray<", ">"],
-        ["TMap<", ">"],
-        ["TSet<", ">"],
-        ["TSubclassOf<", ">"],
     ],
     // symbols that that can be used to surround a selection
     "surroundingPairs": [

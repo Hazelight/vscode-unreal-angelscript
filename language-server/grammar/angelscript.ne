@@ -701,19 +701,19 @@ lvalue -> %this_token {%
     function (d) { return Literal(n.This, d[0]); }
 %}
 
-lvalue -> lvalue _ "." _ %identifier {%
+lvalue -> lvalue _ %dot _ %identifier {%
     function (d) { return Compound(d, n.MemberAccess, [d[0], Identifier(d[4])]); }
 %}
-lvalue -> "(" _ expression _ ")" {%
+lvalue -> %lparen _ expression _ %rparen {%
     function (d) { return d[2]; }
 %}
-lvalue -> lvalue _ "(" _ argumentlist _ ")" {%
+lvalue -> lvalue _ %lparen _ argumentlist _ %rparen {%
     function (d) { return Compound(d, n.FunctionCall, [d[0], d[4]]); }
 %}
 lvalue -> lvalue _ "[" _ expression _ "]" {%
     function (d) { return Compound(d, n.IndexOperator, [d[0], d[4]]); }
 %}
-lvalue -> template_typename _ "(" _ argumentlist _ ")" {%
+lvalue -> template_typename _ %lparen _ argumentlist _ %rparen {%
     function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
 %}
 
@@ -729,11 +729,17 @@ namespace_access -> %identifier _ "::" _ %identifier {%
     function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), Identifier(d[4])]); }
 %}
 
+# INCOMPLETE: Attempts to parse an incomplete namespace access while the user is typing
 lvalue -> %identifier _ "::" {%
     function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]); }
 %}
+# INCOMPLETE: Attempts to parse an incomplete namespace access while the user is typing
 lvalue -> %identifier _ ":" {%
     function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]); }
+%}
+# INCOMPLETE: Attempts to parse an incomplete member access while the user is typing
+lvalue -> lvalue _ %dot {%
+    function (d) { return Compound(d, n.MemberAccess, [d[0], null]); }
 %}
 
 argumentlist -> null {%
@@ -837,8 +843,17 @@ unqualified_typename -> template_typename {% id %}
 
 template_typename -> typename_identifier _ "<" _ template_subtypes _ ">" {%
     function (d) {
+        let typename = d[0].value+"<";
+        for (let i = 0; i < d[4].length; ++i)
+        {
+            if (i != 0) typename += ",";
+            typename += d[4][i].value;
+        }
+        typename += ">";
+
         return {
-            ...CompoundLiteral(n.Typename, d, null),
+            ...Compound(d, n.Typename, null),
+            value: typename,
             basetype: d[0],
             subtypes: d[4],
         };
@@ -847,8 +862,17 @@ template_typename -> typename_identifier _ "<" _ template_subtypes _ ">" {%
 
 template_typename -> typename_identifier _ "<" _ template_subtypes_unterminated _ ">>" {%
     function (d) {
+        let typename = d[0].value+"<";
+        for (let i = 0; i < d[4].length; ++i)
+        {
+            if (i != 0) typename += ",";
+            typename += d[4][i].value;
+        }
+        typename += ">";
+
         return {
-            ...CompoundLiteral(n.Typename, d, null),
+            ...Compound(d, n.Typename, null),
+            value: typename,
             basetype: d[0],
             subtypes: d[4],
         };
@@ -857,12 +881,20 @@ template_typename -> typename_identifier _ "<" _ template_subtypes_unterminated 
 
 typename_unterminated -> const_qualifier:? typename_identifier _ "<" _ template_subtypes _ {%
     function (d) {
+        let typename = d[1].value+"<";
+        for (let i = 0; i < d[5].length; ++i)
+        {
+            if (i != 0) typename += ",";
+            typename += d[5][i].value;
+        }
+        typename += ">";
+
         let node = {
-            ...CompoundLiteral(n.Typename, d, null),
+            ...Compound(d, n.Typename, null),
+            value: typename,
             basetype: d[1],
             subtypes: d[5],
         };
-        node.value += ">";
         node.end += 1;
         return node;
     }

@@ -712,19 +712,19 @@ var grammar = {
     {"name": "lvalue", "symbols": [(lexer.has("this_token") ? {type: "this_token"} : this_token)], "postprocess":  
         function (d) { return Literal(n.This, d[0]); }
         },
-    {"name": "lvalue", "symbols": ["lvalue", "_", {"literal":"."}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
+    {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("dot") ? {type: "dot"} : dot), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
         function (d) { return Compound(d, n.MemberAccess, [d[0], Identifier(d[4])]); }
         },
-    {"name": "lvalue", "symbols": [{"literal":"("}, "_", "expression", "_", {"literal":")"}], "postprocess": 
+    {"name": "lvalue", "symbols": [(lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return d[2]; }
         },
-    {"name": "lvalue", "symbols": ["lvalue", "_", {"literal":"("}, "_", "argumentlist", "_", {"literal":")"}], "postprocess": 
+    {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.FunctionCall, [d[0], d[4]]); }
         },
     {"name": "lvalue", "symbols": ["lvalue", "_", {"literal":"["}, "_", "expression", "_", {"literal":"]"}], "postprocess": 
         function (d) { return Compound(d, n.IndexOperator, [d[0], d[4]]); }
         },
-    {"name": "lvalue", "symbols": ["template_typename", "_", {"literal":"("}, "_", "argumentlist", "_", {"literal":")"}], "postprocess": 
+    {"name": "lvalue", "symbols": ["template_typename", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
         },
     {"name": "lvalue", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", {"literal":"<"}, "_", "typename", "_", {"literal":">"}, "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
@@ -737,11 +737,14 @@ var grammar = {
     {"name": "namespace_access", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"::"}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
         function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), Identifier(d[4])]); }
         },
-    {"name": "namespace_access", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"::"}], "postprocess": 
+    {"name": "lvalue", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"::"}], "postprocess": 
         function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]); }
         },
-    {"name": "namespace_access", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":":"}], "postprocess": 
+    {"name": "lvalue", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":":"}], "postprocess": 
         function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]); }
+        },
+    {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("dot") ? {type: "dot"} : dot)], "postprocess": 
+        function (d) { return Compound(d, n.MemberAccess, [d[0], null]); }
         },
     {"name": "argumentlist", "symbols": [], "postprocess": 
         function(d) { return null; }
@@ -831,8 +834,17 @@ var grammar = {
     {"name": "unqualified_typename", "symbols": ["template_typename"], "postprocess": id},
     {"name": "template_typename", "symbols": ["typename_identifier", "_", {"literal":"<"}, "_", "template_subtypes", "_", {"literal":">"}], "postprocess": 
         function (d) {
+            let typename = d[0].value+"<";
+            for (let i = 0; i < d[4].length; ++i)
+            {
+                if (i != 0) typename += ",";
+                typename += d[4][i].value;
+            }
+            typename += ">";
+        
             return {
-                ...CompoundLiteral(n.Typename, d, null),
+                ...Compound(d, n.Typename, null),
+                value: typename,
                 basetype: d[0],
                 subtypes: d[4],
             };
@@ -840,8 +852,17 @@ var grammar = {
         },
     {"name": "template_typename", "symbols": ["typename_identifier", "_", {"literal":"<"}, "_", "template_subtypes_unterminated", "_", {"literal":">>"}], "postprocess": 
         function (d) {
+            let typename = d[0].value+"<";
+            for (let i = 0; i < d[4].length; ++i)
+            {
+                if (i != 0) typename += ",";
+                typename += d[4][i].value;
+            }
+            typename += ">";
+        
             return {
-                ...CompoundLiteral(n.Typename, d, null),
+                ...Compound(d, n.Typename, null),
+                value: typename,
                 basetype: d[0],
                 subtypes: d[4],
             };
@@ -851,12 +872,20 @@ var grammar = {
     {"name": "typename_unterminated$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "typename_unterminated", "symbols": ["typename_unterminated$ebnf$1", "typename_identifier", "_", {"literal":"<"}, "_", "template_subtypes", "_"], "postprocess": 
         function (d) {
+            let typename = d[1].value+"<";
+            for (let i = 0; i < d[5].length; ++i)
+            {
+                if (i != 0) typename += ",";
+                typename += d[5][i].value;
+            }
+            typename += ">";
+        
             let node = {
-                ...CompoundLiteral(n.Typename, d, null),
+                ...Compound(d, n.Typename, null),
+                value: typename,
                 basetype: d[1],
                 subtypes: d[5],
             };
-            node.value += ">";
             node.end += 1;
             return node;
         }

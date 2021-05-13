@@ -6,7 +6,7 @@ import {
 	CompletionItemKind, SignatureHelp, Hover, DocumentSymbolParams, SymbolInformation,
 	WorkspaceSymbolParams, Definition, ExecuteCommandParams, VersionedTextDocumentIdentifier, Location,
 	TextDocumentSyncKind, DocumentHighlight, SemanticTokensOptions, SemanticTokensLegend,
-	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder
+	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder, ReferenceOptions, ReferenceParams
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -14,6 +14,7 @@ import { Socket } from 'net';
 import * as scriptfiles from './as_parser';
 import * as completion from './completion';
 import * as typedb from './database';
+import * as scriptreferences from './references';
 import * as fs from 'fs';
 let glob = require('glob');
 
@@ -171,7 +172,7 @@ connection.onInitialize((_params): InitializeResult => {
 			let asmodule = scriptfiles.GetOrCreateModule(getModuleName(uri), file, uri);
 			scriptfiles.UpdateModuleFromDisk(asmodule);
 			scriptfiles.ParseModule(asmodule);
-			scriptfiles.ResolveModule(asmodule);
+			//scriptfiles.ResolveModule(asmodule);
 		}
 	});
 
@@ -192,6 +193,7 @@ connection.onInitialize((_params): InitializeResult => {
 			workspaceSymbolProvider: true,
 			definitionProvider: true,
 			implementationProvider: true,
+			referencesProvider: true,
 			semanticTokensProvider: <SemanticTokensOptions> {
 				legend: <SemanticTokensLegend> {
 					tokenTypes:SemanticTypeList.map(t => "as_"+t),
@@ -285,6 +287,11 @@ connection.onDocumentSymbol((_params : DocumentSymbolParams) : SymbolInformation
 
 connection.onWorkspaceSymbol((_params : WorkspaceSymbolParams) : SymbolInformation[] => {
 	return completion.WorkspaceSymbols(_params.query);
+});
+
+connection.onReferences(function (params : ReferenceParams) : Location[]
+{
+	return scriptreferences.FindReferences(params.textDocument.uri, params.position);
 });
 
 connection.languages.semanticTokens.on(function(params : SemanticTokensParams) : SemanticTokens | null

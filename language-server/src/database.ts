@@ -20,6 +20,7 @@ export function AllowsProperties(Type : DBAllowSymbol)
 export interface DBSymbol
 {
     name : string,
+    containingType : string,
 };
 
 export class DBProperty implements DBSymbol
@@ -34,6 +35,8 @@ export class DBProperty implements DBSymbol
 
     declaredModule : string | null;
     moduleOffset : number;
+
+    containingType : string = null;
 
     fromJSON(name : string, input : any)
     {
@@ -147,6 +150,7 @@ export class DBMethod implements DBSymbol
     isProperty : boolean = false;
     isDefaultsOnly : boolean = false;
     id : number = NextMethodId++;
+    containingType : string = null;
 
     createTemplateInstance(templateTypes : Array<string>, actualTypes : Array<string>) : DBMethod
     {
@@ -771,6 +775,7 @@ export class DBType
             this.symbols.set(symbol.name, syms);
         }
 
+        symbol.containingType = this.typename;
         syms.push(symbol);
     }
 
@@ -887,6 +892,8 @@ export function GetType(typename : string) : DBType | null
                 return null;
 
             let inst = dbbasetype.createTemplateInstance(subtypes);
+            if (!inst)
+                return null;
             inst.typename = typename;
             if (!inst)
                 return null;
