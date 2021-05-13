@@ -320,7 +320,7 @@ function CanCompleteTo(completing : string, suggestion : string) : boolean
 
 function GetTypeCompletions(initialTerm : string, completions : Array<CompletionItem>, expressionType : ASExpressionType)
 {
-    for (let [typename, dbtype] of typedb.GetDatabase())
+    for (let [typename, dbtype] of typedb.GetAllTypes())
     {
         if (dbtype.isShadowedNamespace())
             continue;

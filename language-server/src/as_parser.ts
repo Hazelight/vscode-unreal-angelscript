@@ -525,7 +525,7 @@ function ClearModule(module : ASModule)
     {
         // Remove the module globals from the type database
         if (module.global_type)
-            typedb.GetDatabase().delete(module.global_type.typename);
+            typedb.RemoveTypeFromDatabase(module.global_type);
 
         // Remove symbols from old namespaces
         for (let ns of module.namespaces)
@@ -533,7 +533,7 @@ function ClearModule(module : ASModule)
 
         // Remove types declared in this file
         for (let type of module.types)
-            typedb.GetDatabase().delete(type.typename);
+            typedb.RemoveTypeFromDatabase(type);
     }
 
     module.loaded = false;
@@ -660,7 +660,7 @@ function AddDBType(scope : ASScope, typename : string, addToDatabase = true) : t
     dbtype.isEnum = false;
 
     if (addToDatabase)
-        typedb.GetDatabase().set(dbtype.typename, dbtype);
+        typedb.AddTypeToDatabase(dbtype);
     return dbtype;
 }
 
@@ -1228,6 +1228,10 @@ function DoesTypenameExist(name : string) : boolean
     if (nsType && nsType.isEnum)
         return true;
 
+    // Could be auto
+    if (name == 'auto')
+        return true;
+
     return false;
 }
 
@@ -1241,7 +1245,7 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
         if (errorOnUnknown && !DoesTypenameExist(node.basetype.value))
         {
             let hasPotentialCompletions = false;
-            AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
+            AddUnknownSymbol(scope, statement, node.basetype, hasPotentialCompletions);
         }
         else
         {
@@ -1257,7 +1261,9 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
         if (errorOnUnknown && !DoesTypenameExist(node.name.value))
         {
             let hasPotentialCompletions = false;
-            AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
+            if (scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 2))
+                hasPotentialCompletions = typedb.HasTypeWithPrefix(node.name.value);
+            AddUnknownSymbol(scope, statement, node.name, hasPotentialCompletions);
             return null;
         }
         else
@@ -1822,7 +1828,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (!nsType)
             {
                 if (allow_errors)
+                {
                     AddUnknownSymbol(scope, statement, node.children[0], false);
+                    AddUnknownSymbol(scope, statement, node.children[1], false);
+                }
                 return null;
             }
 
@@ -1979,7 +1988,47 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // Add the typename of the variable
             let typenameSymbol : ASSymbol = null;
             if (node.typename)
-                typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
+            {
+                if (scope.module.isEditingInside(node.typename.start + statement.start_offset, node.typename.end + statement.start_offset + 2))
+                {
+                    // This one gets a bit tricky if we are currently editing the typename.
+                    // It's very likely that we detected a statement that is incomplete as a variable declaration
+                    // For example: (| as cursor)
+                    ////  PreviousCa|
+                    ////  PreviousCameraWorldLocation = CamLoc
+                    // The above gets detected as a variable declaration, but because the PreviousCa type
+                    // doesn't exist, doing AddTypenameSymbol would error.
+                    // So if we are editing the typename, we need to _also_ check for a valid identifier!
+                    if (DoesTypenameExist(node.typename.value))
+                    {
+                        // Easy case, type exists, mark it as a typename
+                        typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
+                    }
+                    else
+                    {
+                        let identifierSymbol = DetectIdentifierSymbols(scope, statement, node.typename, false, typedb.DBAllowSymbol.Any);
+                        if (identifierSymbol)
+                        {
+                            // We were typing a valid identifier, symbol was already emitted, so we are done.
+                        }
+                        else
+                        {
+                            // There was no valid identifier, but it's possible we're typing an incomplete one
+                            let hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, node.typename.value, typedb.DBAllowSymbol.Any);
+                            if (!hasPotentialCompletions)
+                            {
+                                // Now we can add it as a typename symbol, because we know it cannot possibly be an identifier symbol
+                                typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
+                }
+            }
+
             // Add the name of the variable
             if (node.name)
             {
@@ -2261,7 +2310,7 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
     }
 
     // It could be a type as well
-    for (let dbtype of typedb.GetDatabase())
+    for (let dbtype of typedb.GetAllTypes())
     {
         if (dbtype[1].typename.startsWith(identifierPrefix))
             return true;
@@ -2556,6 +2605,9 @@ function ParseScopeIntoStatements(scope : ASScope)
             {
                 finishStatement();
                 scope_start = cur_offset;
+
+                // Reset paren depth, must be an error if we still have parens open
+                depth_paren = 0;
             }
 
             depth_brace += 1;
@@ -2603,6 +2655,21 @@ function ParseScopeIntoStatements(scope : ASScope)
             if (depth_paren < 0)
                 depth_paren = 0;
         }
+
+        // If we just typed a dot as the last character of the line,
+        // and we aren't inside any parentheses, split on the dot.
+        // This improves behaviour when in progress of typing a line above another line.
+        if (curchar == '.' && depth_paren == 0
+            && scope.module.isEditingInside(cur_offset-16, cur_offset+1)
+            && cur_offset+1 < scope.end_offset)
+        {
+            let nextchar = scope.module.content[cur_offset+1];
+            if (nextchar == '\r' || nextchar == '\n')
+            {
+                finishStatement();
+            }
+        }
+
 
         // Detect semicolons to delimit statements
         if (curchar == ';' && depth_paren == 0)

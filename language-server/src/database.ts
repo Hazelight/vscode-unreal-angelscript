@@ -874,6 +874,7 @@ export class DBType
 };
 
 export let database = new Map<string, DBType>();
+export let databaseByPrefix = new Map<string, Array<DBType>>();
 let NextMethodId = 0;
 
 export function CleanTypeName(typename : string) : string
@@ -980,12 +981,49 @@ export function GetType(typename : string) : DBType | null
             if (!inst)
                 return null;
 
-            database.set(typename, inst);
+            AddTypeToDatabase(inst);
             return inst;
         }
     }
 
     return null;
+}
+
+function GetTypenameCharPrefix(typename : string) : string
+{
+    if (typename.length < 2)
+        return null;
+    if (typename.startsWith("__"))
+    {
+        if (typename.length < 4)
+            return null;
+        return typename.substr(2, 2);
+    }
+    else
+    {
+        return typename.substr(0, 2);
+    }
+}
+
+export function HasTypeWithPrefix(typenamePrefix : string) : boolean
+{
+    let charPrefix = GetTypenameCharPrefix(typenamePrefix);
+    if (!charPrefix)
+        return true;
+
+    let syms = databaseByPrefix.get(charPrefix);
+    if (syms && syms.length != 0)
+    {
+        for (let type of syms)
+        {
+            if (type.typename.startsWith(typenamePrefix))
+                return true;
+            if (type.isEnum && type.typename.startsWith("__"+typenamePrefix))
+                return true;
+        }
+    }
+
+    return false;
 }
 
 export function AddPrimitiveTypes()
@@ -1003,7 +1041,7 @@ export function AddPrimitiveTypes()
     {
         let dbtype = new DBType().initEmpty(primtype);
         dbtype.isPrimitive = true;
-        database.set(primtype, dbtype);
+        AddTypeToDatabase(dbtype);
     }
 }
 
@@ -1017,11 +1055,55 @@ export function AddTypesFromUnreal(input : any)
         if (type.isNamespace())
             MergeNamespaceToDB(type);
         else
-            database.set(key, type);
+            AddTypeToDatabase(type);
     }
 }
 
-export function GetDatabase() : Map<string, DBType>
+export function AddTypeToDatabase(dbtype : DBType)
+{
+    let prefix = GetTypenameCharPrefix(dbtype.typename);
+    if (prefix)
+    {
+        let prefixSyms = databaseByPrefix.get(prefix);
+        if (!prefixSyms)
+        {
+            prefixSyms = new Array<DBType>();
+            databaseByPrefix.set(prefix, prefixSyms);
+        }
+
+        let previousType = database.get(dbtype.typename);
+        if (previousType)
+        {
+            let previousIndex = prefixSyms.indexOf(previousType);
+            if (previousIndex != -1)
+                prefixSyms.splice(previousIndex, 1);
+        }
+
+        prefixSyms.push(dbtype);
+    }
+
+    database.set(dbtype.typename, dbtype);
+}
+
+export function RemoveTypeFromDatabase(dbtype : DBType)
+{
+    if (database.get(dbtype.typename) == dbtype)
+        database.delete(dbtype.typename);
+
+    let prefix = GetTypenameCharPrefix(dbtype.typename);
+    if (prefix)
+    {
+        let prefixSyms = databaseByPrefix.get(prefix);
+        if (prefixSyms)
+        {
+            let previousIndex = prefixSyms.indexOf(dbtype);
+            if (previousIndex != -1)
+                prefixSyms.splice(previousIndex, 1);
+        }
+    }
+}
+
+export function GetAllTypes() : Map<string, DBType>
 {
     return database;
 }
@@ -1082,7 +1164,7 @@ export function MergeNamespaceToDB(newtype : DBType, removeOldMethods : boolean 
     let dbtype = database.get(newtype.typename);
     if (!dbtype || (dbtype.declaredModule == newtype.declaredModule && removeOldMethods))
     {
-        database.set(newtype.typename, newtype);
+        AddTypeToDatabase(newtype);
         return newtype;
     }
 

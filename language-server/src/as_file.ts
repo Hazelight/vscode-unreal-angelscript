@@ -773,7 +773,7 @@ function ParseDeclarations(root : ASScope)
         else
         {
             // This is a script type, overwrite the entry in the database
-            typedb.GetDatabase().set(dbtype.typename, dbtype);
+            typedb.AddTypeToDatabase(dbtype);
         }
     }
 
@@ -782,7 +782,7 @@ function ParseDeclarations(root : ASScope)
         for (let delegate of root.delegates)
         {
             dbtype = MakeDelegateDBType(root, delegate);
-            typedb.GetDatabase().set(delegate.name, dbtype);
+            typedb.AddTypeToDatabase(dbtype);
         }
     }
 }
@@ -939,7 +939,7 @@ export function RemoveScopeFromDatabase(scope : ASScope)
     let typename = scope.getDBTypename();
     if(typename != null)
     {
-        typedb.GetDatabase().delete(typename);
+        //typedb.GetDatabase().delete(typename);
         typedb.RemoveModuleFromNamespace("__"+typename, scope.modulename);
     }
 
