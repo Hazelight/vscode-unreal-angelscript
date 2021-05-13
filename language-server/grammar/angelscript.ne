@@ -250,7 +250,7 @@ statement -> %return_token _ expression_or_assignment {%
     function (d) { return Compound(d, n.ReturnStatement, [d[2]]); }
 %}
 
-statement -> %else_token _ statement {%
+statement -> %else_token optional_statement {%
     function (d) { return Compound(d, n.ElseStatement, [d[2]]); }
 %}
 

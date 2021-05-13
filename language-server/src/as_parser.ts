@@ -351,6 +351,7 @@ export class ASStatement extends ASElement
 
     ast : any = null;
     parsed : boolean = false;
+    generatedTypes : boolean = false;
 }
 
 let ModuleDatabase = new Map<string, ASModule>();
@@ -798,21 +799,6 @@ function ExtendScopeToStatement(scope : ASScope, statement : ASStatement)
     scope.range.start = statement.range.start;
 }
 
-// Create a fake scope to contain variables that are valid in a specif range
-function CreateFakeVariableScope(scope : ASScope, statement : ASStatement) : ASScope
-{
-    let fakescope = new ASScope;
-    fakescope.module = scope.module;
-    fakescope.parentscope = scope;
-    fakescope.start_offset = statement.start_offset;
-    fakescope.end_offset = statement.end_offset;
-    fakescope.range = statement.range;
-    fakescope.parsed = true;
-
-    scope.scopes.push(fakescope);
-    return fakescope;
-}
-
 function GenerateTypeInformation(scope : ASScope)
 {
     if (scope.previous && scope.previous instanceof ASStatement && scope.previous.ast)
@@ -927,90 +913,88 @@ function GenerateTypeInformation(scope : ASScope)
             dbfunc.isConstructor = true;
             scope.dbfunc = dbfunc;
         }
-        // We're inside a for loop that may have some declarations in it
-        else if (scope.previous.ast.type == node_types.ForLoop)
-        {
-            let fordef = scope.previous.ast;
-            if (fordef.children[0])
-            {
-                if (fordef.children[0].type == node_types.VariableDecl)
-                {
-                    AddVarDeclToScope(scope, scope.previous, fordef.children[0], true);
-                }
-                else if (fordef.children[0].type == node_types.VariableDeclMulti)
-                {
-                    for (let child of fordef.children[0].children)
-                        AddVarDeclToScope(scope, scope.previous, child, true);
-                }
-            }
-        }
-        // We're inside a for loop that may have some declarations in it
-        else if (scope.previous.ast.type == node_types.ForEachLoop)
-        {
-            let fordef = scope.previous.ast;
-
-            // Add a local variable for the loop iterator
-            let asvar = new ASVariable();
-            asvar.name = fordef.children[1].value;
-            asvar.typename = GetQualifiedTypename(fordef.children[0]);
-            asvar.node_typename = fordef.children[0];
-            asvar.node_expression = fordef.children[2];
-            asvar.isAuto = fordef.children[0].value == 'auto';
-            asvar.isIterator = true;
-            asvar.in_statement = true;
-
-            asvar.start_offset_type = scope.previous.start_offset + fordef.children[0].start;
-            asvar.end_offset_type = scope.previous.start_offset + fordef.children[0].end;
-
-            asvar.start_offset_name = scope.previous.start_offset + fordef.children[1].start;
-            asvar.end_offset_name = scope.previous.start_offset + fordef.children[1].end;
-
-            asvar.start_offset_expression = scope.previous.start_offset + fordef.children[2].start;
-            asvar.end_offset_expression = scope.previous.start_offset + fordef.children[2].end;
-
-            scope.variables.push(asvar);
-            scope.variablesByName.set(asvar.name, asvar);
-
-            ExtendScopeToStatement(scope, scope.previous);
-        }
     }
 
     // Add variables for each declaration inside the scope
-    for (let statement of scope.statements)
+    for (let i = 0, count = scope.statements.length; i < count; ++i)
     {
+        let statement = scope.statements[i];
+        if (!statement)
+            continue;
         if (!statement.ast)
             continue;
-
-        if (statement.ast.type == node_types.VariableDecl)
+        switch (statement.ast.type)
         {
-            // Add variables for declaration statements
-            AddVarDeclToScope(scope, statement, statement.ast);
-        }
-        else if (statement.ast.type == node_types.VariableDeclMulti)
-        {
-            // Add variables for multiple declarations in one statement (eg `int X, Y;`)
-            for (let child of statement.ast.children)
-                AddVarDeclToScope(scope, statement, child);
-        }
-        else if (statement.ast.type == node_types.ForLoop)
-        {
-            // Add variables declared inside a for loop to a fake scope covering the for loop's header statement
-            let fakescope = CreateFakeVariableScope(scope, statement);
-            let for_variables : Array<ASVariable> = [];
-            let fordef = statement.ast;
-            if (fordef.children[0])
+            case node_types.VariableDecl:
             {
-                if (fordef.children[0].type == node_types.VariableDecl)
+                // Add variables for declaration statements
+                AddVarDeclToScope(scope, statement, statement.ast);
+            }
+            break;
+            case node_types.VariableDeclMulti:
+            {
+                // Add variables for multiple declarations in one statement (eg `int X, Y;`)
+                for (let child of statement.ast.children)
+                    AddVarDeclToScope(scope, statement, child);
+            }
+            break;
+            case node_types.ForLoop:
+            {
+                // Add variables declared inside a for loop to a new subscope scope covering the for loop's header statement
+                if (!statement.generatedTypes)
                 {
-                    AddVarDeclToScope(fakescope, statement, fordef.children[0], true);
-                }
-                else if (fordef.children[0].type == node_types.VariableDeclMulti)
-                {
-                    for (let child of fordef.children[0].children)
-                        AddVarDeclToScope(fakescope, statement, child, true);
+                    // Create a fake scope that spans this statement to contain the loop variables
+                    let subscope = MoveStatementToSubScope(scope, statement, statement.ast.children[3], true);
+
+                    // Add variables declared inside the for statement to subscope
+                    if (statement.ast.children[0])
+                    {
+                        if (statement.ast.children[0].type == node_types.VariableDecl)
+                        {
+                            AddVarDeclToScope(subscope, statement, statement.ast.children[0], true);
+                        }
+                        else if (statement.ast.children[0].type == node_types.VariableDeclMulti)
+                        {
+                            for (let child of statement.ast.children[0].children)
+                                AddVarDeclToScope(subscope, statement, child, true);
+                        }
+                    }
+
+                    // We moved the entire statement to a subscope, so remove it from this scope
+                    scope.statements[i] = null;
                 }
             }
+            break;
+            case node_types.ForEachLoop:
+            {
+                if (!statement.generatedTypes)
+                {
+                    // Create a fake scope that spans this statement to contain the loop variable
+                    let subscope = MoveStatementToSubScope(scope, statement, statement.ast.children[3], true);
+                    AddForEachVariableToScope(subscope, statement, statement.ast);
+
+                    // We moved the entire statement to a subscope, so remove it from this scope
+                    scope.statements[i] = null;
+                }
+            }
+            break;
+            case node_types.IfStatement:
+            case node_types.ElseStatement:
+            case node_types.ForLoop:
+            case node_types.WhileLoop:
+            case node_types.CaseStatement:
+            case node_types.DefaultCaseStatement:
+            {
+                if (!statement.generatedTypes && statement.ast.children[statement.ast.children.length-1])
+                {
+                    // Make sure we create a subscope with the optional statement in it if we have one
+                    MoveStatementToSubScope(scope, statement, statement.ast.children[statement.ast.children.length-1], false);
+                }
+            }
+            break;
         }
+
+        statement.generatedTypes = true;
     }
 
     // Recurse into subscopes
@@ -1020,6 +1004,117 @@ function GenerateTypeInformation(scope : ASScope)
     // If this was a namespace, merge it after we've generated everything and update the dbtype
     if (scope.scopetype == ASScopeType.Namespace && scope.dbtype)
         scope.dbtype = typedb.MergeNamespaceToDB(scope.dbtype, false);
+}
+
+// Either create a new scope for an optional statement after a control statement,
+// or if there is no optional statement, pull the statement into the subsequent scope
+function MoveStatementToSubScope(scope : ASScope, statement : ASStatement, optional_statement : any, move_main_statement : boolean) : ASScope
+{
+    let subscope : ASScope;
+
+    // If we don't have an optional statement and we are placed before a scope, make that our scope
+    if (!optional_statement && statement.next && statement.next instanceof ASScope)
+    {
+        subscope = statement.next;
+
+        // Move the scope to start before the statement we're inserting
+        if (move_main_statement)
+            subscope.start_offset = statement.start_offset;
+    }
+    else
+    {
+        // Create a new subscope that encompasses just this statement
+        subscope = new ASScope();
+        subscope.parentscope = scope;
+        subscope.module = scope.module;
+        subscope.start_offset = statement.start_offset;
+        if (!move_main_statement && optional_statement)
+            subscope.start_offset += optional_statement.start;
+        subscope.end_offset = statement.end_offset;
+        subscope.range = scope.module.getRange(subscope.start_offset, subscope.end_offset);
+        subscope.scopetype = ASScopeType.Code;
+        subscope.parsed = true;
+
+        scope.scopes.push(subscope);
+
+        subscope.previous = statement;
+        subscope.next = statement.next
+        if (statement.next)
+            statement.next.previous = subscope;
+        statement.next = subscope;
+    }
+
+    // Move the optional statement into the new scope
+    if (optional_statement)
+    {
+        let newStatement = new ASStatement();
+        newStatement.ast = optional_statement;
+        newStatement.start_offset = statement.start_offset;
+        newStatement.end_offset = statement.end_offset;
+        newStatement.parsed = true;
+
+        newStatement.next = subscope.element_head;
+        if (subscope.element_head)
+            subscope.element_head.previous = newStatement;
+        subscope.element_head = newStatement;
+
+        subscope.statements.push(newStatement);
+    }
+
+    // Move the main statement to the new scope
+    if (move_main_statement)
+    {
+        let prevStatement = statement.previous;
+        let nextStatement = statement.next;
+        if (prevStatement)
+            prevStatement.next = nextStatement;
+        if (nextStatement)
+            nextStatement.previous = prevStatement;
+
+        statement.previous = null;
+        statement.next = subscope.element_head;
+        if (subscope.element_head)
+            subscope.element_head.previous = statement;
+        subscope.element_head = statement;
+
+        subscope.statements.push(statement);
+    }
+
+    return subscope;
+}
+
+// Add a variable to the scope that matches the loop variable in a foreach statement
+function AddForEachVariableToScope(scope : ASScope, statement : ASStatement, node : any)
+{
+    if (!node.children[0])
+        return;
+    if (!node.children[1])
+        return;
+
+    // Add a local variable for the loop iterator
+    let asvar = new ASVariable();
+    asvar.name = node.children[1].value;
+    asvar.typename = GetQualifiedTypename(node.children[0]);
+    asvar.node_typename = node.children[0];
+    asvar.node_expression = node.children[2];
+    asvar.isAuto = node.children[0].value == 'auto';
+    asvar.isIterator = true;
+    asvar.in_statement = true;
+
+    asvar.start_offset_type = statement.start_offset + node.children[0].start;
+    asvar.end_offset_type = statement.start_offset + node.children[0].end;
+
+    asvar.start_offset_name = statement.start_offset + node.children[1].start;
+    asvar.end_offset_name = statement.start_offset + node.children[1].end;
+
+    if (node.children[2])
+    {
+        asvar.start_offset_expression = statement.start_offset + node.children[2].start;
+        asvar.end_offset_expression = statement.start_offset + node.children[2].end;
+    }
+
+    scope.variables.push(asvar);
+    scope.variablesByName.set(asvar.name, asvar);
 }
 
 function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType, container_type : string = null, symbol_name : string = null) : ASSymbol
@@ -1782,17 +1877,25 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         // Statements that don't need any special handling, just make sure to recurse into all children
         case node_types.Assignment:
         case node_types.CompoundAssignment:
-        case node_types.IfStatement:
         case node_types.ReturnStatement:
-        case node_types.CaseStatement:
-        case node_types.DefaultCaseStatement:
-        case node_types.ForLoop:
-        case node_types.WhileLoop:
         case node_types.DefaultStatement:
         {
             // Detect in each subexpression
             for (let child of node.children)
                 DetectNodeSymbols(scope, statement, child, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+        }
+        break;
+        // Some nodes can be followed by an optional statement, but this has been parsed into its own statement
+        // already when types were generated, so we ignore the last child.
+        case node_types.IfStatement:
+        case node_types.ElseStatement:
+        case node_types.ForLoop:
+        case node_types.WhileLoop:
+        case node_types.CaseStatement:
+        case node_types.DefaultCaseStatement:
+        {
+            for (let i = 0, count = node.children.length-1; i < count; ++i)
+                DetectNodeSymbols(scope, statement, node.children[i], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
         }
         break;
         // For each loops add symbols for the typename and the variable name
@@ -1809,9 +1912,6 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // If this was an auto, we should update the typename symbol to match the expression
             if (typenameSymbol && typenameSymbol.symbol_name == "auto")
                 UpdateAutoTypenameSymbol(typenameSymbol, expressionType);
-
-            // Detect in the optional statement that follows the statement
-            DetectNodeSymbols(scope, statement, node.children[3], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
         }
         break;
         // Declarations for types should emit a type symbol
@@ -2310,7 +2410,10 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
 
     // Statements we detected should be parsed
     for (let statement of scope.statements)
-        ParseStatement(scope.scopetype, statement, debug);
+    {
+        if (statement)
+            ParseStatement(scope.scopetype, statement, debug);
+    }
 
     // Also parse any subscopes we detected
     for (let subscope of scope.scopes)

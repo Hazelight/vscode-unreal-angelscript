@@ -248,14 +248,14 @@ var grammar = {
     {"name": "statement", "symbols": [(lexer.has("return_token") ? {type: "return_token"} : return_token), "_", "expression_or_assignment"], "postprocess": 
         function (d) { return Compound(d, n.ReturnStatement, [d[2]]); }
         },
-    {"name": "statement", "symbols": [(lexer.has("else_token") ? {type: "else_token"} : else_token), "_", "statement"], "postprocess": 
+    {"name": "statement", "symbols": [(lexer.has("else_token") ? {type: "else_token"} : else_token), "optional_statement"], "postprocess": 
         function (d) { return Compound(d, n.ElseStatement, [d[2]]); }
         },
     {"name": "statement", "symbols": [(lexer.has("case_token") ? {type: "case_token"} : case_token), "_", "case_label", "_", (lexer.has("colon") ? {type: "colon"} : colon), "optional_statement"], "postprocess": 
         function (d) { return Compound(d, n.CaseStatement, [d[2], d[5]]); }
         },
     {"name": "statement", "symbols": [(lexer.has("default_token") ? {type: "default_token"} : default_token), (lexer.has("colon") ? {type: "colon"} : colon), "optional_statement"], "postprocess": 
-        function (d) { return Compound(d, n.CaseStatement, [d[0], d[2]]); }
+        function (d) { return Compound(d, n.DefaultCaseStatement, [d[2]]); }
         },
     {"name": "statement", "symbols": [(lexer.has("continue_token") ? {type: "continue_token"} : continue_token)], "postprocess": 
         function (d) { return Literal(n.ContinueStatement, d[0]); }
