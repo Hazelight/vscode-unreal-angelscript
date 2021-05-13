@@ -230,11 +230,11 @@ statement -> assignment {% id %}
 statement -> var_decl {% id %}
 
 assignment -> lvalue _ "=" _ expression_or_assignment {%
-    function (d) { return Compound(d, n.Assignment, [d[0], d[4][0]]); }
+    function (d) { return Compound(d, n.Assignment, [d[0], d[4]]); }
 %}
-assignment -> lvalue _ %compound_assignment _ (expression | assignment) {%
+assignment -> lvalue _ %compound_assignment _ expression_or_assignment {%
     function (d) { return {
-        ...Compound(d, n.CompoundAssignment, [d[0], d[4][0]]),
+        ...Compound(d, n.CompoundAssignment, [d[0], d[4]]),
         operator: Operator(d[2]),
     }; }
 %}
@@ -740,6 +740,27 @@ lvalue -> %identifier _ ":" {%
 # INCOMPLETE: Attempts to parse an incomplete member access while the user is typing
 lvalue -> lvalue _ %dot {%
     function (d) { return Compound(d, n.MemberAccess, [d[0], null]); }
+%}
+# INCOMPLETE: Attempts to parse an incomplete bracketed expression
+lvalue -> %lparen _ %rparen {%
+    function (d) { return null; }
+%}
+# INCOMPLETE: Attempts to parse an incomplete member access while the user is typing
+expression -> expression _ (%op_binary_product | %op_binary_sum | %op_binary_bitwise | %op_binary_compare | %op_binary_logic) {%
+    function (d) { return {
+        ...Compound(d, n.BinaryOperation, [d[0], null]),
+        operator: Operator(d[2][0]),
+    };}
+%}
+# INCOMPLETE: Attempts to parse an incomplete assignment while the user is typing
+assignment -> lvalue _ "=" {%
+    function (d) { return Compound(d, n.Assignment, [d[0], null]); }
+%}
+assignment -> lvalue _ %compound_assignment {%
+    function (d) { return {
+        ...Compound(d, n.CompoundAssignment, [d[0], null]),
+        operator: Operator(d[2]),
+    }; }
 %}
 
 argumentlist -> null {%

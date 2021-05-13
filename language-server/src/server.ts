@@ -240,7 +240,8 @@ connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
 });
 
 connection.onSignatureHelp((_textDocumentPosition: TextDocumentPositionParams): SignatureHelp => {
-	return completion.Signature(_textDocumentPosition);
+	let help = completion.Signature(_textDocumentPosition);
+	return help;
 });
 
 connection.onDefinition((_textDocumentPosition: TextDocumentPositionParams): Definition | null => {

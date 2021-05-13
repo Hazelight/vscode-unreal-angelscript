@@ -6,6 +6,7 @@ import * as nearley from 'nearley';
 
 import * as typedb from './database';
 import { RemoveScopeFromDatabase } from "./as_file";
+import { notEqual } from "assert";
 
 let grammar_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_statement.js"));
 let grammar_class_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_class_statement.js"));
@@ -42,6 +43,7 @@ export class ASModule
     uri : string;
 
     content : string = null;
+    lastEdit : number = -1;
 
     loaded: boolean = false;
     textDocument : TextDocument = null;
@@ -114,6 +116,13 @@ export class ASModule
                 return symbol;
         }
         return null;
+    }
+
+    isEditingInside(start : number, end : number) : boolean
+    {
+        if (this.lastEdit == -1)
+            return false;
+        return this.lastEdit >= start && this.lastEdit < end;
     }
 };
 
@@ -456,6 +465,34 @@ export function ResolveModule(module : ASModule)
 // Update a module with new transient content
 export function UpdateModuleFromContent(module : ASModule, content : string)
 {
+    // Find the position in the content where we have made an edit,
+    // this will help us determine whether to show errors or not in the future.
+    if (module.content)
+    {
+        module.lastEdit = -1;
+        let shortestLength = Math.min(module.content.length, content.length);
+        for (let i = 0; i < shortestLength; ++i)
+        {
+            if (module.content[i] != content[i])
+            {
+                module.lastEdit = i;
+                break;
+            }
+        }
+
+        if (module.lastEdit == -1)
+        {
+            // If we have added or removed stuff, our last edit was at the end of the file
+            if (content.length != module.content.length)
+                module.lastEdit = content.length-1;
+        }
+    }
+    else
+    {
+        module.lastEdit = -1;
+    }
+
+    // Update the content in the module
     ClearModule(module);
     module.content = content;
     LoadModule(module);
@@ -465,6 +502,7 @@ export function UpdateModuleFromDisk(module : ASModule)
 {
     ClearModule(module);
     module.content = fs.readFileSync(module.filename, 'utf8');
+    module.lastEdit = -1;
     LoadModule(module);
 }
 
@@ -904,14 +942,39 @@ function GenerateTypeInformation(scope : ASScope)
 
             ExtendScopeToStatement(scope, scope.previous);
         }
+        // Constructor declaration placed inside a class
+        else if (scope.previous.ast.type == node_types.ConstructorDecl)
+        {
+            let constrdef = scope.previous.ast;
+            let dbfunc = AddDBMethod(scope, constrdef.name.value);
+            AddParametersToFunction(scope, scope.previous, dbfunc, constrdef.parameters);
+            dbfunc.moduleOffset = scope.previous.start_offset + constrdef.name.start;
+            dbfunc.isConstructor = true;
+            scope.dbfunc = dbfunc;
+
+            // Constructor gets added to the namespace as a global function instead
+            if (scope.parentscope && scope.parentscope.dbtype)
+            {
+                dbfunc.returnType = scope.parentscope.dbtype.typename;
+
+                let nsType = scope.getGlobalOrNamespaceParentType();
+                nsType.methods.push(dbfunc);
+                nsType.addSymbol(dbfunc);
+            }
+        }
         // Destructor declaration placed inside a class
         else if (scope.previous.ast.type == node_types.DestructorDecl)
         {
             let destrdef = scope.previous.ast;
             let dbfunc = AddDBMethod(scope, destrdef.name.value);
             dbfunc.moduleOffset = scope.previous.start_offset + destrdef.name.start;
-            dbfunc.isConstructor = true;
             scope.dbfunc = dbfunc;
+
+            if (scope.parentscope && scope.parentscope.dbtype)
+            {
+                scope.parentscope.dbtype.methods.push(dbfunc);
+                scope.parentscope.dbtype.addSymbol(dbfunc);
+            }
         }
     }
 
@@ -1130,6 +1193,22 @@ function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : an
 
     scope.module.symbols.push(symbol);
     return symbol;
+}
+
+function AddUnknownSymbol(scope : ASScope, statement: ASStatement, node : any, hasPotentialCompletions : boolean)
+{
+    if (!node)
+        return;
+
+    if (hasPotentialCompletions)
+    {
+        // If we are currently editing the document at the position of this symbol,
+        // then we don't actually want to show it as an error if it can still become a valid symbol later
+        if (scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 1))
+            return;
+    }
+
+    AddIdentifierSymbol(scope, statement, node, ASSymbolType.UnknownError);
 }
 
 function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any) : ASSymbol
@@ -1684,7 +1763,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (!left_symbol)
             {
                 if (allow_errors)
-                    AddIdentifierSymbol(scope, statement, node.children[1], ASSymbolType.UnknownError);
+                    AddUnknownSymbol(scope, statement, node.children[1], false);
                 return null;
             }
 
@@ -1704,7 +1783,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (!nsType)
             {
                 if (allow_errors)
-                    AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.UnknownError);
+                    AddUnknownSymbol(scope, statement, node.children[0], false);
                 return null;
             }
 
@@ -2049,9 +2128,92 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
 
     // This symbol is entirely unknown, maybe emit an invalid symbol so the user knows
     if (allow_errors)
-        AddIdentifierSymbol(scope, statement, node, ASSymbolType.UnknownError);
+    {
+        let hasPotentialCompletions = false;
+        if (scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 1))
+        {
+            // Check if the symbol that we're editing can still complete to something valid later
+            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, node.value, typedb.DBAllowSymbol.Any);
+        }
+
+        AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
+    }
 
     return null;
+}
+
+function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASStatement, identifierPrefix : string, symbol_type : typedb.DBAllowSymbol) : boolean
+{
+    if (identifierPrefix.length < 2)
+        return true;
+
+    // Check for local variables
+    if (typedb.AllowsProperties(symbol_type))
+    {
+        let checkscope = scope;
+        while (checkscope && checkscope.isInFunctionBody())
+        {
+            for (let usedVariable of checkscope.variables)
+            {
+                if (usedVariable.name.startsWith(identifierPrefix))
+                    return true;
+            }
+            checkscope = checkscope.parentscope;
+        }
+    }
+
+    // Find a symbol in the class we're in
+    {
+        let insideType = scope.getParentType();
+        if (insideType)
+        {
+            let usedSymbol = insideType.findFirstSymbolWithPrefix(identifierPrefix, symbol_type);
+            if (usedSymbol)
+                return true;
+
+            if (typedb.AllowsProperties(symbol_type))
+            {
+                let getAccessor = insideType.findFirstSymbolWithPrefix("Get"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+                if (getAccessor && getAccessor instanceof typedb.DBMethod)
+                    return true;
+
+                let setAccessor = insideType.findFirstSymbol("Set"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+                if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
+                    return true;
+            }
+        }
+    }
+
+    // Find a symbol in global scope
+    for (let globalType of scope.getAvailableGlobalTypes())
+    {
+        let usedSymbol = globalType.findFirstSymbolWithPrefix(identifierPrefix, symbol_type);
+        if (usedSymbol)
+            return true;
+
+        if (typedb.AllowsProperties(symbol_type))
+        {
+            let getAccessor = globalType.findFirstSymbol("Get"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+            if (getAccessor && getAccessor instanceof typedb.DBMethod)
+                return true;
+
+            let setAccessor = globalType.findFirstSymbol("Set"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+            if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
+                return true;
+        }
+    }
+
+    // It could be a type as well
+    for (let dbtype of typedb.GetDatabase())
+    {
+        if (dbtype[1].typename.startsWith(identifierPrefix))
+            return true;
+        if (dbtype[1].typename.startsWith("__"+identifierPrefix))
+            return true;
+    }
+
+    // Nothing found whatsoever
+    return false;
 }
 
 function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol : typedb.DBType | typedb.DBSymbol, node : any, allow_errors : boolean, symbol_type : typedb.DBAllowSymbol) : typedb.DBSymbol | typedb.DBType
@@ -2117,9 +2279,60 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
 
     // This symbol is entirely unknown, maybe emit an invalid symbol so the user knows
     if (allow_errors)
-        AddIdentifierSymbol(scope, statement, node, ASSymbolType.UnknownError);
+    {
+        let hasPotentialCompletions = false;
+        if (scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 1))
+        {
+            // Check if the symbol that we're editing can still complete to something valid later
+            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInType(scope, statement, dbtype, node.value, typedb.DBAllowSymbol.Any);
+        }
+
+        AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
+    }
 
     return null;
+}
+
+function CheckIdentifierIsPrefixForValidSymbolInType(scope : ASScope, statement : ASStatement, dbtype : typedb.DBType, identifierPrefix : string, symbol_type : typedb.DBAllowSymbol) : boolean
+{
+    if (identifierPrefix.length < 2)
+        return true;
+
+    // Could be a symbol inside the type
+    let usedSymbol = dbtype.findFirstSymbolWithPrefix(identifierPrefix, symbol_type);
+    if (usedSymbol)
+        return true;
+
+    // Could be a property accessor
+    if (typedb.AllowsProperties(symbol_type))
+    {
+        let getAccessor = dbtype.findFirstSymbol("Get"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+        if (getAccessor && getAccessor instanceof typedb.DBMethod)
+            return true;
+
+        let setAccessor = dbtype.findFirstSymbol("Set"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+        if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
+            return true;
+    }
+
+    if (typedb.AllowsFunctions(symbol_type))
+    {
+        // Could be a UCS function in global scope
+        for (let globalType of scope.getAvailableGlobalTypes())
+        {
+            if (globalType)
+            {
+                let usedSymbol = globalType.findFirstSymbolWithPrefix(identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+                if (usedSymbol && usedSymbol instanceof typedb.DBMethod)
+                {
+                    if (usedSymbol.args.length != 0 && typedb.CleanTypeName(usedSymbol.args[0].typename) == dbtype.typename)
+                        return true;
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 function ParseScopeIntoStatements(scope : ASScope)

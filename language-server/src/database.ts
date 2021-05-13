@@ -295,6 +295,7 @@ export class DBType
     subTypes : Array<string>;
 
     symbols: Map<string, Array<DBSymbol>> = new Map<string, Array<DBSymbol>>();
+    symbolsByPrefix: Map<string, Array<DBSymbol>> = new Map<string, Array<DBSymbol>>();
 
     createTemplateInstance(actualTypes : Array<string>) : DBType
     {
@@ -732,6 +733,57 @@ export class DBType
         return null;
     }
 
+    // NOTE: Prefix must be at least 2 characters
+    findFirstSymbolWithPrefix(prefix : string, allow_symbols = DBAllowSymbol.Any, depth = 100) : DBSymbol | null
+    {
+        if (prefix.length < 2)
+            return null;
+
+        let charPrefix = prefix.substr(0, 2);
+        let syms = this.symbolsByPrefix.get(charPrefix);
+        if (syms && syms.length != 0)
+        {
+            for (let sym of syms)
+            {
+                if (allow_symbols == DBAllowSymbol.FunctionOnly && sym instanceof DBProperty)
+                    continue;
+                if (allow_symbols == DBAllowSymbol.PropertyOnly && sym instanceof DBMethod)
+                    continue;
+                if (sym.name.startsWith(prefix))
+                    return sym;
+            }
+        }
+        if (depth == 0)
+            return null;
+
+        if (this.supertype)
+        {
+            let dbsuper = GetType(this.supertype);
+            if (dbsuper)
+            {
+                let sym = dbsuper.findFirstSymbolWithPrefix(prefix, allow_symbols, depth-1);
+                if (sym)
+                    return sym;
+            }
+        }
+
+        if (this.siblingTypes)
+        {
+            for (let sibling of this.siblingTypes)
+            {
+                let dbsibling = GetType(this.supertype);
+                if (dbsibling)
+                {
+                    let sym = dbsibling.findFirstSymbolWithPrefix(prefix, allow_symbols, depth-1);
+                    if (sym)
+                        return sym;
+                }
+            }
+        }
+
+        return null;
+    }
+
     findSymbols(name : string, depth = 100) : Array<DBSymbol>
     {
         let result : Array<DBSymbol> = [];
@@ -768,25 +820,55 @@ export class DBType
 
     addSymbol(symbol : DBSymbol)
     {
-        let syms = this.symbols.get(symbol.name);
-        if (!syms)
+        symbol.containingType = this.typename;
+
         {
-            syms = new Array<DBSymbol>();
-            this.symbols.set(symbol.name, syms);
+            let syms = this.symbols.get(symbol.name);
+            if (!syms)
+            {
+                syms = new Array<DBSymbol>();
+                this.symbols.set(symbol.name, syms);
+            }
+
+            syms.push(symbol);
         }
 
-        symbol.containingType = this.typename;
-        syms.push(symbol);
+        if (symbol.name.length > 2)
+        {
+            let prefix = symbol.name.substr(0, 2);
+            let prefixSyms = this.symbolsByPrefix.get(prefix);
+            if (!prefixSyms)
+            {
+                prefixSyms = new Array<DBSymbol>();
+                this.symbolsByPrefix.set(prefix, prefixSyms);
+            }
+
+            prefixSyms.push(symbol);
+        }
     }
 
     removeSymbol(symbol : DBSymbol)
     {
-        let syms = this.symbols.get(symbol.name);
-        if (syms)
         {
-            let index = syms.indexOf(symbol);
-            if (index != -1)
-                syms.splice(index, 1);
+            let syms = this.symbols.get(symbol.name);
+            if (syms)
+            {
+                let index = syms.indexOf(symbol);
+                if (index != -1)
+                    syms.splice(index, 1);
+            }
+        }
+
+        if (symbol.name.length > 2)
+        {
+            let prefix = symbol.name.substr(0, 2);
+            let prefixSyms = this.symbolsByPrefix.get(prefix);
+            if (prefixSyms)
+            {
+                let index = prefixSyms.indexOf(symbol);
+                if (index != -1)
+                    prefixSyms.splice(index, 1);
+            }
         }
     }
 };

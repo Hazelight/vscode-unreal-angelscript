@@ -1501,8 +1501,9 @@ export function Signature(params : TextDocumentPositionParams) : SignatureHelp
         let sig = <SignatureInformation> {
             label: func.format(null, !type),
             parameters: params,
-            documentation: func.documentation,
         };
+        if (func.documentation)
+            sig.documentation = func.documentation;
 
         sigHelp.signatures.push(sig);
     }

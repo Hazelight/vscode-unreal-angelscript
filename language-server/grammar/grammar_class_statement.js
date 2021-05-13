@@ -230,13 +230,11 @@ var grammar = {
     {"name": "statement", "symbols": ["assignment"], "postprocess": id},
     {"name": "statement", "symbols": ["var_decl"], "postprocess": id},
     {"name": "assignment", "symbols": ["lvalue", "_", {"literal":"="}, "_", "expression_or_assignment"], "postprocess": 
-        function (d) { return Compound(d, n.Assignment, [d[0], d[4][0]]); }
+        function (d) { return Compound(d, n.Assignment, [d[0], d[4]]); }
         },
-    {"name": "assignment$subexpression$1", "symbols": ["expression"]},
-    {"name": "assignment$subexpression$1", "symbols": ["assignment"]},
-    {"name": "assignment", "symbols": ["lvalue", "_", (lexer.has("compound_assignment") ? {type: "compound_assignment"} : compound_assignment), "_", "assignment$subexpression$1"], "postprocess": 
+    {"name": "assignment", "symbols": ["lvalue", "_", (lexer.has("compound_assignment") ? {type: "compound_assignment"} : compound_assignment), "_", "expression_or_assignment"], "postprocess": 
         function (d) { return {
-            ...Compound(d, n.CompoundAssignment, [d[0], d[4][0]]),
+            ...Compound(d, n.CompoundAssignment, [d[0], d[4]]),
             operator: Operator(d[2]),
         }; }
         },
@@ -745,6 +743,29 @@ var grammar = {
         },
     {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("dot") ? {type: "dot"} : dot)], "postprocess": 
         function (d) { return Compound(d, n.MemberAccess, [d[0], null]); }
+        },
+    {"name": "lvalue", "symbols": [(lexer.has("lparen") ? {type: "lparen"} : lparen), "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
+        function (d) { return null; }
+        },
+    {"name": "expression$subexpression$1", "symbols": [(lexer.has("op_binary_product") ? {type: "op_binary_product"} : op_binary_product)]},
+    {"name": "expression$subexpression$1", "symbols": [(lexer.has("op_binary_sum") ? {type: "op_binary_sum"} : op_binary_sum)]},
+    {"name": "expression$subexpression$1", "symbols": [(lexer.has("op_binary_bitwise") ? {type: "op_binary_bitwise"} : op_binary_bitwise)]},
+    {"name": "expression$subexpression$1", "symbols": [(lexer.has("op_binary_compare") ? {type: "op_binary_compare"} : op_binary_compare)]},
+    {"name": "expression$subexpression$1", "symbols": [(lexer.has("op_binary_logic") ? {type: "op_binary_logic"} : op_binary_logic)]},
+    {"name": "expression", "symbols": ["expression", "_", "expression$subexpression$1"], "postprocess": 
+        function (d) { return {
+            ...Compound(d, n.BinaryOperation, [d[0], null]),
+            operator: Operator(d[2][0]),
+        };}
+        },
+    {"name": "assignment", "symbols": ["lvalue", "_", {"literal":"="}], "postprocess": 
+        function (d) { return Compound(d, n.Assignment, [d[0], null]); }
+        },
+    {"name": "assignment", "symbols": ["lvalue", "_", (lexer.has("compound_assignment") ? {type: "compound_assignment"} : compound_assignment)], "postprocess": 
+        function (d) { return {
+            ...Compound(d, n.CompoundAssignment, [d[0], null]),
+            operator: Operator(d[2]),
+        }; }
         },
     {"name": "argumentlist", "symbols": [], "postprocess": 
         function(d) { return null; }
