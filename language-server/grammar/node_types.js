@@ -37,6 +37,7 @@ module.exports = {
     ImportFunctionStatement: indexed ? i++ : "ImportFunctionStatement",
     DefaultStatement: indexed ? i++ : "DefaultStatement",
     CaseStatement: indexed ? i++ : "CaseStatement",
+    DefaultCaseStatement: indexed ? i++ : "DefaultCaseStatement",
     ContinueStatement: indexed ? i++ : "ContinueStatement",
     BreakStatement: indexed ? i++ : "BreakStatement",
 

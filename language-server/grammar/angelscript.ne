@@ -259,7 +259,7 @@ statement -> %case_token _ case_label _ %colon optional_statement {%
 %}
 
 statement -> %default_token %colon optional_statement {%
-    function (d) { return Compound(d, n.CaseStatement, [d[0], d[2]]); }
+    function (d) { return Compound(d, n.DefaultCaseStatement, [d[2]]); }
 %}
 
 statement -> %continue_token {%

@@ -31,19 +31,37 @@ export function FindReferences(uri : string, position : Position) : Array<Locati
     if (findSymbol.type == scriptfiles.ASSymbolType.LocalVariable
         || findSymbol.type == scriptfiles.ASSymbolType.Parameter)
     {
-        let scope = asmodule.getScopeAt(offset);
+        let considerScopes : Array<scriptfiles.ASScope> = [];
+        let checkscope = asmodule.getScopeAt(offset);
+        while (checkscope)
+        {
+            considerScopes.push(checkscope);
+            checkscope = checkscope.parentscope;
+        }
+
         for (let symbol of asmodule.symbols)
         {
             if (symbol.type != findSymbol.type)
                 continue;
+            if (symbol.container_type != findSymbol.container_type)
+                continue;
             if (symbol.symbol_name != findSymbol.symbol_name)
                 continue;
-            if (symbol.start >= scope.end_offset)
-                continue;
-            if (symbol.end < scope.start_offset)
-                continue;
 
-            references.push(asmodule.getLocationRange(symbol.start, symbol.end));
+            // Need to check if the symbol is in our scope or one of our parent scopes
+            let inScope = false;
+            for (let scope of considerScopes)
+            {
+                if (symbol.start >= scope.end_offset)
+                    continue;
+                if (symbol.end < scope.start_offset)
+                    continue;
+                inScope = true;
+                break;
+            }
+
+            if (inScope)
+                references.push(asmodule.getLocationRange(symbol.start, symbol.end));
         }
 
         return references;

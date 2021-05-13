@@ -1022,8 +1022,10 @@ function GenerateTypeInformation(scope : ASScope)
         scope.dbtype = typedb.MergeNamespaceToDB(scope.dbtype, false);
 }
 
-function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType, container_type : string = null, symbol_name : string = null)
+function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType, container_type : string = null, symbol_name : string = null) : ASSymbol
 {
+    if (!node)
+        return null;
     let symbol = new ASSymbol;
     symbol.type = type;
     symbol.start = node.start + statement.start_offset;
@@ -1032,19 +1034,42 @@ function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : an
     symbol.symbol_name = symbol_name;
 
     scope.module.symbols.push(symbol);
+    return symbol;
 }
 
-function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any)
+function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any) : ASSymbol
 {
+    if (!node)
+        return null;
     if (node.basetype)
     {
-        AddIdentifierSymbol(scope, statement, node.basetype, ASSymbolType.TemplateBaseType, null, node.basetype.value);
+        let baseSymbol = AddIdentifierSymbol(scope, statement, node.basetype, ASSymbolType.TemplateBaseType, null, node.basetype.value);
         for (let child of node.subtypes)
             AddTypenameSymbol(scope, statement, child);
+        return baseSymbol;
     }
     else
     {
-        AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
+        return AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
+    }
+}
+
+function UpdateAutoTypenameSymbol(symbol : ASSymbol, expressionType : typedb.DBSymbol | typedb.DBType)
+{
+    if (!symbol)
+        return;
+    if (!expressionType)
+        return;
+
+    if (expressionType instanceof typedb.DBType)
+    {
+        symbol.container_type = null;
+        symbol.symbol_name = expressionType.typename;
+    }
+    else if(expressionType instanceof typedb.DBProperty)
+    {
+        symbol.container_type = null;
+        symbol.symbol_name = expressionType.typename;
     }
 }
 
@@ -1120,6 +1145,11 @@ function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.DBType
         case node_types.ConstThis:
         {
             return scope.getParentType();
+        }
+        // nullptr
+        case node_types.ConstNullptr:
+        {
+            return typedb.GetType("UObject");
         }
         // X.Y
         case node_types.MemberAccess:
@@ -1519,6 +1549,16 @@ function DetectScopeSymbols(scope : ASScope)
     }
 }
 
+function GetTypeFromSymbol(symbol : typedb.DBSymbol | typedb.DBType)
+{
+    if (symbol instanceof typedb.DBProperty)
+        return typedb.GetType(symbol.typename);
+    else if (symbol instanceof typedb.DBType)
+        return symbol;
+    else
+        return null;
+}
+
 function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any, allow_errors : boolean = true, symbol_type : typedb.DBAllowSymbol = typedb.DBAllowSymbol.PropertyOnly) : typedb.DBSymbol | typedb.DBType
 {
     if (!node)
@@ -1573,7 +1613,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 return null;
             }
 
-            AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, nsType.typename, null);
+            AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, nsType.typename);
             if (node.children[1])
                 return DetectSymbolsInType(scope, statement, nsType, node.children[1], allow_errors, symbol_type);
             return null;
@@ -1594,6 +1634,21 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 return null;
         }
         break;
+        // TType<TSubType>()
+        case node_types.ConstructorCall:
+        {
+            // Add the typename symbol that we're calling a constructor of
+            AddTypenameSymbol(scope, statement, node.children[0]);
+
+            // Detect symbols in the argument expressions
+            DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+
+            if (!node.children[0] || !node.children[0].value)
+                return null;
+            return typedb.GetType(node.children[0].value);
+        }
+        break;
+        // List of arguments within a function call
         case node_types.ArgumentList:
         {
             if (node.children)
@@ -1601,6 +1656,78 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 for (let child of node.children)
                     DetectNodeSymbols(scope, statement, child);
             }
+        }
+        break;
+        // X[]
+        case node_types.IndexOperator:
+        {
+            // Detect symbols in the lvalue expression
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+
+            // Detect symbols in the subscript expression
+            DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+
+            // Pass through the return type to be used for the next level
+            return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), null, "opIndex");
+        }
+        break;
+        // X * Y
+        case node_types.BinaryOperation:
+        {
+            // Detect symbols in the left expression
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            // Detect symbols in the right expression
+            let right_symbol = DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+
+            return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), GetTypeFromSymbol(right_symbol), getBinaryOperatorOverloadMethod(node.operator));
+        }
+        break;
+        // -X
+        case node_types.UnaryOperation:
+        {
+            // Detect symbols in the left expression
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), null, getUnaryOperatorOverloadMethod(node.operator));
+        }
+        break;
+        // X++
+        case node_types.PostfixOperation:
+        {
+            // Detect symbols in the left expression
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), null, getPostfixOperatorOverloadMethod(node.operator));
+        }
+        break;
+        // X ? Y : Z
+        case node_types.TernaryOperation:
+        {
+            // Detect symbols in the condition expression
+            DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            // Detect symbols in the left expression
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            // Detect symbols in the right expression
+            let right_symbol = DetectNodeSymbols(scope, statement, node.children[2], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+
+            if (left_symbol)
+                return left_symbol;
+            else if (right_symbol)
+                return right_symbol;
+            else
+                return null;
+        }
+        break;
+        // Cast<X>()
+        case node_types.CastOperation:
+        {
+            // Add the typename symbol in the template
+            AddTypenameSymbol(scope, statement, node.children[0]);
+
+            // Detect symbols in the casted expression
+            DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+
+            if (!node.children[0] || !node.children[0].value)
+                return null;
+            return typedb.GetType(node.children[0].value);
         }
         break;
         // void X(...)
@@ -1627,14 +1754,21 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.VariableDecl:
         {
             // Add the typename of the variable
+            let typenameSymbol : ASSymbol = null;
             if (node.typename)
-                AddTypenameSymbol(scope, statement, node.typename);
+                typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
             // Add the name of the variable
             if (node.name)
                 AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.LocalVariable, null, node.name.value);
             // Detect inside the expression that initializes the variable
             if (node.expression)
-                DetectNodeSymbols(scope, statement, node.expression, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            {
+                let expressionType = DetectNodeSymbols(scope, statement, node.expression, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+
+                // If this was an auto, we should update the typename symbol to match the expression
+                if (typenameSymbol && typenameSymbol.symbol_name == "auto")
+                    UpdateAutoTypenameSymbol(typenameSymbol, expressionType);
+            }
         }
         break;
         // Type X, Y;
@@ -1643,6 +1777,64 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // Detect in each declaration inside this statement
             for (let child of node.children)
                 DetectNodeSymbols(scope, statement, child, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+        }
+        break;
+        // Statements that don't need any special handling, just make sure to recurse into all children
+        case node_types.Assignment:
+        case node_types.CompoundAssignment:
+        case node_types.IfStatement:
+        case node_types.ReturnStatement:
+        case node_types.CaseStatement:
+        case node_types.DefaultCaseStatement:
+        case node_types.ForLoop:
+        case node_types.WhileLoop:
+        case node_types.DefaultStatement:
+        {
+            // Detect in each subexpression
+            for (let child of node.children)
+                DetectNodeSymbols(scope, statement, child, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+        }
+        break;
+        // For each loops add symbols for the typename and the variable name
+        case node_types.ForEachLoop:
+        {
+            // Add the declared loop variable
+            let typenameSymbol = AddTypenameSymbol(scope, statement, node.children[0]);
+            if (node.children[1])
+                AddIdentifierSymbol(scope, statement, node.children[1], ASSymbolType.LocalVariable, null, node.children[1].value);
+
+            // Detect in the expression that declares the variable
+            let expressionType = DetectNodeSymbols(scope, statement, node.children[2], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+
+            // If this was an auto, we should update the typename symbol to match the expression
+            if (typenameSymbol && typenameSymbol.symbol_name == "auto")
+                UpdateAutoTypenameSymbol(typenameSymbol, expressionType);
+
+            // Detect in the optional statement that follows the statement
+            DetectNodeSymbols(scope, statement, node.children[3], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+        }
+        break;
+        // Declarations for types should emit a type symbol
+        case node_types.ClassDefinition:
+        {
+            // Add the typename of the class itself
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
+
+            // If we specified a super type, add the symbol for that too
+            if (node.superclass)
+                AddIdentifierSymbol(scope, statement, node.superclass, ASSymbolType.Typename, null, node.superclass.value);
+        }
+        break;
+        case node_types.StructDefinition:
+        case node_types.EnumDefinition:
+        {
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
+        }
+        break;
+        // Namespace definitions add a namespace symbol
+        case node_types.NamespaceDefinition:
+        {
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Namespace, null, node.name.value);
         }
         break;
     }
@@ -1748,7 +1940,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
     let nsType = typedb.GetType("__"+node.value);
     if (nsType)
     {
-        AddIdentifierSymbol(scope, statement, node, ASSymbolType.Namespace, nsType.typename);
+        AddIdentifierSymbol(scope, statement, node, ASSymbolType.Namespace, null, nsType.typename);
 
         // We do not return the symbol here, because we tried to parse a namespace as an identifier
         // This should only happen on incomplete statements.
