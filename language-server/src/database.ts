@@ -720,7 +720,7 @@ export class DBType
         {
             for (let sibling of this.siblingTypes)
             {
-                let dbsibling = GetType(this.supertype);
+                let dbsibling = GetType(sibling);
                 if (dbsibling)
                 {
                     let sym = dbsibling.findFirstSymbol(name, allow_symbols, depth-1);
@@ -771,7 +771,7 @@ export class DBType
         {
             for (let sibling of this.siblingTypes)
             {
-                let dbsibling = GetType(this.supertype);
+                let dbsibling = GetType(sibling);
                 if (dbsibling)
                 {
                     let sym = dbsibling.findFirstSymbolWithPrefix(prefix, allow_symbols, depth-1);
@@ -811,7 +811,7 @@ export class DBType
         {
             for (let sibling of this.siblingTypes)
             {
-                let dbsibling = GetType(this.supertype);
+                let dbsibling = GetType(sibling);
                 if (dbsibling)
                     dbsibling.findSymbols(name, depth-1);
             }
@@ -875,6 +875,7 @@ export class DBType
 
 export let database = new Map<string, DBType>();
 export let databaseByPrefix = new Map<string, Array<DBType>>();
+export let UnrealTypesLoaded = false;
 let NextMethodId = 0;
 
 export function CleanTypeName(typename : string) : string
@@ -909,7 +910,7 @@ export function TransferTypeQualifiers(typename : string, newtype : string) : st
     return newtype;
 }
 
-let re_template = /([A-Za-z_0-9]+)\<([A-Za-z_0-9,\s]+)\>/;
+let re_template = /([A-Za-z_0-9]+)\<([A-Za-z_0-9,\s]+(<[A-Za-z_0-9,\s]+>)?)\>/;
 export function ReplaceTemplateType(typename : string, templateTypes : Array<string>, actualTypes : Array<string>)
 {
     typename = CleanTypeName(typename);
@@ -1057,6 +1058,16 @@ export function AddTypesFromUnreal(input : any)
         else
             AddTypeToDatabase(type);
     }
+}
+
+export function HasTypesFromUnreal() : boolean
+{
+    return UnrealTypesLoaded;
+}
+
+export function FinishTypesFromUnreal()
+{
+    UnrealTypesLoaded = true;
 }
 
 export function AddTypeToDatabase(dbtype : DBType)

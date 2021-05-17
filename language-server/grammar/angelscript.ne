@@ -313,7 +313,7 @@ global_statement -> %import_token _ %identifier (%dot %identifier):* {%
             tokens.push(part[0]);
             tokens.push(part[1]);
         }
-        return Compound(d, n.ImportStatement, CompoundIdentifier(tokens, null));
+        return Compound(d, n.ImportStatement, [CompoundIdentifier(tokens, null)]);
     }
 %}
 global_statement -> %import_token _ function_signature _ "from" _ (%dqstring | %sqstring) {%

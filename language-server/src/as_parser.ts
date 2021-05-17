@@ -6,7 +6,6 @@ import * as nearley from 'nearley';
 
 import * as typedb from './database';
 import { RemoveScopeFromDatabase } from "./as_file";
-import { notEqual } from "assert";
 
 let grammar_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_statement.js"));
 let grammar_class_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_class_statement.js"));
@@ -49,9 +48,9 @@ export class ASModule
     textDocument : TextDocument = null;
 
     parsed : boolean = false;
-    rootscope : ASScope = null;
-
     resolved : boolean = false;
+
+    rootscope : ASScope = null;
 
     global_type : typedb.DBType = null;
     all_global_types : Array<typedb.DBType> = [];
@@ -59,6 +58,8 @@ export class ASModule
     namespaces : Array<typedb.DBType> = [];
     types : Array<typedb.DBType> = [];
     symbols : Array<ASSymbol> = [];
+
+    importedModules : Array<ASModule> = [];
 
     getOffset(position : Position) : number
     {
@@ -442,11 +443,26 @@ export function ParseModule(module : ASModule, debug : boolean = false)
 
     // Create the global type for the module
     module.global_type = AddDBType(module.rootscope, "//"+module.modulename);
+    module.global_type.siblingTypes = [];
     module.global_type.moduleOffset = 0;
     module.rootscope.dbtype = module.global_type;
 
     // Traverse syntax trees to lift out functions, variables and imports during this first parse step
     GenerateTypeInformation(module.rootscope);
+}
+
+// Parse the specified module and all its unparsed dependencies
+export function ParseModuleAndDependencies(module : ASModule)
+{
+    if (module.parsed)
+        return;
+
+    if (!module.loaded)
+        UpdateModuleFromDisk(module);
+    ParseModule(module);
+
+    for (let importedModule of module.importedModules)
+        ParseModuleAndDependencies(importedModule);
 }
 
 // Resolve symbols in the module from the syntax tree if not already resolved
@@ -778,9 +794,30 @@ function HasMacroSpecifier(macro : any, specifier : string) : boolean
     return false;
 }
 
+// Whether we are currently editing this node
+function IsEditingNode(scope : ASScope, statement : ASStatement, node : any) : boolean
+{
+    if (!node)
+        return false;
+    return scope.module.isEditingInside(
+        statement.start_offset + node.start,
+        statement.start_offset + node.end + 1,
+    )
+}
+
 // Add a variable declaration to the scope
 function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : any, in_statement : boolean = false) : ASVariable
 {
+    // If the type name or the identifier are currently being edited, we don't add the variable
+    if (IsEditingNode(scope, statement, vardecl.typename) || IsEditingNode(scope, statement, vardecl.name))
+    {
+        if (!vardecl.name)
+            return null;
+        let afterName = statement.start_offset + vardecl.name.end;
+        if (afterName >= scope.module.content.length || scope.module.content[afterName] != ';')
+            return null;
+    }
+
     // Add it as a local variable
     let asvar = new ASVariable();
     asvar.name = vardecl.name.value;
@@ -991,6 +1028,17 @@ function GenerateTypeInformation(scope : ASScope)
             continue;
         switch (statement.ast.type)
         {
+            case node_types.ImportStatement:
+            {
+                // Mark the correct module as being imported
+                if (statement.ast.children[0])
+                {
+                    let importedModule = GetModule(statement.ast.children[0].value);
+                    scope.module.importedModules.push(importedModule);
+                    scope.module.global_type.siblingTypes.push("//"+importedModule.modulename);
+                }
+            }
+            break;
             case node_types.VariableDecl:
             {
                 // Add variables for declaration statements

@@ -434,7 +434,7 @@ function GetScopeCompletions(initialTerm : string, scope : scriptfiles.ASScope, 
             {
                 completions.push({
                         label: scopevar.name,
-                        detail: scopevar.typename + " " + scopevar.name,
+                        detail: scopevar.typename,
                         kind : CompletionItemKind.Variable
                 });
             }
@@ -800,6 +800,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
             completions.push({
                     label: prop.name,
                     kind : CompletionItemKind.Field,
+                    detail: prop.typename,
                     data: ["prop", curtype.typename, prop.name],
             });
         }
@@ -819,6 +820,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
                 completions.push({
                         label: propname,
                         kind: CompletionItemKind.Field,
+                        detail: func.returnType,
                         data: ["accessor", curtype.typename, propname],
                 });
                 props.add(propname);
@@ -835,6 +837,7 @@ export function AddCompletionsFromType(curtype : typedb.DBType, completingStr : 
                 completions.push({
                         label: propname,
                         kind: CompletionItemKind.Field,
+                        detail: func.args[0].typename,
                         data: ["accessor", curtype.typename, propname],
                 });
                 props.add(propname);

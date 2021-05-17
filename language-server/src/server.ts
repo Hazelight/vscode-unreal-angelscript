@@ -6,7 +6,8 @@ import {
 	CompletionItemKind, SignatureHelp, Hover, DocumentSymbolParams, SymbolInformation,
 	WorkspaceSymbolParams, Definition, ExecuteCommandParams, VersionedTextDocumentIdentifier, Location,
 	TextDocumentSyncKind, DocumentHighlight, SemanticTokensOptions, SemanticTokensLegend,
-	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder, ReferenceOptions, ReferenceParams
+	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder, ReferenceOptions, ReferenceParams,
+	CodeLens, CodeLensParams
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -26,6 +27,11 @@ let connection: Connection = createConnection(new IPCMessageReader(process), new
 // Create a connection to unreal
 let unreal : Socket;
 
+let ParseQueue : Array<scriptfiles.ASModule> = [];
+let ParseQueueIndex = 0;
+let LoadQueue : Array<scriptfiles.ASModule> = [];
+let LoadQueueIndex = 0;
+
 function connect_unreal() {
 	if (unreal != null)
 	{
@@ -41,8 +47,9 @@ function connect_unreal() {
 		{
 			if (msg.type == MessageType.Diagnostics)
 			{
-				if (!InitialPostProcessDone)
-					RunInitialPostProcess();
+				// We set this to true here, because the first Diagnostics message
+				// indicates we no longer have any DebugDatabase messages coming
+				typedb.FinishTypesFromUnreal();
 
 				let diagnostics: Diagnostic[] = [];
 
@@ -170,10 +177,10 @@ connection.onInitialize((_params): InitializeResult => {
 		{
 			let uri = getFileUri(file);
 			let asmodule = scriptfiles.GetOrCreateModule(getModuleName(uri), file, uri);
-			scriptfiles.UpdateModuleFromDisk(asmodule);
-			scriptfiles.ParseModule(asmodule);
-			//scriptfiles.ResolveModule(asmodule);
+			LoadQueue.push(asmodule);
 		}
+
+		TickQueues();
 	});
 
 	return {
@@ -206,15 +213,43 @@ connection.onInitialize((_params): InitializeResult => {
 	}
 });
 
-let InitialPostProcessDone = false;
-function RunInitialPostProcess()
+function TickQueues()
 {
-	/*for (let file of scriptfiles.GetAllFiles())
+	if (LoadQueueIndex < LoadQueue.length)
 	{
-		scriptfiles.PostProcessModule(file.modulename);
-		completion.ResolveAutos(file.rootscope);
-	}*/
-	InitialPostProcessDone = true;
+		for (let n = 0; n < 10 && LoadQueueIndex < LoadQueue.length; ++n, ++LoadQueueIndex)
+		{
+			if (!LoadQueue[LoadQueueIndex].loaded)
+				scriptfiles.UpdateModuleFromDisk(LoadQueue[LoadQueueIndex]);
+			ParseQueue.push(LoadQueue[LoadQueueIndex]);
+		}
+	}
+	else if (LoadQueue.length != 0)
+	{
+		LoadQueue = [];
+		LoadQueueIndex = 0;
+	}
+	else if (ParseQueueIndex < ParseQueue.length)
+	{
+		for (let n = 0; n < 5 && ParseQueueIndex < ParseQueue.length; ++n, ++ParseQueueIndex)
+		{
+			if (!ParseQueue[ParseQueueIndex].parsed)
+				scriptfiles.ParseModule(ParseQueue[ParseQueueIndex]);
+		}
+	}
+	else if (ParseQueue.length != 0)
+	{
+		ParseQueue = [];
+		ParseQueueIndex = 0;
+	}
+
+	if (LoadQueue.length != 0 || ParseQueue.length != 0)
+		setTimeout(TickQueues, 1);
+}
+
+function CanResolveModules()
+{
+	return typedb.HasTypesFromUnreal();
 }
 
 connection.onDidChangeWatchedFiles((_change) => {
@@ -225,7 +260,9 @@ connection.onDidChangeWatchedFiles((_change) => {
 		{
 			scriptfiles.UpdateModuleFromDisk(module);
 			scriptfiles.ParseModule(module);
-			scriptfiles.ResolveModule(module);
+
+			if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
+				scriptfiles.ResolveModule(module);
 		}
 	}
 });
@@ -295,17 +332,45 @@ connection.onReferences(function (params : ReferenceParams) : Location[]
 	return scriptreferences.FindReferences(params.textDocument.uri, params.position);
 });
 
-connection.languages.semanticTokens.on(function(params : SemanticTokensParams) : SemanticTokens | null
+connection.onCodeLens(function (params : CodeLensParams) : CodeLens[]
 {
-	let builder = new SemanticTokensBuilder();
-	let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
-	if (!asmodule)
-		return null;
-	scriptfiles.ParseModule(asmodule);
-	scriptfiles.ResolveModule(asmodule);
-	HighlightSymbols(asmodule, builder);
+	return null;
+})
 
-	return builder.build();
+function TryResolveSymbols(asmodule : scriptfiles.ASModule) : SemanticTokens | null
+{
+	if (CanResolveModules())
+	{
+		let builder = new SemanticTokensBuilder();
+		if (!asmodule)
+			return null;
+		scriptfiles.ParseModuleAndDependencies(asmodule);
+		scriptfiles.ResolveModule(asmodule);
+		HighlightSymbols(asmodule, builder);
+
+		return builder.build();
+	}
+	else
+	{
+		return null;
+	}
+}
+
+connection.languages.semanticTokens.on(function(params : SemanticTokensParams) : SemanticTokens | Thenable<SemanticTokens>
+{
+	let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+	let result = TryResolveSymbols(asmodule);
+	if (result)
+		return result;
+
+	function timerFunc(resolve : any, reject : any) {
+		let result = TryResolveSymbols(asmodule);
+		if (result)
+			return resolve(result);
+		setTimeout(f => timerFunc(resolve, reject), 100);
+	}
+	let promise = new Promise<SemanticTokens>(timerFunc);
+	return promise;
 });
 
 function HighlightSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTokensBuilder)
@@ -403,7 +468,8 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
 	scriptfiles.UpdateModuleFromContent(asmodule, content);
 	scriptfiles.ParseModule(asmodule);
-	scriptfiles.ResolveModule(asmodule);
+	if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
+		scriptfiles.ResolveModule(asmodule);
  });
 
 // Listen on the connection

@@ -312,7 +312,7 @@ var grammar = {
                 tokens.push(part[0]);
                 tokens.push(part[1]);
             }
-            return Compound(d, n.ImportStatement, CompoundIdentifier(tokens, null));
+            return Compound(d, n.ImportStatement, [CompoundIdentifier(tokens, null)]);
         }
         },
     {"name": "global_statement$subexpression$1", "symbols": [(lexer.has("dqstring") ? {type: "dqstring"} : dqstring)]},
