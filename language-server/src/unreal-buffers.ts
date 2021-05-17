@@ -35,7 +35,9 @@ export enum MessageType
     RequestBreakFilters,
     BreakFilters,
 
-    Disconnect
+    Disconnect,
+
+    DebugDatabaseFinished,
 }
 
 export class Message

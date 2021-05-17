@@ -28,8 +28,8 @@ export class DBProperty implements DBSymbol
     name : string;
     typename : string;
     documentation : string;
-    isProtected : boolean;
-    isPrivate : boolean;
+    isProtected : boolean = false;
+    isPrivate : boolean = false;
     isNoEdit : boolean = false;
     isEditOnly : boolean = false;
 
@@ -37,6 +37,10 @@ export class DBProperty implements DBSymbol
     moduleOffset : number;
 
     containingType : string = null;
+
+    isUProperty : boolean = false;
+    macroSpecifiers : Map<string, string> = null;
+    macroMeta : Map<string, string> = null;
 
     fromJSON(name : string, input : any)
     {
@@ -151,6 +155,11 @@ export class DBMethod implements DBSymbol
     isDefaultsOnly : boolean = false;
     id : number = NextMethodId++;
     containingType : string = null;
+    isDelegateBindFunction : boolean = false;
+
+    isUFunction : boolean = false;
+    macroSpecifiers : Map<string, string> = null;
+    macroMeta : Map<string, string> = null;
 
     createTemplateInstance(templateTypes : Array<string>, actualTypes : Array<string>) : DBMethod
     {
@@ -288,6 +297,9 @@ export class DBType
     isEvent : boolean = false;
     isPrimitive : boolean = false;
 
+    delegateArgs : Array<DBArg> = null;
+    delegateReturn : string = null;
+
     declaredModule : string;
     moduleOffset : number;
 
@@ -396,6 +408,54 @@ export class DBType
             this.isEnum = input['isEnum'];
         else
             this.isEnum = false;
+
+        let delegateSignatureMethod : DBSymbol = null;
+        if ('isEvent' in input)
+        {
+            this.isEvent = input['isEvent'];
+            if (this.isEvent)
+                delegateSignatureMethod = this.findFirstSymbol("Broadcast");
+        }
+        else
+        {
+            delegateSignatureMethod = this.findFirstSymbol("Broadcast");
+            this.isEvent = delegateSignatureMethod != null;
+        }
+
+        if ('isDelegate' in input)
+        {
+            this.isDelegate = input['isDelegate'];
+            if (this.isDelegate)
+                delegateSignatureMethod = this.findFirstSymbol("ExecuteIfBound");
+        }
+        else
+        {
+            if (!this.isEvent)
+            {
+                delegateSignatureMethod = this.findFirstSymbol("ExecuteIfBound");
+                this.isDelegate = delegateSignatureMethod != null;
+            }
+            else
+            {
+                this.isDelegate = false;
+            }
+        }
+
+        if (delegateSignatureMethod != null && delegateSignatureMethod instanceof DBMethod)
+        {
+            // Detect the signature for the delegate from the Broadcast or ExecuteIfBound methods
+            this.delegateArgs = delegateSignatureMethod.args;
+            this.delegateReturn = delegateSignatureMethod.returnType;
+
+            // Mark the Add/Bind function so diagnostics can see them
+            let bindFunc : DBSymbol = null;
+            if (this.isEvent)
+                bindFunc = this.findFirstSymbol("AddUFunction");
+            else
+                bindFunc = this.findFirstSymbol("BindUFunction");
+            if (bindFunc instanceof DBMethod)
+                bindFunc.isDelegateBindFunction = true;
+        }
     }
 
     resolveNamespace()
@@ -910,7 +970,7 @@ export function TransferTypeQualifiers(typename : string, newtype : string) : st
     return newtype;
 }
 
-let re_template = /([A-Za-z_0-9]+)\<([A-Za-z_0-9,\s]+(<[A-Za-z_0-9,\s]+>)?)\>/;
+let re_template = /([A-Za-z_0-9]+)\<(([A-Za-z_0-9]+\s*(<[A-Za-z_0-9,\s]+>)?,?)+)\>/;
 export function ReplaceTemplateType(typename : string, templateTypes : Array<string>, actualTypes : Array<string>)
 {
     typename = CleanTypeName(typename);

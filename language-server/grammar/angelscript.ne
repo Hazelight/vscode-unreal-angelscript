@@ -762,6 +762,14 @@ assignment -> lvalue _ %compound_assignment {%
         operator: Operator(d[2]),
     }; }
 %}
+# INCOMPLETE: Attempts to parse an incomplete cast while the user is typing
+lvalue -> %cast_token _ "<":? {%
+    function (d) { return Compound(d, n.CastOperation, [null, null]); }
+%}
+lvalue -> %cast_token _ "<" _ typename _ ">" {%
+    function (d) { return Compound(d, n.CastOperation, [d[4], null]); }
+%}
+
 
 argumentlist -> null {%
     function(d) { return null; }
@@ -935,13 +943,14 @@ template_subtypes -> typename (_ "," _ typename):* {%
 
 template_subtypes_unterminated -> (typename _ "," _):* typename_unterminated {%
     function (d) {
-        let subtypes = [d[1]];
+        let subtypes = [];
         if (d[0])
         {
             for (let part of d[0])
                 subtypes.push(part[0]);
         }
-        return subtypes;
+        subtypes.push(d[1]);
+        return subtypes
     }
 %}
 

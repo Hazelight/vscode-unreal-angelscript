@@ -769,6 +769,14 @@ var grammar = {
             operator: Operator(d[2]),
         }; }
         },
+    {"name": "lvalue$ebnf$1", "symbols": [{"literal":"<"}], "postprocess": id},
+    {"name": "lvalue$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "lvalue", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", "lvalue$ebnf$1"], "postprocess": 
+        function (d) { return Compound(d, n.CastOperation, [null, null]); }
+        },
+    {"name": "lvalue", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", {"literal":"<"}, "_", "typename", "_", {"literal":">"}], "postprocess": 
+        function (d) { return Compound(d, n.CastOperation, [d[4], null]); }
+        },
     {"name": "argumentlist", "symbols": [], "postprocess": 
         function(d) { return null; }
         },
@@ -932,13 +940,14 @@ var grammar = {
     {"name": "template_subtypes_unterminated$ebnf$1", "symbols": ["template_subtypes_unterminated$ebnf$1", "template_subtypes_unterminated$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
     {"name": "template_subtypes_unterminated", "symbols": ["template_subtypes_unterminated$ebnf$1", "typename_unterminated"], "postprocess": 
         function (d) {
-            let subtypes = [d[1]];
+            let subtypes = [];
             if (d[0])
             {
                 for (let part of d[0])
                     subtypes.push(part[0]);
             }
-            return subtypes;
+            subtypes.push(d[1]);
+            return subtypes
         }
         },
     {"name": "typename_identifier", "symbols": [(lexer.has("template_basetype") ? {type: "template_basetype"} : template_basetype)], "postprocess": 

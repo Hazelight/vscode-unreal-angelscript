@@ -31,6 +31,12 @@ let ParseQueue : Array<scriptfiles.ASModule> = [];
 let ParseQueueIndex = 0;
 let LoadQueue : Array<scriptfiles.ASModule> = [];
 let LoadQueueIndex = 0;
+let PostProcessTypesQueue : Array<scriptfiles.ASModule> = [];
+let PostProcessTypesQueueIndex = 0;
+
+let ReceivingTypesTimeout : any = null;
+let SetTypeTimeout = false;
+let UnrealTypesTimedOut = false;
 
 function connect_unreal() {
 	if (unreal != null)
@@ -47,10 +53,6 @@ function connect_unreal() {
 		{
 			if (msg.type == MessageType.Diagnostics)
 			{
-				// We set this to true here, because the first Diagnostics message
-				// indicates we no longer have any DebugDatabase messages coming
-				typedb.FinishTypesFromUnreal();
-
 				let diagnostics: Diagnostic[] = [];
 
 				// Based on https://en.wikipedia.org/wiki/File_URI_scheme,
@@ -103,6 +105,17 @@ function connect_unreal() {
 				let dbObj = JSON.parse(dbStr);
 				typedb.AddPrimitiveTypes();
 				typedb.AddTypesFromUnreal(dbObj);
+
+				UnrealTypesTimedOut = false;
+				if (ReceivingTypesTimeout)
+					clearTimeout(ReceivingTypesTimeout);
+				ReceivingTypesTimeout = setTimeout(DetectUnrealTypeListTimeout, 1000);
+			}
+			else if(msg.type == MessageType.DebugDatabaseFinished)
+			{
+				if (ReceivingTypesTimeout)
+					clearTimeout(ReceivingTypesTimeout);
+				typedb.FinishTypesFromUnreal();
 			}
 		}
 	});
@@ -181,6 +194,8 @@ connection.onInitialize((_params): InitializeResult => {
 		}
 
 		TickQueues();
+
+		setTimeout(DetectUnrealConnectionTimeout, 20000);
 	});
 
 	return {
@@ -213,6 +228,16 @@ connection.onInitialize((_params): InitializeResult => {
 	}
 });
 
+function DetectUnrealConnectionTimeout()
+{
+	UnrealTypesTimedOut = true;
+}
+
+function DetectUnrealTypeListTimeout()
+{
+	typedb.FinishTypesFromUnreal();
+}
+
 function TickQueues()
 {
 	if (LoadQueueIndex < LoadQueue.length)
@@ -235,6 +260,7 @@ function TickQueues()
 		{
 			if (!ParseQueue[ParseQueueIndex].parsed)
 				scriptfiles.ParseModule(ParseQueue[ParseQueueIndex]);
+			PostProcessTypesQueue.push(ParseQueue[LoadQueueIndex]);
 		}
 	}
 	else if (ParseQueue.length != 0)
@@ -242,8 +268,24 @@ function TickQueues()
 		ParseQueue = [];
 		ParseQueueIndex = 0;
 	}
+	else if (PostProcessTypesQueueIndex < PostProcessTypesQueue.length)
+	{
+		if (CanResolveModules() || UnrealTypesTimedOut)
+		{
+			for (let n = 0; n < 5 && PostProcessTypesQueueIndex < PostProcessTypesQueue.length; ++n, ++PostProcessTypesQueueIndex)
+			{
+				if (!PostProcessTypesQueue[PostProcessTypesQueueIndex].typesPostProcessed)
+					scriptfiles.PostProcessModuleTypes(PostProcessTypesQueue[PostProcessTypesQueueIndex]);
+			}
+		}
+	}
+	else if (PostProcessTypesQueue.length != 0)
+	{
+		PostProcessTypesQueue = [];
+		PostProcessTypesQueueIndex = 0;
+	}
 
-	if (LoadQueue.length != 0 || ParseQueue.length != 0)
+	if (LoadQueue.length != 0 || ParseQueue.length != 0 || PostProcessTypesQueue.length != 0)
 		setTimeout(TickQueues, 1);
 }
 
@@ -262,7 +304,10 @@ connection.onDidChangeWatchedFiles((_change) => {
 			scriptfiles.ParseModule(module);
 
 			if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
+			{
+				scriptfiles.PostProcessModuleTypes(module);
 				scriptfiles.ResolveModule(module);
+			}
 		}
 	}
 });
@@ -345,6 +390,7 @@ function TryResolveSymbols(asmodule : scriptfiles.ASModule) : SemanticTokens | n
 		if (!asmodule)
 			return null;
 		scriptfiles.ParseModuleAndDependencies(asmodule);
+		scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
 		scriptfiles.ResolveModule(asmodule);
 		HighlightSymbols(asmodule, builder);
 
@@ -363,13 +409,18 @@ connection.languages.semanticTokens.on(function(params : SemanticTokensParams) :
 	if (result)
 		return result;
 
-	function timerFunc(resolve : any, reject : any) {
+	function timerFunc(resolve : any, reject : any, triesLeft : number) {
+		if (triesLeft <= 0 || UnrealTypesTimedOut)
+			return resolve(null);
 		let result = TryResolveSymbols(asmodule);
 		if (result)
 			return resolve(result);
-		setTimeout(f => timerFunc(resolve, reject), 100);
+		setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
 	}
-	let promise = new Promise<SemanticTokens>(timerFunc);
+	let promise = new Promise<SemanticTokens>(function(resolve, reject)
+	{
+		timerFunc(resolve, reject, 50);
+	});
 	return promise;
 });
 
@@ -469,7 +520,10 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	scriptfiles.UpdateModuleFromContent(asmodule, content);
 	scriptfiles.ParseModule(asmodule);
 	if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
+	{
+		scriptfiles.PostProcessModuleTypes(asmodule);
 		scriptfiles.ResolveModule(asmodule);
+	}
  });
 
 // Listen on the connection
