@@ -53,6 +53,7 @@ const lexer = moo.compile({
             while_token: "while",
             for_token: "for",
             case_token: "case",
+            switch_token: "switch",
             cast_token: "Cast",
             namespace_token: "namespace",
             ufunction: 'UFUNCTION',
@@ -249,6 +250,9 @@ var grammar = {
     {"name": "statement", "symbols": [(lexer.has("else_token") ? {type: "else_token"} : else_token), "optional_statement"], "postprocess": 
         function (d) { return Compound(d, n.ElseStatement, [d[2]]); }
         },
+    {"name": "statement", "symbols": [(lexer.has("switch_token") ? {type: "switch_token"} : switch_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "optional_expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
+        function (d) { return Compound(d, n.SwitchStatement, [d[3]]); }
+        },
     {"name": "statement", "symbols": [(lexer.has("case_token") ? {type: "case_token"} : case_token), "_", "case_label", "_", (lexer.has("colon") ? {type: "colon"} : colon), "optional_statement"], "postprocess": 
         function (d) { return Compound(d, n.CaseStatement, [d[2], d[5]]); }
         },
@@ -363,11 +367,19 @@ var grammar = {
             name: Identifier(d[2]),
         }}
         },
-    {"name": "global_declaration", "symbols": [{"literal":"asset"}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"of"}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
-        function (d) { return Compound(d, n.AssetDefinition, [Identifier(d[2]), Identifier(d[6])]); }
+    {"name": "global_declaration", "symbols": [{"literal":"asset"}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"of"}, "_", "typename"], "postprocess": 
+        function (d) { return {
+            ...Compound(d, n.AssetDefinition, null),
+            name: Identifier(d[2]),
+            typename: d[6],
+        }; }
         },
-    {"name": "global_declaration", "symbols": [{"literal":"settings"}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"for"}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
-        function (d) { return Compound(d, n.AssetDefinition, [Identifier(d[2]), Identifier(d[6])]); }
+    {"name": "global_declaration", "symbols": [{"literal":"settings"}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"for"}, "_", "typename"], "postprocess": 
+        function (d) { return {
+            ...Compound(d, n.AssetDefinition, null),
+            name: Identifier(d[2]),
+            typename: d[6],
+        }; }
         },
     {"name": "global_declaration", "symbols": [(lexer.has("namespace_token") ? {type: "namespace_token"} : namespace_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
         function (d) { return {
@@ -1036,17 +1048,9 @@ var grammar = {
             );
         }
         },
-    {"name": "case_label$ebnf$2", "symbols": []},
-    {"name": "case_label$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("ns") ? {type: "ns"} : ns), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)]},
-    {"name": "case_label$ebnf$2", "symbols": ["case_label$ebnf$2", "case_label$ebnf$2$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "case_label", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "case_label$ebnf$2"], "postprocess": 
-        function (d) { return CompoundIdentifier(d, null); }
-        },
-    {"name": "enum_statement", "symbols": ["_"], "postprocess": 
-        function (d) { return []; }
-        },
+    {"name": "case_label", "symbols": ["namespace_access"], "postprocess": id},
     {"name": "enum_statement$ebnf$1", "symbols": []},
-    {"name": "enum_statement$ebnf$1$subexpression$1", "symbols": ["_", {"literal":","}, "_", "enum_decl"]},
+    {"name": "enum_statement$ebnf$1$subexpression$1", "symbols": ["_", {"literal":","}, "enum_decl"]},
     {"name": "enum_statement$ebnf$1", "symbols": ["enum_statement$ebnf$1", "enum_statement$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
     {"name": "enum_statement", "symbols": ["enum_decl", "enum_statement$ebnf$1"], "postprocess": 
         function (d)
@@ -1055,17 +1059,28 @@ var grammar = {
             if (d[1])
             {
                 for (let sub of d[1])
-                    result.push(sub[3]);
+                    result.push(sub[2]);
             }
-            return result;
+            return Compound(d, n.EnumValueList, result);
         }
         },
-    {"name": "enum_decl", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": id},
-    {"name": "enum_decl", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"="}, "_", "enum_value"], "postprocess": 
+    {"name": "enum_decl$ebnf$1", "symbols": ["comment_documentation"], "postprocess": id},
+    {"name": "enum_decl$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "enum_decl", "symbols": ["enum_decl$ebnf$1", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
          function (d) { return {
              ...Compound(d, n.EnumValue, null),
-             name: Identifier(d[0]),
-             value: d[4],
+             name: Identifier(d[1]),
+             documentation: d[0],
+        }; }
+        },
+    {"name": "enum_decl$ebnf$2", "symbols": ["comment_documentation"], "postprocess": id},
+    {"name": "enum_decl$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "enum_decl", "symbols": ["enum_decl$ebnf$2", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"="}, "_", "enum_value"], "postprocess": 
+         function (d) { return {
+             ...Compound(d, n.EnumValue, null),
+             name: Identifier(d[1]),
+             value: d[5],
+             documentation: d[0],
         }; }
         },
     {"name": "enum_value$ebnf$1", "symbols": []},
@@ -1103,14 +1118,21 @@ var grammar = {
         function (d) {
             if (d[1])
             {
-                let comment = "";
+                let comment = null;
                 for (let part of d[1])
                 {
                     if (part[0].type == 'block_comment')
+                    {
+                        if (!comment) comment = "";
                         comment += part[0].value.substring(2, part[0].value.length - 2);
+                    }
                     else if (part[0].type == 'line_comment')
+                    {
+                        if (!comment) comment = "";
                         comment += part[0].value.substring(2, part[0].value.length);
-                    if (comment.length > 0)
+                    }
+        
+                    if (comment && comment.length > 0)
                         comment += "\n";
                 }
                 return comment;

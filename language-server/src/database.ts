@@ -1225,15 +1225,31 @@ export function RemoveModuleFromNamespace(namespace : string, modulename : strin
     for (let method of removeMethods)
         dbtype.removeSymbol(method);
 
-    // Replace method list in type
+    // Remove old properties from the same module that we are replacing
+    let keepProperties : Array<DBProperty> = [];
+    let removeProperties : Array<DBProperty> = [];
+    for (let prop of dbtype.properties)
+    {
+        if (prop.declaredModule != modulename)
+            keepProperties.push(prop);
+        else
+            removeProperties.push(prop);
+    }
+
+    // Remove symbols for old properties
+    for (let prop of removeProperties)
+        dbtype.removeSymbol(prop);
+
+    // Replace lists in type
     dbtype.methods = keepMethods;
+    dbtype.properties = keepProperties;
 }
 
-export function MergeNamespaceToDB(newtype : DBType, removeOldMethods : boolean = true) : DBType
+export function MergeNamespaceToDB(newtype : DBType, removeOldSymbols : boolean = true) : DBType
 {
     // Check if we already have a database entry for this namespace
     let dbtype = database.get(newtype.typename);
-    if (!dbtype || (dbtype.declaredModule == newtype.declaredModule && removeOldMethods))
+    if (!dbtype || (dbtype.declaredModule == newtype.declaredModule && removeOldSymbols))
     {
         AddTypeToDatabase(newtype);
         return newtype;
@@ -1242,7 +1258,7 @@ export function MergeNamespaceToDB(newtype : DBType, removeOldMethods : boolean 
     // Remove old methods from the same module that we are replacing
     let keepMethods : Array<DBMethod> = [];
     let removeMethods : Array<DBMethod> = [];
-    if (removeOldMethods)
+    if (removeOldSymbols)
     {
         for (let method of dbtype.methods)
         {
@@ -1271,6 +1287,39 @@ export function MergeNamespaceToDB(newtype : DBType, removeOldMethods : boolean 
     // Remove symbols for old methods
     for (let method of removeMethods)
         dbtype.removeSymbol(method);
+
+    // Remove old properties from the same module that we are replacing
+    let keepProperties : Array<DBProperty> = [];
+    let removeProperties : Array<DBProperty> = [];
+    if (removeOldSymbols)
+    {
+        for (let prop of dbtype.properties)
+        {
+            if (prop.declaredModule != newtype.declaredModule)
+                keepProperties.push(prop);
+            else
+                removeProperties.push(prop);
+        }
+    }
+    else
+    {
+        // Keep all methods
+        keepProperties = dbtype.properties;
+    }
+
+    // Add all the new methods we're adding
+    for (let prop of newtype.properties)
+    {
+        keepProperties.push(prop);
+        dbtype.addSymbol(prop);
+    }
+
+    // Replace method list in type
+    dbtype.properties = keepProperties;
+
+    // Remove symbols for old methods
+    for (let prop of removeProperties)
+        dbtype.removeSymbol(prop);
 
     // Now that we're merging methods this type is no longer exclusive to this module
     if (dbtype.declaredModule != newtype.declaredModule)

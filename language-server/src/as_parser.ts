@@ -369,7 +369,7 @@ export class ASStatement extends ASElement
 let ASKeywords = [
     "for", "if", "enum", "return", "continue", "break", "import", "class", "struct", "default",
     "void", "const", "delegate", "event", "else", "while", "for", "case", "Cast", "namespace",
-    "UFUNCTION", "UPROPERTY", "UCLASS", "USTRUCT", "nullptr", "true", "false", "this",
+    "UFUNCTION", "UPROPERTY", "UCLASS", "USTRUCT", "nullptr", "true", "false", "this", "auto",
 ];
 let ModuleDatabase = new Map<string, ASModule>();
 let ModulesByUri = new Map<string, ASModule>();
@@ -1015,6 +1015,7 @@ function GenerateTypeInformation(scope : ASScope)
         {
             let enumdef = scope.previous.ast;
             let dbtype = AddDBType(scope, "__"+enumdef.name.value);
+            dbtype.isEnum = true;
             if (enumdef.documentation)
                 dbtype.documentation = typedb.FormatDocumentationComment(enumdef.documentation);
             dbtype.moduleOffset = scope.previous.start_offset + enumdef.name.start;
@@ -1240,6 +1241,35 @@ function GenerateTypeInformation(scope : ASScope)
                     }
 
                     scope.module.types.push(dbtype);
+                }
+            }
+            break;
+            case node_types.AssetDefinition:
+            {
+                // Asset definitions are basically just global variables
+                AddVarDeclToScope(scope, statement, statement.ast);
+            }
+            break;
+            case node_types.EnumValueList:
+            {
+                if (scope.dbtype)
+                {
+                    for (let enumValue of statement.ast.children)
+                    {
+                        if (!enumValue)
+                            continue;
+
+                        let dbprop = new typedb.DBProperty();
+                        dbprop.name = enumValue.name.value;
+                        dbprop.typename = scope.dbtype.typename.substr(2);
+                        if (enumValue.documentation)
+                            dbprop.documentation = typedb.FormatDocumentationComment(enumValue.documentation);
+                        dbprop.declaredModule = scope.module.modulename;
+                        dbprop.moduleOffset = statement.start_offset + enumValue.name.start;
+
+                        scope.dbtype.properties.push(dbprop);
+                        scope.dbtype.addSymbol(dbprop);
+                    }
                 }
             }
             break;
@@ -1490,7 +1520,12 @@ function ResolveAutos(scope : ASScope)
         if (resolvedType && asvar.isIterator)
             resolvedType = ResolveIteratorType(resolvedType);
         if (resolvedType)
-            asvar.typename = CopyQualifiersToTypename(asvar.node_typename, resolvedType.typename);
+        {
+            let typename = resolvedType.typename;
+            if (typename.startsWith("__"))
+                typename = typename.substr(2);
+            asvar.typename = CopyQualifiersToTypename(asvar.node_typename, typename);
+        }
     }
 
     for (let subscope of scope.scopes)
@@ -1569,10 +1604,20 @@ function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.DBType
         {
             if (!node.children[0] || !node.children[1] || !node.children[0].value)
                 return null;
-            let nsType = typedb.GetType("__"+node.children[0].value);
-            if (!nsType)
-                return null;
-            return ResolvePropertyType(nsType, node.children[1].value);
+            if (node.children[0].value == "Super" && scope.getParentType())
+            {
+                let superType = typedb.GetType(scope.getParentType().supertype);
+                if (!superType)
+                    return null;
+                return ResolvePropertyType(superType, node.children[1].value);
+            }
+            else
+            {
+                let nsType = typedb.GetType("__"+node.children[0].value);
+                if (!nsType)
+                    return null;
+                return ResolvePropertyType(nsType, node.children[1].value);
+            }
         }
         break;
         // X()
@@ -1580,7 +1625,19 @@ function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.DBType
         {
             let left_func = ResolveFunctionFromExpression(scope, node.children[0]);
             if (!left_func)
+            {
+                // Check if this is a primitive or enum construction
+                if (node.children[0] && node.children[0].type == node_types.Identifier)
+                {
+                    let primType = typedb.GetType(node.children[0].value);
+                    if (primType && primType.isPrimitive)
+                        return primType;
+                    let enumType = typedb.GetType("__"+node.children[0].value);
+                    if (enumType && enumType.isEnum)
+                        return enumType;
+                }
                 return null;
+            }
             return typedb.GetType(left_func.returnType);
         }
         break;
@@ -1862,10 +1919,20 @@ function ResolveFunctionFromExpression(scope : ASScope, node : any) : typedb.DBM
         {
             if (!node.children[0] || !node.children[1] || !node.children[0].value)
                 return null;
-            let nsType = typedb.GetType("__"+node.children[0].value);
-            if (!nsType)
-                return null;
-            return ResolveFunctionFromType(scope, nsType, node.children[1].value);
+            if (node.children[0].value == "Super" && scope.getParentType())
+            {
+                let superType = typedb.GetType(scope.getParentType().supertype);
+                if (!superType)
+                    return null;
+                return ResolveFunctionFromType(scope, superType, node.children[1].value);
+            }
+            else
+            {
+                let nsType = typedb.GetType("__"+node.children[0].value);
+                if (!nsType)
+                    return null;
+                return ResolveFunctionFromType(scope, nsType, node.children[1].value);
+            }
         }
         break;
     }
@@ -2009,7 +2076,12 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (!node.children[0] || !node.children[0].value)
                 return null;
 
-            let nsType = typedb.GetType("__"+node.children[0].value);
+            let nsType = null;
+            if (node.children[0].value == "Super" && scope.getParentType())
+                nsType = typedb.GetType(scope.getParentType().supertype);
+            else
+                nsType = typedb.GetType("__"+node.children[0].value);
+
             if (!nsType)
             {
                 if (allow_errors)
@@ -2261,7 +2333,14 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (node.name)
             {
                 let insideType = scope.dbtype ? scope.dbtype.typename : null;
-                let symType = scope.dbtype ? ASSymbolType.MemberVariable : ASSymbolType.LocalVariable;
+                let symType = ASSymbolType.LocalVariable;
+                if (scope.dbtype)
+                {
+                    if (scope.scopetype == ASScopeType.Class)
+                        symType = ASSymbolType.MemberVariable;
+                    else
+                        symType = ASSymbolType.GlobalVariable;
+                }
                 AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value);
             }
             // Detect inside the expression that initializes the variable
@@ -2273,6 +2352,18 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 if (typenameSymbol && typenameSymbol.symbol_name == "auto")
                     UpdateAutoTypenameSymbol(typenameSymbol, expressionType);
             }
+        }
+        break;
+        // asset X of Y
+        case node_types.AssetDefinition:
+        {
+            // Symbol for the global variable that holds the asset
+            let insideType = scope.dbtype ? scope.dbtype.typename : null;
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.GlobalVariable, null, insideType);
+
+            // Symbol for the typename of the asset
+            if (node.typename)
+                AddTypenameSymbol(scope, statement, node.typename);
         }
         break;
         // Type X, Y;
@@ -2288,6 +2379,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.CompoundAssignment:
         case node_types.ReturnStatement:
         case node_types.DefaultStatement:
+        case node_types.SwitchStatement:
         {
             // Detect in each subexpression
             for (let child of node.children)
@@ -2431,6 +2523,26 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, setAccessor.containingType, setAccessor.name);
                 return typedb.GetType(setAccessor.args[0].typename);
             }
+        }
+    }
+
+    // If we allow functions this could be a 'constructor call' to a primitive or an enum
+    if (typedb.AllowsFunctions(symbol_type))
+    {
+        // It could be a type as well
+        let primType = typedb.GetType(node.value);
+        if (primType && primType.isPrimitive)
+        {
+            AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, primType.typename);
+            return primType;
+        }
+
+        // We could be typing a namespace
+        let enumType = typedb.GetType("__"+node.value);
+        if (enumType && enumType.isEnum)
+        {
+            AddIdentifierSymbol(scope, statement, node, ASSymbolType.Namespace, null, enumType.typename);
+            return enumType;
         }
     }
     

@@ -634,7 +634,7 @@ function GetTypeFromTerm(initialTerm : Array<ASTerm>, startIndex : number, endIn
                 {
                     if (curscope != null)
                     {
-                        let scopetype = curscope.getDatabaseType();
+                        let scopetype = curscope.getParentType();
                         if (scopetype != null)
                             curtype = typedb.GetType(scopetype.supertype);
                         else

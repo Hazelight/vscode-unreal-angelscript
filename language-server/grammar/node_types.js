@@ -36,6 +36,7 @@ module.exports = {
     ImportStatement: indexed ? i++ : "ImportStatement",
     ImportFunctionStatement: indexed ? i++ : "ImportFunctionStatement",
     DefaultStatement: indexed ? i++ : "DefaultStatement",
+    SwitchStatement: indexed ? i++ : "SwitchStatement",
     CaseStatement: indexed ? i++ : "CaseStatement",
     DefaultCaseStatement: indexed ? i++ : "DefaultCaseStatement",
     ContinueStatement: indexed ? i++ : "ContinueStatement",
@@ -68,6 +69,7 @@ module.exports = {
     Macro: indexed ? i++ : "Macro",
     MacroArgument: indexed ? i++ : "MacroArgument",
 
+    EnumValueList: indexed ? i++ : "EnumValueList",
     EnumValue: indexed ? i++ : "EnumValue",
 }
 

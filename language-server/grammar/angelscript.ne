@@ -49,6 +49,7 @@ const lexer = moo.compile({
             while_token: "while",
             for_token: "for",
             case_token: "case",
+            switch_token: "switch",
             cast_token: "Cast",
             namespace_token: "namespace",
             ufunction: 'UFUNCTION',
@@ -254,6 +255,10 @@ statement -> %else_token optional_statement {%
     function (d) { return Compound(d, n.ElseStatement, [d[2]]); }
 %}
 
+statement -> %switch_token _ %lparen optional_expression _ %rparen {%
+    function (d) { return Compound(d, n.SwitchStatement, [d[3]]); }
+%}
+
 statement -> %case_token _ case_label _ %colon optional_statement {%
     function (d) { return Compound(d, n.CaseStatement, [d[2], d[5]]); }
 %}
@@ -355,12 +360,20 @@ global_declaration -> %enum_token _ %identifier {%
     }}
 %}
 
-global_declaration -> "asset" _ %identifier _ "of" _ %identifier {%
-    function (d) { return Compound(d, n.AssetDefinition, [Identifier(d[2]), Identifier(d[6])]); }
+global_declaration -> "asset" _ %identifier _ "of" _ typename {%
+    function (d) { return {
+        ...Compound(d, n.AssetDefinition, null),
+        name: Identifier(d[2]),
+        typename: d[6],
+    }; }
 %}
 
-global_declaration -> "settings" _ %identifier _ "for" _ %identifier {%
-    function (d) { return Compound(d, n.AssetDefinition, [Identifier(d[2]), Identifier(d[6])]); }
+global_declaration -> "settings" _ %identifier _ "for" _ typename {%
+    function (d) { return {
+        ...Compound(d, n.AssetDefinition, null),
+        name: Identifier(d[2]),
+        typename: d[6],
+    }; }
 %}
 
 global_declaration -> %namespace_token _ %identifier {%
@@ -1021,33 +1034,35 @@ case_label -> ("-" _):? %number {%
         );
     }
 %}
-case_label -> %identifier (_ %ns _ %identifier):* {%
-    function (d) { return CompoundIdentifier(d, null); }
-%}
+case_label -> namespace_access {% id %}
 
-enum_statement -> _ {%
-    function (d) { return []; }
-%}
-
-enum_statement -> enum_decl (_ "," _ enum_decl):* {%
+enum_statement -> enum_decl (_ "," enum_decl):* {%
     function (d)
     {
         let result = [d[0]];
         if (d[1])
         {
             for (let sub of d[1])
-                result.push(sub[3]);
+                result.push(sub[2]);
         }
-        return result;
+        return Compound(d, n.EnumValueList, result);
     }
 %}
 
-enum_decl -> %identifier {% id %}
-enum_decl -> %identifier _ "=" _ enum_value {%
+enum_decl -> comment_documentation:? %identifier {%
     function (d) { return {
         ...Compound(d, n.EnumValue, null),
-        name: Identifier(d[0]),
-        value: d[4],
+        name: Identifier(d[1]),
+        documentation: d[0],
+   }; }
+%}
+
+enum_decl -> comment_documentation:? %identifier _ "=" _ enum_value {%
+    function (d) { return {
+        ...Compound(d, n.EnumValue, null),
+        name: Identifier(d[1]),
+        value: d[5],
+        documentation: d[0],
    }; }
 %}
 
@@ -1069,14 +1084,21 @@ comment_documentation -> %WS:* (%block_comment %WS:? | %line_comment %WS:? | %pr
     function (d) {
         if (d[1])
         {
-            let comment = "";
+            let comment = null;
             for (let part of d[1])
             {
                 if (part[0].type == 'block_comment')
+                {
+                    if (!comment) comment = "";
                     comment += part[0].value.substring(2, part[0].value.length - 2);
+                }
                 else if (part[0].type == 'line_comment')
+                {
+                    if (!comment) comment = "";
                     comment += part[0].value.substring(2, part[0].value.length);
-                if (comment.length > 0)
+                }
+
+                if (comment && comment.length > 0)
                     comment += "\n";
             }
             return comment;

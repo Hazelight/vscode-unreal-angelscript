@@ -270,7 +270,7 @@ function TickQueues()
 	}
 	else if (PostProcessTypesQueueIndex < PostProcessTypesQueue.length)
 	{
-		if (CanResolveModules() || UnrealTypesTimedOut)
+		if (CanResolveModules())
 		{
 			for (let n = 0; n < 5 && PostProcessTypesQueueIndex < PostProcessTypesQueue.length; ++n, ++PostProcessTypesQueueIndex)
 			{
