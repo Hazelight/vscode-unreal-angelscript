@@ -13,8 +13,8 @@ export function FindReferences(uri : string, position : Position) : Array<Locati
         return null;
 
     // Make sure the module is parsed and resolved
-    //  TODO: Recurse into imports
-    scriptfiles.ParseModule(asmodule);
+    scriptfiles.ParseModuleAndDependencies(asmodule);
+    scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
     scriptfiles.ResolveModule(asmodule);
 
     let offset = asmodule.getOffset(position);
@@ -35,6 +35,8 @@ export function FindReferences(uri : string, position : Position) : Array<Locati
         let checkscope = asmodule.getScopeAt(offset);
         while (checkscope)
         {
+            if (!checkscope.isInFunctionBody())
+                break;
             considerScopes.push(checkscope);
             checkscope = checkscope.parentscope;
         }
@@ -71,9 +73,9 @@ export function FindReferences(uri : string, position : Position) : Array<Locati
     for (let checkmodule of scriptfiles.GetAllModules())
     {
         // Make sure the module is parsed and resolved
-        //  TODO: Recurse into imports
-        scriptfiles.ParseModule(checkmodule);
-        scriptfiles.ResolveModule(checkmodule);
+        scriptfiles.ParseModuleAndDependencies(asmodule);
+        scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
+        scriptfiles.ResolveModule(asmodule);
 
         // Find symbols that match the symbol we're trying to find
         for (let symbol of checkmodule.symbols)

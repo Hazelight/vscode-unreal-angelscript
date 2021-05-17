@@ -188,6 +188,8 @@ export class ASSymbol
 
     container_type : string = null;
     symbol_name : string = null;
+
+    isWriteAccess : boolean = false;
 };
 
 export class ASScope extends ASElement
@@ -1259,6 +1261,10 @@ function GenerateTypeInformation(scope : ASScope)
                         if (!enumValue)
                             continue;
 
+                        // Emit symbol for enum value node
+                        AddIdentifierSymbol(scope, statement, enumValue.name, ASSymbolType.MemberVariable, scope.dbtype.typename, enumValue.name.value);
+
+                        // Add enum value to type database
                         let dbprop = new typedb.DBProperty();
                         dbprop.name = enumValue.name.value;
                         dbprop.typename = scope.dbtype.typename.substr(2);
@@ -1400,7 +1406,7 @@ function AddForEachVariableToScope(scope : ASScope, statement : ASStatement, nod
     scope.variablesByName.set(asvar.name, asvar);
 }
 
-function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType, container_type : string = null, symbol_name : string = null) : ASSymbol
+function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType, container_type : string = null, symbol_name : string = null, isWriteAccess : boolean = false) : ASSymbol
 {
     if (!node)
         return null;
@@ -1410,6 +1416,7 @@ function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : an
     symbol.end = node.end + statement.start_offset;
     symbol.container_type = container_type;
     symbol.symbol_name = symbol_name;
+    symbol.isWriteAccess = isWriteAccess;
 
     scope.module.symbols.push(symbol);
     return symbol;
@@ -1626,15 +1633,15 @@ function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.DBType
             let left_func = ResolveFunctionFromExpression(scope, node.children[0]);
             if (!left_func)
             {
-                // Check if this is a primitive or enum construction
+                // Check if this is a constructor to some type
                 if (node.children[0] && node.children[0].type == node_types.Identifier)
                 {
-                    let primType = typedb.GetType(node.children[0].value);
-                    if (primType && primType.isPrimitive)
-                        return primType;
                     let enumType = typedb.GetType("__"+node.children[0].value);
                     if (enumType && enumType.isEnum)
                         return enumType;
+                    let constrType = typedb.GetType(node.children[0].value);
+                    if (constrType)
+                        return constrType;
                 }
                 return null;
             }
@@ -2005,12 +2012,13 @@ function DetectScopeSymbols(scope : ASScope)
 {
     // Look at each statement to see if it has symbols
     let element = scope.element_head;
+    let parseContext = new ASParseContext();
     while (element)
     {
         if (element instanceof ASStatement)
         {
             if (element.ast)
-                DetectNodeSymbols(scope, element, element.ast);
+                DetectNodeSymbols(scope, element, element.ast, parseContext);
         }
         else if (element instanceof ASScope)
         {
@@ -2030,10 +2038,20 @@ function GetTypeFromSymbol(symbol : typedb.DBSymbol | typedb.DBType)
         return null;
 }
 
-function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any, allow_errors : boolean = true, symbol_type : typedb.DBAllowSymbol = typedb.DBAllowSymbol.PropertyOnly) : typedb.DBSymbol | typedb.DBType
+class ASParseContext
+{
+    allow_errors : boolean = true;
+    isWriteAccess : boolean = false;
+    argumentFunction : typedb.DBMethod = null;
+};
+
+function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any, parseContext : ASParseContext, symbol_type : typedb.DBAllowSymbol = typedb.DBAllowSymbol.PropertyOnly) : typedb.DBSymbol | typedb.DBType
 {
     if (!node)
         return;
+
+    let outerWriteAccess = parseContext.isWriteAccess;
+    parseContext.isWriteAccess = false;
 
     // Add symbols for parameters in function declarations
     switch (node.type)
@@ -2050,22 +2068,26 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         // X
         case node_types.Identifier:
         {
-            return DetectIdentifierSymbols(scope, statement, node, allow_errors, symbol_type);
+            parseContext.isWriteAccess = outerWriteAccess;
+            return DetectIdentifierSymbols(scope, statement, node, parseContext, symbol_type);
         }
         break;
         // X.Y
         case node_types.MemberAccess:
         {
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
             if (!left_symbol)
             {
-                if (allow_errors)
+                if (parseContext.allow_errors)
                     AddUnknownSymbol(scope, statement, node.children[1], false);
                 return null;
             }
 
             if (node.children[1])
-                return DetectSymbolsInType(scope, statement, left_symbol, node.children[1], allow_errors, symbol_type);
+            {
+                parseContext.isWriteAccess = outerWriteAccess;
+                return DetectSymbolsInType(scope, statement, left_symbol, node.children[1], parseContext, symbol_type);
+            }
 
             return null;
         }
@@ -2084,7 +2106,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
 
             if (!nsType)
             {
-                if (allow_errors)
+                if (parseContext.allow_errors)
                 {
                     AddUnknownSymbol(scope, statement, node.children[0], false);
                     AddUnknownSymbol(scope, statement, node.children[1], false);
@@ -2094,23 +2116,60 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
 
             AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, nsType.typename);
             if (node.children[1])
-                return DetectSymbolsInType(scope, statement, nsType, node.children[1], allow_errors, symbol_type);
+            {
+                parseContext.isWriteAccess = outerWriteAccess;
+                return DetectSymbolsInType(scope, statement, nsType, node.children[1], parseContext, symbol_type);
+            }
+
             return null;
         }
         break;
         // X()
         case node_types.FunctionCall:
         {
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.FunctionOnly);
+            // This could be a constructor call to a type
+            let left_type : typedb.DBType = null;
+            let left_symbol : typedb.DBSymbol | typedb.DBType = null;
+            if (node.children[0] && node.children[0].type == node_types.Identifier)
+            {
+                let enumType = typedb.GetType("__"+node.children[0].value);
+                if (enumType && enumType.isEnum)
+                {
+                    left_type = enumType;
+                    AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, enumType.typename);
+                }
+                else
+                {
+                    let constrType = typedb.GetType(node.children[0].value);
+                    if (constrType)
+                    {
+                        left_type = constrType;
+                        AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, constrType.typename);
+                    }
+                }
+            }
+
+            // Otherwise, resolve the left side as a function and get the return type
+            if (left_type == null)
+            {
+                left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.FunctionOnly);
+                if (left_symbol && left_symbol instanceof typedb.DBMethod)
+                    left_type = typedb.GetType(left_symbol.returnType);
+            }
 
             // Detect symbols in the argument expressions
-            DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            let prevMethod = parseContext.argumentFunction;
+            if (left_symbol && left_symbol instanceof typedb.DBMethod)
+                parseContext.argumentFunction = left_symbol;
+            else
+                parseContext.argumentFunction = null;
+
+            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+
+            parseContext.argumentFunction = prevMethod;
 
             // Pass through the return type to be used for the next level
-            if (left_symbol && left_symbol instanceof typedb.DBMethod)
-                return typedb.GetType(left_symbol.returnType);
-            else
-                return null;
+            return left_type;
         }
         break;
         // TType<TSubType>()
@@ -2120,7 +2179,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             AddTypenameSymbol(scope, statement, node.children[0]);
 
             // Detect symbols in the argument expressions
-            DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
 
             if (!node.children[0] || !node.children[0].value)
                 return null;
@@ -2133,7 +2192,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (node.children)
             {
                 for (let child of node.children)
-                    DetectNodeSymbols(scope, statement, child);
+                    DetectNodeSymbols(scope, statement, child, parseContext);
             }
         }
         break;
@@ -2141,10 +2200,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.IndexOperator:
         {
             // Detect symbols in the lvalue expression
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
 
             // Detect symbols in the subscript expression
-            DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
 
             // Pass through the return type to be used for the next level
             return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), null, "opIndex");
@@ -2154,9 +2213,9 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.BinaryOperation:
         {
             // Detect symbols in the left expression
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
             // Detect symbols in the right expression
-            let right_symbol = DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            let right_symbol = DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
 
             return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), GetTypeFromSymbol(right_symbol), getBinaryOperatorOverloadMethod(node.operator));
         }
@@ -2165,7 +2224,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.UnaryOperation:
         {
             // Detect symbols in the left expression
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
             return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), null, getUnaryOperatorOverloadMethod(node.operator));
         }
         break;
@@ -2173,7 +2232,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.PostfixOperation:
         {
             // Detect symbols in the left expression
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
             return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), null, getPostfixOperatorOverloadMethod(node.operator));
         }
         break;
@@ -2181,11 +2240,11 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.TernaryOperation:
         {
             // Detect symbols in the condition expression
-            DetectNodeSymbols(scope, statement, node.children[0], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
             // Detect symbols in the left expression
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
             // Detect symbols in the right expression
-            let right_symbol = DetectNodeSymbols(scope, statement, node.children[2], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            let right_symbol = DetectNodeSymbols(scope, statement, node.children[2], parseContext, typedb.DBAllowSymbol.PropertyOnly);
 
             if (left_symbol)
                 return left_symbol;
@@ -2202,7 +2261,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             AddTypenameSymbol(scope, statement, node.children[0]);
 
             // Detect symbols in the casted expression
-            DetectNodeSymbols(scope, statement, node.children[1], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
 
             if (!node.children[0] || !node.children[0].value)
                 return null;
@@ -2238,7 +2297,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         AddIdentifierSymbol(scope, statement, param.name, ASSymbolType.Parameter, null, param.name.value);
                     // Detect inside the default expression for the parameter
                     if (param.expression)
-                        DetectNodeSymbols(scope, statement, param.expression, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+                        DetectNodeSymbols(scope, statement, param.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
                 }
             }
         }
@@ -2272,7 +2331,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                             AddIdentifierSymbol(scope, statement, param.name, ASSymbolType.Parameter, null, param.name.value);
                         // Detect inside the default expression for the parameter
                         if (param.expression)
-                            DetectNodeSymbols(scope, statement, param.expression, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+                            DetectNodeSymbols(scope, statement, param.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
                     }
                 }
             }
@@ -2305,7 +2364,12 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         let namespacedSymbol = DetectSymbolFromNamespacedIdentifier(scope, statement, node.typename, true, typedb.DBAllowSymbol.Any);
                         if (!namespacedSymbol)
                         {
-                            let identifierSymbol = DetectIdentifierSymbols(scope, statement, node.typename, false, typedb.DBAllowSymbol.Any);
+                            let prevErrors = parseContext.allow_errors;
+                            parseContext.allow_errors = false;
+                            parseContext.isWriteAccess = outerWriteAccess;
+                            let identifierSymbol = DetectIdentifierSymbols(scope, statement, node.typename, parseContext, typedb.DBAllowSymbol.Any);
+                            parseContext.allow_errors = prevErrors;
+
                             if (identifierSymbol)
                             {
                                 // We were typing a valid identifier, symbol was already emitted, so we are done.
@@ -2313,7 +2377,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                             else
                             {
                                 // There was no valid identifier, but it's possible we're typing an incomplete one
-                                let hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, node.typename.value, typedb.DBAllowSymbol.Any);
+                                let hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, parseContext, node.typename.value, typedb.DBAllowSymbol.Any);
                                 if (!hasPotentialCompletions)
                                 {
                                     // Now we can add it as a typename symbol, because we know it cannot possibly be an identifier symbol
@@ -2341,12 +2405,13 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     else
                         symType = ASSymbolType.GlobalVariable;
                 }
-                AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value);
+                AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value, true);
             }
+
             // Detect inside the expression that initializes the variable
             if (node.expression)
             {
-                let expressionType = DetectNodeSymbols(scope, statement, node.expression, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+                let expressionType = DetectNodeSymbols(scope, statement, node.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
 
                 // If this was an auto, we should update the typename symbol to match the expression
                 if (typenameSymbol && typenameSymbol.symbol_name == "auto")
@@ -2371,19 +2436,29 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         {
             // Detect in each declaration inside this statement
             for (let child of node.children)
-                DetectNodeSymbols(scope, statement, child, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+                DetectNodeSymbols(scope, statement, child, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+        }
+        break;
+        // Assignment should recurse, and mark the left hand side as write access
+        case node_types.Assignment:
+        case node_types.CompoundAssignment:
+        {
+            // Detect in each subexpression
+            for (let i = 0, count = node.children.length; i < count; ++i)
+            {
+                parseContext.isWriteAccess = (i == 0);
+                DetectNodeSymbols(scope, statement, node.children[i], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            }
         }
         break;
         // Statements that don't need any special handling, just make sure to recurse into all children
-        case node_types.Assignment:
-        case node_types.CompoundAssignment:
         case node_types.ReturnStatement:
         case node_types.DefaultStatement:
         case node_types.SwitchStatement:
         {
             // Detect in each subexpression
             for (let child of node.children)
-                DetectNodeSymbols(scope, statement, child, allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+                DetectNodeSymbols(scope, statement, child, parseContext, typedb.DBAllowSymbol.PropertyOnly);
         }
         break;
         // Some nodes can be followed by an optional statement, but this has been parsed into its own statement
@@ -2396,7 +2471,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.DefaultCaseStatement:
         {
             for (let i = 0, count = node.children.length-1; i < count; ++i)
-                DetectNodeSymbols(scope, statement, node.children[i], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+                DetectNodeSymbols(scope, statement, node.children[i], parseContext, typedb.DBAllowSymbol.PropertyOnly);
         }
         break;
         // For each loops add symbols for the typename and the variable name
@@ -2408,7 +2483,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 AddIdentifierSymbol(scope, statement, node.children[1], ASSymbolType.LocalVariable, null, node.children[1].value);
 
             // Detect in the expression that declares the variable
-            let expressionType = DetectNodeSymbols(scope, statement, node.children[2], allow_errors, typedb.DBAllowSymbol.PropertyOnly);
+            let expressionType = DetectNodeSymbols(scope, statement, node.children[2], parseContext, typedb.DBAllowSymbol.PropertyOnly);
 
             // If this was an auto, we should update the typename symbol to match the expression
             if (typenameSymbol && typenameSymbol.symbol_name == "auto")
@@ -2438,12 +2513,19 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Namespace, null, node.name.value);
         }
         break;
+        // Named argument
+        case node_types.NamedArgument:
+        {
+            let expr_type = DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            return expr_type;
+        }
+        break;
     }
 
     return null;
 }
 
-function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node : any, allow_errors : boolean, symbol_type : typedb.DBAllowSymbol) : typedb.DBSymbol | typedb.DBType
+function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node : any, parseContext : ASParseContext, symbol_type : typedb.DBAllowSymbol) : typedb.DBSymbol | typedb.DBType
 {
     if (!node)
         return null;
@@ -2458,7 +2540,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             if (usedVariable)
             {
                 let symType = usedVariable.isArgument ? ASSymbolType.Parameter : ASSymbolType.LocalVariable;
-                AddIdentifierSymbol(scope, statement, node, symType, null, node.value);
+                AddIdentifierSymbol(scope, statement, node, symType, null, node.value, parseContext.isWriteAccess);
                 return typedb.GetType(usedVariable.typename);
             }
             checkscope = checkscope.parentscope;
@@ -2474,7 +2556,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             if (usedSymbol)
             {
                 let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.MemberVariable : ASSymbolType.MemberFunction;
-                AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name);
+                AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
                 return usedSymbol;
             }
 
@@ -2483,14 +2565,14 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 let getAccessor = insideType.findFirstSymbol("Get"+node.value, typedb.DBAllowSymbol.FunctionOnly);
                 if (getAccessor && getAccessor instanceof typedb.DBMethod)
                 {
-                    AddIdentifierSymbol(scope, statement, node, ASSymbolType.MemberAccessor, getAccessor.containingType, getAccessor.name);
+                    AddIdentifierSymbol(scope, statement, node, ASSymbolType.MemberAccessor, getAccessor.containingType, getAccessor.name, parseContext.isWriteAccess);
                     return typedb.GetType(getAccessor.returnType);
                 }
 
                 let setAccessor = insideType.findFirstSymbol("Set"+node.value, typedb.DBAllowSymbol.FunctionOnly);
                 if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
                 {
-                    AddIdentifierSymbol(scope, statement, node, ASSymbolType.MemberAccessor, setAccessor.containingType, setAccessor.name);
+                    AddIdentifierSymbol(scope, statement, node, ASSymbolType.MemberAccessor, setAccessor.containingType, setAccessor.name, parseContext.isWriteAccess);
                     return typedb.GetType(setAccessor.args[0].typename);
                 }
             }
@@ -2504,7 +2586,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         if (usedSymbol)
         {
             let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.GlobalVariable : ASSymbolType.GlobalFunction;
-            AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name);
+            AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
             return usedSymbol;
         }
 
@@ -2513,36 +2595,16 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             let getAccessor = globalType.findFirstSymbol("Get"+node.value, typedb.DBAllowSymbol.FunctionOnly);
             if (getAccessor && getAccessor instanceof typedb.DBMethod)
             {
-                AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, getAccessor.containingType, getAccessor.name);
+                AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, getAccessor.containingType, getAccessor.name, parseContext.isWriteAccess);
                 return typedb.GetType(getAccessor.returnType);
             }
 
             let setAccessor = globalType.findFirstSymbol("Set"+node.value, typedb.DBAllowSymbol.FunctionOnly);
             if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
             {
-                AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, setAccessor.containingType, setAccessor.name);
+                AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, setAccessor.containingType, setAccessor.name, parseContext.isWriteAccess);
                 return typedb.GetType(setAccessor.args[0].typename);
             }
-        }
-    }
-
-    // If we allow functions this could be a 'constructor call' to a primitive or an enum
-    if (typedb.AllowsFunctions(symbol_type))
-    {
-        // It could be a type as well
-        let primType = typedb.GetType(node.value);
-        if (primType && primType.isPrimitive)
-        {
-            AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, primType.typename);
-            return primType;
-        }
-
-        // We could be typing a namespace
-        let enumType = typedb.GetType("__"+node.value);
-        if (enumType && enumType.isEnum)
-        {
-            AddIdentifierSymbol(scope, statement, node, ASSymbolType.Namespace, null, enumType.typename);
-            return enumType;
         }
     }
     
@@ -2573,13 +2635,13 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
     }
 
     // This symbol is entirely unknown, maybe emit an invalid symbol so the user knows
-    if (allow_errors)
+    if (parseContext.allow_errors)
     {
         let hasPotentialCompletions = false;
         if (scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 1))
         {
             // Check if the symbol that we're editing can still complete to something valid later
-            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, node.value, typedb.DBAllowSymbol.Any);
+            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, parseContext, node.value, typedb.DBAllowSymbol.Any);
         }
 
         AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
@@ -2664,7 +2726,7 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
     return true;
 }
 
-function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASStatement, identifierPrefix : string, symbol_type : typedb.DBAllowSymbol) : boolean
+function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASStatement, parseContext : ASParseContext, identifierPrefix : string, symbol_type : typedb.DBAllowSymbol) : boolean
 {
     if (identifierPrefix.length < 2)
         return true;
@@ -2741,11 +2803,21 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
             return true;
     }
 
+    // If we're inside a function call's argument list, we could be completing one of the argument names
+    if (parseContext.argumentFunction && parseContext.argumentFunction.args)
+    {
+        for (let arg of parseContext.argumentFunction.args)
+        {
+            if (arg.name.startsWith(identifierPrefix))
+                return true;
+        }
+    }
+
     // Nothing found whatsoever
     return false;
 }
 
-function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol : typedb.DBType | typedb.DBSymbol, node : any, allow_errors : boolean, symbol_type : typedb.DBAllowSymbol) : typedb.DBSymbol | typedb.DBType
+function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol : typedb.DBType | typedb.DBSymbol, node : any, parseContext : ASParseContext, symbol_type : typedb.DBAllowSymbol) : typedb.DBSymbol | typedb.DBType
 {
     if (!inSymbol)
         return null;
@@ -2807,7 +2879,7 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
     }
 
     // This symbol is entirely unknown, maybe emit an invalid symbol so the user knows
-    if (allow_errors)
+    if (parseContext.allow_errors)
     {
         let hasPotentialCompletions = false;
         if (scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 1))

@@ -5,9 +5,9 @@ import {
 	Diagnostic, DiagnosticSeverity, InitializeResult, TextDocumentPositionParams, CompletionItem,
 	CompletionItemKind, SignatureHelp, Hover, DocumentSymbolParams, SymbolInformation,
 	WorkspaceSymbolParams, Definition, ExecuteCommandParams, VersionedTextDocumentIdentifier, Location,
-	TextDocumentSyncKind, DocumentHighlight, SemanticTokensOptions, SemanticTokensLegend,
+	TextDocumentSyncKind, SemanticTokensOptions, SemanticTokensLegend,
 	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder, ReferenceOptions, ReferenceParams,
-	CodeLens, CodeLensParams
+	CodeLens, CodeLensParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -16,6 +16,7 @@ import * as scriptfiles from './as_parser';
 import * as completion from './completion';
 import * as typedb from './database';
 import * as scriptreferences from './references';
+import * as scriptoccurances from './highlight_occurances';
 import * as fs from 'fs';
 let glob = require('glob');
 
@@ -216,6 +217,7 @@ connection.onInitialize((_params): InitializeResult => {
 			definitionProvider: true,
 			implementationProvider: true,
 			referencesProvider: true,
+			documentHighlightProvider: true,
 			semanticTokensProvider: <SemanticTokensOptions> {
 				legend: <SemanticTokensLegend> {
 					tokenTypes:SemanticTypeList.map(t => "as_"+t),
@@ -374,8 +376,17 @@ connection.onWorkspaceSymbol((_params : WorkspaceSymbolParams) : SymbolInformati
 
 connection.onReferences(function (params : ReferenceParams) : Location[]
 {
+	if (!CanResolveModules())
+		return null;
 	return scriptreferences.FindReferences(params.textDocument.uri, params.position);
 });
+
+connection.onDocumentHighlight(function (params : DocumentHighlightParams) : Array<DocumentHighlight>
+{
+	if (!CanResolveModules())
+		return null;
+	return scriptoccurances.HighlightOccurances(params.textDocument.uri, params.position);
+})
 
 connection.onCodeLens(function (params : CodeLensParams) : CodeLens[]
 {

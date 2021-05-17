@@ -810,8 +810,8 @@ var grammar = {
         }
         },
     {"name": "argument", "symbols": ["expression"], "postprocess": id},
-    {"name": "argument", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"="}, "_", "expression"], "postprocess": 
-        function (d) { return Compound(d, n.NamedArgument, [Identifier(d[0]), d[4]]); }
+    {"name": "argument", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"="}, "optional_expression"], "postprocess": 
+        function (d) { return Compound(d, n.NamedArgument, [Identifier(d[0]), d[3]]); }
         },
     {"name": "const_number", "symbols": [(lexer.has("number") ? {type: "number"} : number)], "postprocess": 
         function(d) { return Literal(n.ConstInteger, d[0]); }

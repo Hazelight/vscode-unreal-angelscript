@@ -801,8 +801,8 @@ argumentlist -> (argument _ "," _ ):* argument ",":? {%
 %}
 
 argument -> expression {% id %}
-argument -> %identifier _ "=" _ expression {%
-    function (d) { return Compound(d, n.NamedArgument, [Identifier(d[0]), d[4]]); }
+argument -> %identifier _ "=" optional_expression {%
+    function (d) { return Compound(d, n.NamedArgument, [Identifier(d[0]), d[3]]); }
 %}
 
 const_number -> %number {%
