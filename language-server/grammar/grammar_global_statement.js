@@ -247,8 +247,11 @@ var grammar = {
     {"name": "statement", "symbols": [(lexer.has("return_token") ? {type: "return_token"} : return_token), "_", "expression_or_assignment"], "postprocess": 
         function (d) { return Compound(d, n.ReturnStatement, [d[2]]); }
         },
+    {"name": "statement", "symbols": [(lexer.has("return_token") ? {type: "return_token"} : return_token)], "postprocess": 
+        function (d) { return Compound(d, n.ReturnStatement, []); }
+        },
     {"name": "statement", "symbols": [(lexer.has("else_token") ? {type: "else_token"} : else_token), "optional_statement"], "postprocess": 
-        function (d) { return Compound(d, n.ElseStatement, [d[2]]); }
+        function (d) { return Compound(d, n.ElseStatement, [d[1]]); }
         },
     {"name": "statement", "symbols": [(lexer.has("switch_token") ? {type: "switch_token"} : switch_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "optional_expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.SwitchStatement, [d[3]]); }
@@ -737,8 +740,14 @@ var grammar = {
     {"name": "lvalue", "symbols": ["template_typename", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
         },
-    {"name": "lvalue", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", {"literal":"<"}, "_", "typename", "_", {"literal":">"}, "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
+    {"name": "lvalue", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", {"literal":"<"}, "_", "typename", "_", {"literal":">"}, "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "optional_expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.CastOperation, [d[4], d[10]]); }
+        },
+    {"name": "expression", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", {"literal":"<"}], "postprocess": 
+        function (d) { return Compound(d, n.CastOperation, [null, null]); }
+        },
+    {"name": "expression", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", {"literal":"<"}, "_", "typename", "_", {"literal":">"}], "postprocess": 
+        function (d) { return Compound(d, n.CastOperation, [d[4], null]); }
         },
     {"name": "lvalue", "symbols": ["namespace_access"], "postprocess": id},
     {"name": "namespace_access", "symbols": ["namespace_access", "_", {"literal":"::"}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
@@ -780,14 +789,6 @@ var grammar = {
             ...Compound(d, n.CompoundAssignment, [d[0], null]),
             operator: Operator(d[2]),
         }; }
-        },
-    {"name": "lvalue$ebnf$1", "symbols": [{"literal":"<"}], "postprocess": id},
-    {"name": "lvalue$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "lvalue", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", "lvalue$ebnf$1"], "postprocess": 
-        function (d) { return Compound(d, n.CastOperation, [null, null]); }
-        },
-    {"name": "lvalue", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", {"literal":"<"}, "_", "typename", "_", {"literal":">"}], "postprocess": 
-        function (d) { return Compound(d, n.CastOperation, [d[4], null]); }
         },
     {"name": "argumentlist", "symbols": [], "postprocess": 
         function(d) { return null; }

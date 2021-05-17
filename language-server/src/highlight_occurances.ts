@@ -1,5 +1,4 @@
 import * as scriptfiles from './as_parser';
-import * as completion from './completion';
 
 import { Range, Position, Location, DocumentHighlight, DocumentHighlightKind } from "vscode-languageserver";
 

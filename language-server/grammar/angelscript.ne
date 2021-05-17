@@ -251,8 +251,12 @@ statement -> %return_token _ expression_or_assignment {%
     function (d) { return Compound(d, n.ReturnStatement, [d[2]]); }
 %}
 
+statement -> %return_token {%
+    function (d) { return Compound(d, n.ReturnStatement, []); }
+%}
+
 statement -> %else_token optional_statement {%
-    function (d) { return Compound(d, n.ElseStatement, [d[2]]); }
+    function (d) { return Compound(d, n.ElseStatement, [d[1]]); }
 %}
 
 statement -> %switch_token _ %lparen optional_expression _ %rparen {%
@@ -730,8 +734,15 @@ lvalue -> template_typename _ %lparen _ argumentlist _ %rparen {%
     function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
 %}
 
-lvalue -> %cast_token _ "<" _ typename _ ">" _ %lparen _ expression _ %rparen {%
+lvalue -> %cast_token _ "<" _ typename _ ">" _ %lparen _ optional_expression _ %rparen {%
     function (d) { return Compound(d, n.CastOperation, [d[4], d[10]]); }
+%}
+# INCOMPLETE: Attempts to parse an incomplete cast while the user is typing
+expression -> %cast_token _ "<" {%
+    function (d) { return Compound(d, n.CastOperation, [null, null]); }
+%}
+expression -> %cast_token _ "<" _ typename _ ">" {%
+    function (d) { return Compound(d, n.CastOperation, [d[4], null]); }
 %}
 
 lvalue -> namespace_access {% id %}
@@ -774,13 +785,6 @@ assignment -> lvalue _ %compound_assignment {%
         ...Compound(d, n.CompoundAssignment, [d[0], null]),
         operator: Operator(d[2]),
     }; }
-%}
-# INCOMPLETE: Attempts to parse an incomplete cast while the user is typing
-lvalue -> %cast_token _ "<":? {%
-    function (d) { return Compound(d, n.CastOperation, [null, null]); }
-%}
-lvalue -> %cast_token _ "<" _ typename _ ">" {%
-    function (d) { return Compound(d, n.CastOperation, [d[4], null]); }
 %}
 
 

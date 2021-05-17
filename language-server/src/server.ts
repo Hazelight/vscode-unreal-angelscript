@@ -17,6 +17,7 @@ import * as completion from './completion';
 import * as typedb from './database';
 import * as scriptreferences from './references';
 import * as scriptoccurances from './highlight_occurances';
+import * as scriptsemantics from './semantic_highlighting';
 import * as fs from 'fs';
 let glob = require('glob');
 
@@ -166,14 +167,6 @@ let shouldSendDiagnosticRelatedInformation: boolean = false;
 let RootPath : string = "";
 let RootUri : string = "";
 
-let SemanticTypes : any = {};
-let SemanticTypeList : Array<string> = [
-	"typename", "template_base_type", "invalid",
-];
-
-for (let i = 0, Count = SemanticTypeList.length; i < Count; ++i)
-	SemanticTypes[SemanticTypeList[i]] = i;
-
 // After the server has started the client sends an initialize request. The server receives
 // in the passed params the rootPath of the workspace plus the client capabilities.
 connection.onInitialize((_params): InitializeResult => {
@@ -220,7 +213,7 @@ connection.onInitialize((_params): InitializeResult => {
 			documentHighlightProvider: true,
 			semanticTokensProvider: <SemanticTokensOptions> {
 				legend: <SemanticTokensLegend> {
-					tokenTypes:SemanticTypeList.map(t => "as_"+t),
+					tokenTypes: scriptsemantics.SemanticTypeList.map(t => "as_"+t),
 					tokenModifiers: [],
 				},
 				range: false,
@@ -397,15 +390,12 @@ function TryResolveSymbols(asmodule : scriptfiles.ASModule) : SemanticTokens | n
 {
 	if (CanResolveModules())
 	{
-		let builder = new SemanticTokensBuilder();
 		if (!asmodule)
 			return null;
 		scriptfiles.ParseModuleAndDependencies(asmodule);
 		scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
 		scriptfiles.ResolveModule(asmodule);
-		HighlightSymbols(asmodule, builder);
-
-		return builder.build();
+		return scriptsemantics.HighlightSymbols(asmodule);
 	}
 	else
 	{
@@ -434,35 +424,6 @@ connection.languages.semanticTokens.on(function(params : SemanticTokensParams) :
 	});
 	return promise;
 });
-
-function HighlightSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTokensBuilder)
-{
-	for (let symbol of asmodule.symbols)
-	{
-		let pos = asmodule.getPosition(symbol.start);
-		let length = symbol.end - symbol.start;
-
-		let type = -1;
-		switch (symbol.type)
-		{
-			case scriptfiles.ASSymbolType.UnknownError:
-				type = SemanticTypes.invalid;
-			break;
-			case scriptfiles.ASSymbolType.Typename:
-				type = SemanticTypes.typename;
-			break;
-			case scriptfiles.ASSymbolType.TemplateBaseType:
-				type = SemanticTypes.template_base_type;
-			break;
-		}
-
-		if (type == -1)
-			continue;
-
-		let modifiers = 0;
-		builder.push(pos.line, pos.character, length, type, modifiers);
-	}
-}
 
 function getPathName(uri : string) : string
 {

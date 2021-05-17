@@ -1397,6 +1397,8 @@ function GetMethodSignaturesAroundPosition(params : TextDocumentPositionParams) 
         return null;
 
     let [term, scope] = ExtractCompletingTermAt(pos, params.textDocument.uri);
+    if (!scope)
+        return null;
 
     let checkTypes : Array<typedb.DBType>;
 

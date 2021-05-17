@@ -370,8 +370,9 @@ export class ASStatement extends ASElement
 
 let ASKeywords = [
     "for", "if", "enum", "return", "continue", "break", "import", "class", "struct", "default",
-    "void", "const", "delegate", "event", "else", "while", "for", "case", "Cast", "namespace",
+    "void", "const", "delegate", "event", "else", "while", "case", "Cast", "namespace",
     "UFUNCTION", "UPROPERTY", "UCLASS", "USTRUCT", "nullptr", "true", "false", "this", "auto",
+    "final", "property", "override",
 ];
 let ModuleDatabase = new Map<string, ASModule>();
 let ModulesByUri = new Map<string, ASModule>();
@@ -1034,10 +1035,6 @@ function GenerateTypeInformation(scope : ASScope)
                 dbfunc.documentation = typedb.FormatDocumentationComment(funcdef.documentation);
             dbfunc.moduleOffset = scope.previous.start_offset + funcdef.name.start;
 
-            if (funcdef.macro)
-            {
-            }
-
             if (funcdef.returntype)
                 dbfunc.returnType = GetQualifiedTypename(funcdef.returntype);
             else
@@ -1243,6 +1240,29 @@ function GenerateTypeInformation(scope : ASScope)
                     }
 
                     scope.module.types.push(dbtype);
+                }
+            }
+            break;
+            case node_types.ImportFunctionStatement:
+            {
+                // Just create a function in this scope that shadows the imported function
+                let funcdef = statement.ast.children[0];
+                let dbfunc = AddDBMethod(scope, funcdef.name.value);
+                if (funcdef.documentation)
+                    dbfunc.documentation = typedb.FormatDocumentationComment(funcdef.documentation);
+                dbfunc.moduleOffset = statement.start_offset + funcdef.name.start;
+
+                if (funcdef.returntype)
+                    dbfunc.returnType = GetQualifiedTypename(funcdef.returntype);
+                else
+                    dbfunc.returnType = "void";
+
+                AddParametersToFunction(scope, statement, dbfunc, funcdef.parameters);
+
+                if (scope.dbtype)
+                {
+                    scope.dbtype.methods.push(dbfunc);
+                    scope.dbtype.addSymbol(dbfunc);
                 }
             }
             break;
@@ -2018,7 +2038,7 @@ function DetectScopeSymbols(scope : ASScope)
         if (element instanceof ASStatement)
         {
             if (element.ast)
-                DetectNodeSymbols(scope, element, element.ast, parseContext);
+                DetectNodeSymbols(scope, element, element.ast, parseContext, typedb.DBAllowSymbol.Any);
         }
         else if (element instanceof ASScope)
         {
@@ -2337,6 +2357,39 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             }
         }
         break;
+        // import void X() from "Y"
+        case node_types.ImportFunctionStatement:
+        {
+            let signature = statement.ast.children[0];
+            if (signature)
+            {
+                // Add the symbol for the return type
+                if (signature.returntype && signature.returntype.value != 'void')
+                    AddTypenameSymbol(scope, statement, signature.returntype);
+
+                // Add the function name
+                if (signature.name)
+                    AddIdentifierSymbol(scope, statement, signature.name, ASSymbolType.GlobalFunction, null, signature.name.value);
+
+                // Add symbols for all parameters of the function
+                if (signature.parameters)
+                {
+                    for (let param of signature.parameters)
+                    {
+                        // Add the typename of the parameter
+                        if (param.typename)
+                            AddTypenameSymbol(scope, statement, param.typename);
+                        // Add the name of the parameter
+                        if (param.name)
+                            AddIdentifierSymbol(scope, statement, param.name, ASSymbolType.Parameter, null, param.name.value);
+                        // Detect inside the default expression for the parameter
+                        if (param.expression)
+                            DetectNodeSymbols(scope, statement, param.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                    }
+                }
+            }
+        }
+        break;
         // Type X;
         case node_types.VariableDecl:
         {
@@ -2487,7 +2540,9 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
 
             // If this was an auto, we should update the typename symbol to match the expression
             if (typenameSymbol && typenameSymbol.symbol_name == "auto")
-                UpdateAutoTypenameSymbol(typenameSymbol, expressionType);
+            {
+                UpdateAutoTypenameSymbol(typenameSymbol, ResolveIteratorType(GetTypeFromSymbol(expressionType)));
+            }
         }
         break;
         // Declarations for types should emit a type symbol
@@ -2586,6 +2641,9 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         if (usedSymbol)
         {
             let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.GlobalVariable : ASSymbolType.GlobalFunction;
+            if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isConstructor)
+                symType = ASSymbolType.Typename;
+
             AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
             return usedSymbol;
         }
@@ -2687,7 +2745,7 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
     let usedSymbol = dbtype.findFirstSymbol(findName, symbol_type);
     if (usedSymbol)
     {
-        let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.MemberVariable : ASSymbolType.MemberFunction;
+        let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.GlobalVariable : ASSymbolType.GlobalFunction;
         AddIdentifierSymbol(scope, statement, identifierNode, symType, usedSymbol.containingType, usedSymbol.name);
         return true;
     }
@@ -2698,14 +2756,14 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
         let getAccessor = dbtype.findFirstSymbol("Get"+findName, typedb.DBAllowSymbol.FunctionOnly);
         if (getAccessor && getAccessor instanceof typedb.DBMethod)
         {
-            AddIdentifierSymbol(scope, statement, identifierNode, ASSymbolType.MemberAccessor, getAccessor.containingType, getAccessor.name);
+            AddIdentifierSymbol(scope, statement, identifierNode, ASSymbolType.GlobalAccessor, getAccessor.containingType, getAccessor.name);
             return true;
         }
 
         let setAccessor = dbtype.findFirstSymbol("Set"+findName, typedb.DBAllowSymbol.FunctionOnly);
         if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
         {
-            AddIdentifierSymbol(scope, statement, identifierNode, ASSymbolType.MemberAccessor, setAccessor.containingType, setAccessor.name);
+            AddIdentifierSymbol(scope, statement, identifierNode, ASSymbolType.GlobalAccessor, setAccessor.containingType, setAccessor.name);
             return true;
         }
     }
@@ -2831,11 +2889,18 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
     if (!dbtype)
         return null;
 
+    let isGlobal = dbtype.typename.startsWith("__") || dbtype.typename.startsWith("//");
+    let symType : ASSymbolType = ASSymbolType.UnknownError;
+
     // Could be a symbol inside the type
     let usedSymbol = dbtype.findFirstSymbol(node.value, symbol_type);
     if (usedSymbol)
     {
-        let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.MemberVariable : ASSymbolType.MemberFunction;
+        if (usedSymbol instanceof typedb.DBProperty)
+            symType = isGlobal ? ASSymbolType.GlobalVariable : ASSymbolType.MemberVariable;
+        else
+            symType = isGlobal ? ASSymbolType.GlobalFunction : ASSymbolType.MemberFunction;
+
         AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name);
         return usedSymbol;
     }
@@ -2846,14 +2911,16 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
         let getAccessor = dbtype.findFirstSymbol("Get"+node.value, typedb.DBAllowSymbol.FunctionOnly);
         if (getAccessor && getAccessor instanceof typedb.DBMethod)
         {
-            AddIdentifierSymbol(scope, statement, node, ASSymbolType.MemberAccessor, getAccessor.containingType, getAccessor.name);
+            symType = isGlobal ? ASSymbolType.GlobalAccessor : ASSymbolType.MemberAccessor;
+            AddIdentifierSymbol(scope, statement, node, symType, getAccessor.containingType, getAccessor.name);
             return typedb.GetType(getAccessor.returnType);
         }
 
         let setAccessor = dbtype.findFirstSymbol("Set"+node.value, typedb.DBAllowSymbol.FunctionOnly);
         if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
         {
-            AddIdentifierSymbol(scope, statement, node, ASSymbolType.MemberAccessor, setAccessor.containingType, setAccessor.name);
+            symType = isGlobal ? ASSymbolType.GlobalAccessor : ASSymbolType.MemberAccessor;
+            AddIdentifierSymbol(scope, statement, node, symType, setAccessor.containingType, setAccessor.name);
             return typedb.GetType(setAccessor.args[0].typename);
         }
     }
@@ -2907,11 +2974,11 @@ function CheckIdentifierIsPrefixForValidSymbolInType(scope : ASScope, statement 
     // Could be a property accessor
     if (typedb.AllowsProperties(symbol_type))
     {
-        let getAccessor = dbtype.findFirstSymbol("Get"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+        let getAccessor = dbtype.findFirstSymbolWithPrefix("Get"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
         if (getAccessor && getAccessor instanceof typedb.DBMethod)
             return true;
 
-        let setAccessor = dbtype.findFirstSymbol("Set"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+        let setAccessor = dbtype.findFirstSymbolWithPrefix("Set"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
         if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
             return true;
     }

@@ -7,6 +7,18 @@ export enum DBAllowSymbol
     FunctionOnly,
 };
 
+export enum DBTypeClassification
+{
+    Unknown,
+    Other,
+    Component,
+    Actor,
+    Struct,
+    Event,
+    Delegate,
+    Primitive
+};
+
 export function AllowsFunctions(Type : DBAllowSymbol)
 {
     return Type != DBAllowSymbol.PropertyOnly;
@@ -296,6 +308,8 @@ export class DBType
     isDelegate : boolean = false;
     isEvent : boolean = false;
     isPrimitive : boolean = false;
+
+    classification : DBTypeClassification = DBTypeClassification.Unknown;
 
     delegateArgs : Array<DBArg> = null;
     delegateReturn : string = null;
@@ -930,6 +944,28 @@ export class DBType
                     prefixSyms.splice(index, 1);
             }
         }
+    }
+
+    getTypeClassification() : DBTypeClassification
+    {
+        if (this.classification == DBTypeClassification.Unknown)
+        {
+            if (this.isDelegate)
+                this.classification = DBTypeClassification.Delegate;
+            else if (this.isEvent)
+                this.classification = DBTypeClassification.Event;
+            else if (this.isStruct)
+                this.classification = DBTypeClassification.Struct;
+            else if (this.isPrimitive)
+                this.classification = DBTypeClassification.Primitive;
+            else if (this.inheritsFrom("UActorComponent"))
+                this.classification = DBTypeClassification.Component;
+            else if (this.inheritsFrom("AActor"))
+                this.classification = DBTypeClassification.Actor;
+            else
+                this.classification = DBTypeClassification.Other;
+        }
+        return this.classification;
     }
 };
 

@@ -162,9 +162,24 @@
             {
                 "language": "angelscript",
                 "scopes": {
-                    "as_typename": ["comment"],
-                    "as_template_base_type": ["macro"],
-                    "as_invalid": ["invalid"]
+                    "as_typename": ["support.type.angelscript"],
+                    "as_typename_component": ["support.type.component.angelscript"],
+                    "as_typename_actor": ["support.type.actor.angelscript"],
+                    "as_typename_delegate": ["support.type.delegate.angelscript"],
+                    "as_typename_event": ["support.type.event.angelscript"],
+                    "as_typename_struct": ["support.type.struct.angelscript"],
+                    "as_typename_primitive": ["storage.type.primitive.angelscript"],
+                    "as_namespace": ["entity.name.namespace.angelscript"],
+                    "as_template_base_type": ["support.type.angelscript"],
+                    "as_parameter": ["variable.parameter.angelscript"],
+                    "as_local_variable": ["variable.other.local.angelscript"],
+                    "as_member_variable": ["variable.other.property.angelscript"],
+                    "as_member_accessor": ["variable.other.property.accessor.angelscript"],
+                    "as_global_variable": ["variable.other.global.angelscript"],
+                    "as_global_accessor": ["variable.other.global.accessor.angelscript"],
+                    "as_member_function": ["entity.name.function.member.angelscript"],
+                    "as_global_function": ["entity.name.function.angelscript"],
+                    "as_unknown_error": ["invalid"]
                 }
             }
         ]
