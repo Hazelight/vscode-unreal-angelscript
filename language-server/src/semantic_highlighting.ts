@@ -25,9 +25,14 @@ export function HighlightSymbols(asmodule : scriptfiles.ASModule) : SemanticToke
 		let length = symbol.end - symbol.start;
 
 		let type = -1;
-        if (symbol.type == scriptfiles.ASSymbolType.Typename)
+        if (symbol.type == scriptfiles.ASSymbolType.Typename
+			|| symbol.type == scriptfiles.ASSymbolType.Namespace)
         {
-            let dbtype = typedb.GetType(symbol.symbol_name);
+			let symName = symbol.symbol_name;
+			if (symbol.type == scriptfiles.ASSymbolType.Namespace)
+				symName = symbol.symbol_name.substr(2);
+			
+            let dbtype = typedb.GetType(symName);
             let classification = typedb.DBTypeClassification.Other;
             if (dbtype)
                 classification = dbtype.getTypeClassification();
@@ -56,7 +61,10 @@ export function HighlightSymbols(asmodule : scriptfiles.ASModule) : SemanticToke
                 break;
                 case typedb.DBTypeClassification.Other:
                 default:
-                    type = SemanticTypes.typename;
+					if (symbol.type == scriptfiles.ASSymbolType.Namespace)
+						type = SemanticTypes.namespace;
+					else
+						type = SemanticTypes.typename;
                 break;
             }
         }
@@ -64,9 +72,6 @@ export function HighlightSymbols(asmodule : scriptfiles.ASModule) : SemanticToke
 		{
 			case scriptfiles.ASSymbolType.UnknownError:
 				type = SemanticTypes.unknown_error;
-			break;
-			case scriptfiles.ASSymbolType.Namespace:
-				type = SemanticTypes.namespace;
 			break;
 			case scriptfiles.ASSymbolType.TemplateBaseType:
 				type = SemanticTypes.templae_base_type;

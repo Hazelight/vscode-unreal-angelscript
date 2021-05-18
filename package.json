@@ -32,6 +32,14 @@
                     ".as"
                 ],
                 "configuration": "./extension/language-configuration.json"
+            },
+            {
+                "id": "angelscript_snippet",
+                "aliases": [
+                    "Angelscript Snippet"
+                ],
+                "extensions": [],
+                "configuration": "./extension/language-configuration.json"
             }
         ],
         "grammars": [
@@ -39,6 +47,11 @@
                 "language": "angelscript",
                 "scopeName": "source.angelscript",
                 "path": "./extension/syntaxes/angelscript.tmLanguage.json"
+            },
+            {
+                "language": "angelscript_snippet",
+                "scopeName": "source.angelscript_snippet",
+                "path": "./extension/syntaxes/angelscript_snippet.tmLanguage.json"
             }
         ],
         "breakpoints": [

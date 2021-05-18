@@ -1059,7 +1059,7 @@ function AddSignatureCompletions(initialTerm : string, params : TextDocumentPosi
                             label: complStr,
                             documentation: <MarkupContent> {
                                 kind: MarkupKind.Markdown,
-                                value: "```angelscript\n"+complStr+"\n\n```"
+                                value: "```angelscript_snippet\n"+complStr+"\n\n```"
                             },
                             kind: CompletionItemKind.Snippet,
                         });
@@ -1279,7 +1279,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
         {
             item.documentation = <MarkupContent> {
                 kind: MarkupKind.Markdown,
-                value: "```angelscript\n"+NoBreakingSpaces(prop.format())+"\n```\n\n",
+                value: "```angelscript_snippet\n"+NoBreakingSpaces(prop.format())+"\n```\n\n",
             };
             if (prop.documentation)
                 item.documentation.value += "\n"+prop.documentation.replace(/\n/g,"\n\n")+"\n\n";
@@ -1293,11 +1293,11 @@ export function Resolve(item : CompletionItem) : CompletionItem
         let docStr = "";
         if (getFunc)
         {
-            docStr += "```angelscript\n"+getFunc.returnType+"\xa0"+item.data[2]+"\n```\n\n";
+            docStr += "```angelscript_snippet\n"+getFunc.returnType+"\xa0"+item.data[2]+"\n```\n\n";
         }
         else if (setFunc && setFunc.args && setFunc.args.length >= 1)
         {
-            docStr += "```angelscript\n"+setFunc.args[0].typename+"\xa0"+item.data[2]+"\n```\n\n";
+            docStr += "```angelscript_snippet\n"+setFunc.args[0].typename+"\xa0"+item.data[2]+"\n```\n\n";
         }
 
         if (getFunc && getFunc.documentation && getFunc.documentation.length != 0)
@@ -1318,7 +1318,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
             let complStr = NoBreakingSpaces(NicifyDefinition(func, func.format()));
             item.documentation = <MarkupContent> {
                 kind: MarkupKind.Markdown,
-                value: "```angelscript\n"+complStr+"\n```\n\n",
+                value: "```angelscript_snippet\n"+complStr+"\n```\n\n",
             };
 
             if (func.documentation)
@@ -1333,7 +1333,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
             let complStr = NoBreakingSpaces(GetDeclarationSnippet(func, true));
             item.documentation = <MarkupContent> {
                 kind: MarkupKind.Markdown,
-                value: "```angelscript\n"+complStr+"\n```\n\n",
+                value: "```angelscript_snippet\n"+complStr+"\n```\n\n",
             };
 
             if (func.documentation)
@@ -1534,7 +1534,7 @@ function GetScopeHover(initialTerm : string, scope : scriptfiles.ASScope) : stri
                     hover += "*\n\n";
                 }
 
-                hover += "```angelscript\n"+scopevar.typename+" "+scopevar.name+"\n```";
+                hover += "```angelscript_snippet\n"+scopevar.typename+" "+scopevar.name+"\n```";
                 return hover;
             }
         }
@@ -1546,7 +1546,7 @@ function GetScopeHover(initialTerm : string, scope : scriptfiles.ASScope) : stri
         {
             let typeOfScope = scope.getDatabaseType();
             if (typeOfScope)
-                return "```angelscript\n"+typeOfScope.typename+" this\n```";
+                return "```angelscript_snippet\n"+typeOfScope.typename+" this\n```";
         }
     }
 
@@ -1729,11 +1729,11 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
             if (func.documentation)
                 hadPropertyDoc = true;
             if (func.name == gettername)
-                hover += "```angelscript\n"+func.returnType+" "+prefix+term[term.length-1].name+"\n```";
+                hover += "```angelscript_snippet\n"+func.returnType+" "+prefix+term[term.length-1].name+"\n```";
             else if (func.name == settername && func.args.length >= 1)
-                hover += "```angelscript\n"+func.args[0].typename+" "+prefix+term[term.length-1].name+"\n```";
+                hover += "```angelscript_snippet\n"+func.args[0].typename+" "+prefix+term[term.length-1].name+"\n```";
             else
-                hover += "```angelscript\n"+func.format(prefix)+"\n```";
+                hover += "```angelscript_snippet\n"+func.format(prefix)+"\n```";
 
             if ((func.name == gettername || func.name == settername) && !hadPropertyDoc)
                 continue;
@@ -1760,7 +1760,7 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
 
             hover = "";
             hover += FormatHoverDocumentation(prop.documentation);
-            hover += "```angelscript\n"+prop.format(prefix)+"\n```";
+            hover += "```angelscript_snippet\n"+prop.format(prefix)+"\n```";
             if (prop.documentation)
                 hadPropertyDoc = true;
             break;
@@ -1790,7 +1790,7 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
 
                 hover = "";
                 hover += FormatHoverDocumentation(func.documentation);
-                hover += "```angelscript\n"+func.format(null, true)+"\n```";
+                hover += "```angelscript_snippet\n"+func.format(null, true)+"\n```";
             }
         }
     }
@@ -1802,7 +1802,7 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
         {
             let hover = "";
             hover += FormatHoverDocumentation(hoveredType.documentation);
-            hover += "```angelscript\n";
+            hover += "```angelscript_snippet\n";
             if (hoveredType.isDelegate)
             {
                 hover += "delegate ";
@@ -1849,7 +1849,7 @@ export function GetHover(params : TextDocumentPositionParams) : Hover
         {
             let hover = "";
             hover += FormatHoverDocumentation(nsType.documentation);
-            hover += "```angelscript\n";
+            hover += "```angelscript_snippet\n";
             nsType.resolveNamespace();
             if (nsType.isEnum)
                 hover += "enum ";

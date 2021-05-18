@@ -16,7 +16,7 @@
         },
         {
             "name": "keyword.code.angelscript",
-            "match": "\\b(nullptr|true|false|this|Cast|Super)\\b"
+            "match": "\\b(nullptr|true|false|this|Cast|Super|NAME_None)\\b"
         },
         {
             "name": "keyword.access.angelscript",
