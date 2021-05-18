@@ -7,7 +7,8 @@ import {
 	WorkspaceSymbolParams, Definition, ExecuteCommandParams, VersionedTextDocumentIdentifier, Location,
 	TextDocumentSyncKind, SemanticTokensOptions, SemanticTokensLegend,
 	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder, ReferenceOptions, ReferenceParams,
-	CodeLens, CodeLensParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, DidOpenTextDocumentParams
+	CodeLens, CodeLensParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, DidOpenTextDocumentParams,
+	RenameParams, WorkspaceEdit, ResponseError, PrepareRenameParams, Range
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -212,6 +213,9 @@ connection.onInitialize((_params): InitializeResult => {
 			implementationProvider: true,
 			referencesProvider: true,
 			documentHighlightProvider: true,
+			renameProvider: {
+				prepareProvider: true
+			},
 			semanticTokensProvider: <SemanticTokensOptions> {
 				legend: <SemanticTokensLegend> {
 					tokenTypes: scriptsemantics.SemanticTypeList.map(t => "as_"+t),
@@ -378,6 +382,40 @@ connection.onReferences(function (params : ReferenceParams) : Location[]
 	if (!CanResolveModules())
 		return null;
 	return scriptreferences.FindReferences(params.textDocument.uri, params.position);
+});
+
+connection.onPrepareRename(function (params : PrepareRenameParams) : Range | ResponseError<void>
+{
+	let result : Range | ResponseError<void> = null;
+	if (!CanResolveModules())
+		result = new ResponseError<void>(0, "Please wait for all script parsing to finish...");
+	else
+		result = scriptreferences.PrepareRename(params.textDocument.uri, params.position);
+
+	// TODO: Remove this when upgrading vscode-languageclient library to latest version.
+	// Right now errors here will cause debug handling on the client, which we don't want.
+	if (result instanceof ResponseError)
+		return null;
+	// END TODO
+
+	return result;
+});
+
+connection.onRenameRequest(function (params : RenameParams) : WorkspaceEdit
+{
+	if (!CanResolveModules())
+		return null;
+
+	let result = scriptreferences.PerformRename(params.textDocument.uri, params.position, params.newName);
+	if (!result)
+		return null;
+
+	let workspaceEdit : WorkspaceEdit = {};
+	workspaceEdit.changes = {};
+	for (let [uri, edits] of result)
+		workspaceEdit.changes[uri] = edits;
+
+	return workspaceEdit;
 });
 
 connection.onDocumentHighlight(function (params : DocumentHighlightParams) : Array<DocumentHighlight>

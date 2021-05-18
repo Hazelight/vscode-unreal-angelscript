@@ -193,6 +193,7 @@ export enum ASSymbolType
     GlobalFunction,
 
     UnknownError,
+    NoSymbol,
 };
 
 export class ASSymbol
@@ -512,7 +513,7 @@ export function PostProcessModuleTypes(module : ASModule)
 
     for (let dbtype of module.types)
     {
-        let generatedTypes = ProcessScriptTypeGeneratedCode(dbtype);
+        let generatedTypes = ProcessScriptTypeGeneratedCode(dbtype, module.global_type);
         for (let newtype of generatedTypes)
         {
             if (newtype.isNamespace())
@@ -1129,6 +1130,7 @@ function GenerateTypeInformation(scope : ASScope)
             // Constructor gets added to the namespace as a global function instead
             if (scope.parentscope && scope.parentscope.dbtype)
             {
+                dbfunc.documentation = scope.parentscope.dbtype.documentation;
                 dbfunc.returnType = scope.parentscope.dbtype.typename;
 
                 let nsType = scope.getGlobalOrNamespaceParentType();
