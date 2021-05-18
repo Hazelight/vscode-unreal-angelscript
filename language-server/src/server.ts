@@ -7,7 +7,7 @@ import {
 	WorkspaceSymbolParams, Definition, ExecuteCommandParams, VersionedTextDocumentIdentifier, Location,
 	TextDocumentSyncKind, SemanticTokensOptions, SemanticTokensLegend,
 	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder, ReferenceOptions, ReferenceParams,
-	CodeLens, CodeLensParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams
+	CodeLens, CodeLensParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, DidOpenTextDocumentParams
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -18,6 +18,7 @@ import * as typedb from './database';
 import * as scriptreferences from './references';
 import * as scriptoccurances from './highlight_occurances';
 import * as scriptsemantics from './semantic_highlighting';
+import * as scriptdiagnostics from './ls_diagnostics';
 import * as fs from 'fs';
 let glob = require('glob');
 
@@ -99,7 +100,7 @@ function connect_unreal() {
 					diagnostics.push(diagnosic);
 				}
 
-				connection.sendDiagnostics({ uri: filename, diagnostics });
+				scriptdiagnostics.UpdateCompileDiagnostics(filename, diagnostics);
 			}
 			else if(msg.type == MessageType.DebugDatabase)
 			{
@@ -289,6 +290,10 @@ function CanResolveModules()
 	return typedb.HasTypesFromUnreal();
 }
 
+scriptdiagnostics.OnDiagnosticsChanged( function (uri : string, diagnostics : Array<Diagnostic>){
+	connection.sendDiagnostics({ "uri": uri, "diagnostics": diagnostics });
+});
+
 connection.onDidChangeWatchedFiles((_change) => {
 	for(let change of _change.changes)
 	{
@@ -302,6 +307,7 @@ connection.onDidChangeWatchedFiles((_change) => {
 			{
 				scriptfiles.PostProcessModuleTypes(module);
 				scriptfiles.ResolveModule(module);
+				scriptdiagnostics.UpdateScriptModuleDiagnostics(module);
 			}
 		}
 	}
@@ -490,11 +496,27 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	
 	let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
 	scriptfiles.UpdateModuleFromContent(asmodule, content);
-	scriptfiles.ParseModule(asmodule);
+	scriptfiles.ParseModuleAndDependencies(asmodule);
 	if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
 	{
-		scriptfiles.PostProcessModuleTypes(asmodule);
+		scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
 		scriptfiles.ResolveModule(asmodule);
+		scriptdiagnostics.UpdateScriptModuleDiagnostics(asmodule);
+	}
+ });
+
+ connection.onDidOpenTextDocument(function (params : DidOpenTextDocumentParams)
+ {
+	let uri = params.textDocument.uri;
+	let modulename = getModuleName(uri);
+
+	let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
+	scriptfiles.ParseModuleAndDependencies(asmodule);
+	if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
+	{
+		scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
+		scriptfiles.ResolveModule(asmodule);
+		scriptdiagnostics.UpdateScriptModuleDiagnostics(asmodule);
 	}
  });
 

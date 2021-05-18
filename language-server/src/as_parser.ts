@@ -62,6 +62,7 @@ export class ASModule
     symbols : Array<ASSymbol> = [];
 
     importedModules : Array<ASModule> = [];
+    delegateBinds : Array<ASDelegateBind> = [];
 
     getOffset(position : Position) : number
     {
@@ -127,6 +128,16 @@ export class ASModule
             return false;
         return this.lastEdit >= start && this.lastEdit < end;
     }
+
+    isEditingNode(statement : ASStatement, node : any) : boolean
+    {
+        if (!node || !statement)
+            return false;
+        return this.isEditingInside(
+            statement.start_offset + node.start,
+            statement.start_offset + node.end,
+        )
+    }
 };
 
 export class ASElement
@@ -142,6 +153,9 @@ export class ASVariable
     documentation : string;
 
     isArgument : boolean = false;
+    isMember : boolean = false;
+    isGlobal : boolean = false;
+
     isPrivate : boolean = false;
     isProtected : boolean = false;
     isAuto : boolean = false;
@@ -152,6 +166,7 @@ export class ASVariable
     node_expression : any = null;
 
     potentiallyWrong : boolean = false;
+    isUnused : boolean = true;
 
     start_offset_type : number = -1;
     end_offset_type : number = -1;
@@ -257,6 +272,11 @@ export class ASScope extends ASElement
         let checkscope : ASScope = this;
         while (checkscope != null)
         {
+            if (checkscope.scopetype == ASScopeType.Namespace)
+                break;
+            if (checkscope.scopetype == ASScopeType.Global)
+                break;
+
             let dbType = checkscope.getDatabaseType();
             if (dbType)
                 return checkscope;
@@ -366,7 +386,17 @@ export class ASStatement extends ASElement
     ast : any = null;
     parsed : boolean = false;
     generatedTypes : boolean = false;
-}
+};
+
+export class ASDelegateBind
+{
+    statement : ASStatement = null;
+    scope : ASScope = null;
+    delegateType : string = null;
+    node_expression : any = null;
+    node_object : any = null;
+    node_name : any = null;
+};
 
 let ASKeywords = [
     "for", "if", "enum", "return", "continue", "break", "import", "class", "struct", "default",
@@ -423,9 +453,9 @@ export function GetOrCreateModule(modulename : string, filename : string, uri : 
     return module;
 }
 
-function NormalizeUri(uri : string) : string
+export function NormalizeUri(uri : string) : string
 {
-    return uri.replace("%3A", ":");
+    return uri.replace("%3A", ":").toLowerCase();
 }
 
 // Ensure the module is parsed into an abstract syntax tree if it is not already parsed
@@ -450,6 +480,7 @@ export function ParseModule(module : ASModule, debug : boolean = false)
     module.global_type = AddDBType(module.rootscope, "//"+module.modulename);
     module.global_type.siblingTypes = [];
     module.global_type.moduleOffset = 0;
+    module.global_type.isGlobalScope = true;
     module.rootscope.dbtype = module.global_type;
 
     // Traverse syntax trees to lift out functions, variables and imports during this first parse step
@@ -532,12 +563,19 @@ export function UpdateModuleFromContent(module : ASModule, content : string)
     {
         module.lastEdit = -1;
         let shortestLength = Math.min(module.content.length, content.length);
+        let isDelete = module.content.length > content.length;
         for (let i = 0; i < shortestLength; ++i)
         {
             if (module.content[i] != content[i])
             {
                 module.lastEdit = i;
-                break;
+                if (content[i] != ' ' && content[i] != '\n' && content[i] != '\t' && content[i] != '\r')
+                {
+                    if (isDelete)
+                        module.lastEdit = i-1;
+                    else
+                        break;
+                }
             }
         }
 
@@ -598,6 +636,7 @@ function ClearModule(module : ASModule)
     module.global_type = null;
     module.symbols = [];
     module.types = [];
+    module.delegateBinds = [];
     module.namespaces = [];
     module.resolved = false;
     module.typesPostProcessed = false;
@@ -875,23 +914,12 @@ function MakeMacroSpecifiers(macro : any, macroSpecifiers : Map<string, string>,
     }
 }
 
-// Whether we are currently editing this node
-function IsEditingNode(scope : ASScope, statement : ASStatement, node : any) : boolean
-{
-    if (!node)
-        return false;
-    return scope.module.isEditingInside(
-        statement.start_offset + node.start,
-        statement.start_offset + node.end + 1,
-    )
-}
-
 // Add a variable declaration to the scope
 function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : any, in_statement : boolean = false) : ASVariable
 {
     // If the type name or the identifier are currently being edited, we don't add the variable
     let maybeWrong = false;
-    if (IsEditingNode(scope, statement, vardecl.typename) || IsEditingNode(scope, statement, vardecl.name))
+    if (scope.module.isEditingNode(statement, vardecl.typename) || scope.module.isEditingNode(statement, vardecl.name))
     {
         if (!vardecl.name)
             return null;
@@ -939,6 +967,11 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
     // Add it to the type database
     if (scope.dbtype)
     {
+        if (!scope.dbtype.isNamespaceOrGlobalScope())
+            asvar.isMember = true;
+        else
+            asvar.isGlobal = true;
+
         let dbprop = new typedb.DBProperty();
         dbprop.name = asvar.name;
         dbprop.typename = asvar.typename;
@@ -1426,7 +1459,7 @@ function AddForEachVariableToScope(scope : ASScope, statement : ASStatement, nod
     scope.variablesByName.set(asvar.name, asvar);
 }
 
-function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType, container_type : string = null, symbol_name : string = null, isWriteAccess : boolean = false) : ASSymbol
+function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType, container_type : typedb.DBType | string = null, symbol_name : string = null, isWriteAccess : boolean = false) : ASSymbol
 {
     if (!node)
         return null;
@@ -1434,7 +1467,10 @@ function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : an
     symbol.type = type;
     symbol.start = node.start + statement.start_offset;
     symbol.end = node.end + statement.start_offset;
-    symbol.container_type = container_type;
+    if (container_type instanceof typedb.DBType)
+        symbol.container_type = container_type.typename;
+    else
+        symbol.container_type = container_type;
     symbol.symbol_name = symbol_name;
     symbol.isWriteAccess = isWriteAccess;
 
@@ -1559,7 +1595,7 @@ function ResolveAutos(scope : ASScope)
         ResolveAutos(subscope);
 }
 
-function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.DBType
+export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.DBType
 {
     if (!node)
         return null;
@@ -1608,7 +1644,7 @@ function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.DBType
             return typedb.GetType("bool");
         }
         // this
-        case node_types.ConstThis:
+        case node_types.This:
         {
             return scope.getParentType();
         }
@@ -2165,6 +2201,21 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     {
                         left_type = constrType;
                         AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, constrType.typename);
+
+                        // If this is a delegate constructor call, mark it for later diagnostics
+                        if (left_type.isDelegate)
+                        {
+                            let delegateBind = new ASDelegateBind;
+                            delegateBind.scope = scope;
+                            delegateBind.statement = statement;
+                            delegateBind.node_expression = node;
+                            if (node.children[1].children[0])
+                                delegateBind.node_object = node.children[1].children[0];
+                            if (node.children[1].children[1])
+                                delegateBind.node_name = node.children[1].children[1];
+                            delegateBind.delegateType = left_type.typename;
+                            scope.module.delegateBinds.push(delegateBind);
+                        }
                     }
                 }
             }
@@ -2183,6 +2234,21 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 parseContext.argumentFunction = left_symbol;
             else
                 parseContext.argumentFunction = null;
+
+            // If this is a delegate bind call, mark it for later diagnostics
+            if (left_symbol instanceof typedb.DBMethod && left_symbol.isDelegateBindFunction && node.children[1])
+            {
+                let delegateBind = new ASDelegateBind;
+                delegateBind.scope = scope;
+                delegateBind.statement = statement;
+                delegateBind.node_expression = node;
+                if (node.children[1].children[0])
+                    delegateBind.node_object = node.children[1].children[0];
+                if (node.children[1].children[1])
+                    delegateBind.node_name = node.children[1].children[1];
+                delegateBind.delegateType = left_symbol.containingType.typename;
+                scope.module.delegateBinds.push(delegateBind);
+            }
 
             DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
 
@@ -2300,7 +2366,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (node.name)
             {
                 let insideType = scope.dbtype ? scope.dbtype.typename : null;
-                let symType = scope.dbtype ? ASSymbolType.MemberFunction : ASSymbolType.GlobalFunction;
+                let symType = scope.dbtype && !scope.dbtype.isNamespaceOrGlobalScope() ? ASSymbolType.MemberFunction : ASSymbolType.GlobalFunction;
                 AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value);
             }
 
@@ -2594,6 +2660,8 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             let usedVariable = checkscope.variablesByName.get(node.value);
             if (usedVariable)
             {
+                usedVariable.isUnused = false;
+
                 let symType = usedVariable.isArgument ? ASSymbolType.Parameter : ASSymbolType.LocalVariable;
                 AddIdentifierSymbol(scope, statement, node, symType, null, node.value, parseContext.isWriteAccess);
                 return typedb.GetType(usedVariable.typename);
@@ -2889,7 +2957,7 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
     if (!dbtype)
         return null;
 
-    let isGlobal = dbtype.typename.startsWith("__") || dbtype.typename.startsWith("//");
+    let isGlobal = dbtype.isNamespaceOrGlobalScope();
     let symType : ASSymbolType = ASSymbolType.UnknownError;
 
     // Could be a symbol inside the type

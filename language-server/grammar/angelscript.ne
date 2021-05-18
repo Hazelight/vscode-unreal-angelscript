@@ -538,7 +538,7 @@ ustruct_macro -> %ustruct _ %lparen _ macro_list _ %rparen _ {%
 parameter_list -> null {%
     function(d) { return []; }
 %}
-parameter_list -> parameter (_ "," _ parameter):* {%
+parameter_list -> parameter (_ %comma _ parameter):* (_ %comma):? {%
     function(d) {
         let params = [d[0]];
         if (d[1])

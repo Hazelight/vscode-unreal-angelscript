@@ -551,9 +551,11 @@ var grammar = {
         function(d) { return []; }
         },
     {"name": "parameter_list$ebnf$1", "symbols": []},
-    {"name": "parameter_list$ebnf$1$subexpression$1", "symbols": ["_", {"literal":","}, "_", "parameter"]},
+    {"name": "parameter_list$ebnf$1$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma), "_", "parameter"]},
     {"name": "parameter_list$ebnf$1", "symbols": ["parameter_list$ebnf$1", "parameter_list$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "parameter_list", "symbols": ["parameter", "parameter_list$ebnf$1"], "postprocess": 
+    {"name": "parameter_list$ebnf$2", "symbols": [(lexer.has("comma") ? {type: "comma"} : comma)], "postprocess": id},
+    {"name": "parameter_list$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "parameter_list", "symbols": ["parameter", "parameter_list$ebnf$1", "parameter_list$ebnf$2"], "postprocess": 
         function(d) {
             let params = [d[0]];
             if (d[1])

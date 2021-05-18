@@ -6,7 +6,6 @@ let UseHazeGeneratedCode = true;
 export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType) : Array<typedb.DBType>
 {
     let result : Array<typedb.DBType> = [];
-    assert(typedb.GetType("UHazeComposableSettings"));
 
     // Code that all delegate structs have
     if (dbtype.isEvent || dbtype.isDelegate)

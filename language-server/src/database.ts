@@ -32,7 +32,7 @@ export function AllowsProperties(Type : DBAllowSymbol)
 export interface DBSymbol
 {
     name : string,
-    containingType : string,
+    containingType : DBType,
 };
 
 export class DBProperty implements DBSymbol
@@ -48,7 +48,7 @@ export class DBProperty implements DBSymbol
     declaredModule : string | null;
     moduleOffset : number;
 
-    containingType : string = null;
+    containingType : DBType = null;
 
     isUProperty : boolean = false;
     macroSpecifiers : Map<string, string> = null;
@@ -166,7 +166,7 @@ export class DBMethod implements DBSymbol
     isProperty : boolean = false;
     isDefaultsOnly : boolean = false;
     id : number = NextMethodId++;
-    containingType : string = null;
+    containingType : DBType = null;
     isDelegateBindFunction : boolean = false;
 
     isUFunction : boolean = false;
@@ -308,6 +308,7 @@ export class DBType
     isDelegate : boolean = false;
     isEvent : boolean = false;
     isPrimitive : boolean = false;
+    isGlobalScope : boolean = false;
 
     classification : DBTypeClassification = DBTypeClassification.Unknown;
 
@@ -492,6 +493,13 @@ export class DBType
         return this.isNS;
     }
 
+    isNamespaceOrGlobalScope() : boolean
+    {
+        if (this.isGlobalScope)
+            return true;
+        return this.isNamespace();
+    }
+
     isShadowedNamespace() : boolean
     {
         if (!this.namespaceResolved)
@@ -576,6 +584,25 @@ export class DBType
         for(let extend of this.getCombineTypesList())
             props = props.concat(extend.properties);
         return props;
+    }
+
+    formatDelegateSignature() : string
+    {
+        let decl : string = "";
+        if (this.delegateReturn)
+            decl += this.delegateReturn + " ";
+        decl += this.typename + "(";
+        if(this.delegateArgs)
+        {
+            for(let i = 0; i < this.delegateArgs.length; ++i)
+            {
+                if (i > 0)
+                    decl += ", ";
+                decl += this.delegateArgs[i].format();
+            }
+        }
+        decl += ")";
+        return decl;
     }
 
     getProperty(name : string, recurse : boolean = true) : DBProperty | null
@@ -894,7 +921,7 @@ export class DBType
 
     addSymbol(symbol : DBSymbol)
     {
-        symbol.containingType = this.typename;
+        symbol.containingType = this;
 
         {
             let syms = this.symbols.get(symbol.name);
@@ -989,6 +1016,11 @@ export function CleanTypeName(typename : string) : string
     else if (typename.endsWith("@"))
         typename = typename.substring(0, typename.length-1);
     return typename;
+}
+
+export function TypenameEquals(left : string, right : string) : boolean
+{
+    return CleanTypeName(left) == CleanTypeName(right);
 }
 
 export function TransferTypeQualifiers(typename : string, newtype : string) : string
