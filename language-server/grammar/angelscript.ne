@@ -632,6 +632,12 @@ macro_value -> (%identifier _ "::" _):+ %identifier {%
     }
 %}
 
+macro_value -> ("-" _):? %bool_token {%
+    function (d) {
+        return Identifier(d[1]);
+    }
+%}
+
 macro_value -> ("-" _):? const_number {%
     function (d) {
         if (!d[0])
@@ -1040,7 +1046,7 @@ case_label -> ("-" _):? %number {%
 %}
 case_label -> namespace_access {% id %}
 
-enum_statement -> enum_decl (_ "," enum_decl):* {%
+enum_statement -> enum_decl (_ %comma enum_decl):* (_ %comma):? {%
     function (d)
     {
         let result = [d[0]];

@@ -1999,37 +1999,18 @@ export function GetDefinition(params : TextDocumentPositionParams) : Definition
 
     for (let type of checkTypes)
     {
-        if (type.declaredModule)
+        let symbolList = type.findSymbols(term[term.length-1].name);
+        if (!symbolList)
+            continue;
+
+        for (let symbol of symbolList)
         {
-            let loc = scriptfiles.GetSymbolLocation(type.declaredModule, type.typename, term[term.length-1].name);
-            if (loc)
-                locations.push(loc);
-        }
-        else
-        {
-            // Namespaces don't always have a declared module, if they are merged from multiple files
-            // Find the symbol first and then check the declared module on the symbol
-            let method = type.getMethod(term[term.length-1].name);
-            if (method)
+            if (symbol instanceof typedb.DBProperty || symbol instanceof typedb.DBMethod)
             {
-                if (method.declaredModule)
+                if (symbol.declaredModule)
                 {
-                    let loc = scriptfiles.GetSymbolLocation(method.declaredModule, type.typename, term[term.length-1].name);
-                    if (loc)
-                        locations.push(loc);
-                }
-            }
-            else
-            {
-                let prop = type.getProperty(term[term.length-1].name);
-                if (prop)
-                {
-                    if (prop.declaredModule)
-                    {
-                        let loc = scriptfiles.GetSymbolLocation(prop.declaredModule, type.typename, term[term.length-1].name);
-                        if (loc)
-                            locations.push(loc);
-                    }
+                    let asmodule = scriptfiles.GetModule(symbol.declaredModule);
+                    locations.push(asmodule.getLocation(symbol.moduleOffset));
                 }
             }
         }

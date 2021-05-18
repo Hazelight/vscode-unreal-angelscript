@@ -553,7 +553,8 @@ var grammar = {
     {"name": "parameter_list$ebnf$1", "symbols": []},
     {"name": "parameter_list$ebnf$1$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma), "_", "parameter"]},
     {"name": "parameter_list$ebnf$1", "symbols": ["parameter_list$ebnf$1", "parameter_list$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "parameter_list$ebnf$2", "symbols": [(lexer.has("comma") ? {type: "comma"} : comma)], "postprocess": id},
+    {"name": "parameter_list$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
+    {"name": "parameter_list$ebnf$2", "symbols": ["parameter_list$ebnf$2$subexpression$1"], "postprocess": id},
     {"name": "parameter_list$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "parameter_list", "symbols": ["parameter", "parameter_list$ebnf$1", "parameter_list$ebnf$2"], "postprocess": 
         function(d) {
@@ -1053,9 +1054,12 @@ var grammar = {
         },
     {"name": "case_label", "symbols": ["namespace_access"], "postprocess": id},
     {"name": "enum_statement$ebnf$1", "symbols": []},
-    {"name": "enum_statement$ebnf$1$subexpression$1", "symbols": ["_", {"literal":","}, "enum_decl"]},
+    {"name": "enum_statement$ebnf$1$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma), "enum_decl"]},
     {"name": "enum_statement$ebnf$1", "symbols": ["enum_statement$ebnf$1", "enum_statement$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "enum_statement", "symbols": ["enum_decl", "enum_statement$ebnf$1"], "postprocess": 
+    {"name": "enum_statement$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
+    {"name": "enum_statement$ebnf$2", "symbols": ["enum_statement$ebnf$2$subexpression$1"], "postprocess": id},
+    {"name": "enum_statement$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "enum_statement", "symbols": ["enum_decl", "enum_statement$ebnf$1", "enum_statement$ebnf$2"], "postprocess": 
         function (d)
         {
             let result = [d[0]];

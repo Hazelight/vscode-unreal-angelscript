@@ -8,7 +8,7 @@ import {
 	TextDocumentSyncKind, SemanticTokensOptions, SemanticTokensLegend,
 	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder, ReferenceOptions, ReferenceParams,
 	CodeLens, CodeLensParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, DidOpenTextDocumentParams,
-	RenameParams, WorkspaceEdit, ResponseError, PrepareRenameParams, Range
+	RenameParams, WorkspaceEdit, ResponseError, PrepareRenameParams, Range, Position, Command
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -20,10 +20,12 @@ import * as scriptreferences from './references';
 import * as scriptoccurances from './highlight_occurances';
 import * as scriptsemantics from './semantic_highlighting';
 import * as scriptdiagnostics from './ls_diagnostics';
+import * as scriptlenses from './code_lenses';
+import * as assets from './assets';
 import * as fs from 'fs';
 let glob = require('glob');
 
-import { Message, MessageType, readMessages, buildGoTo, buildDisconnect } from './unreal-buffers';
+import { Message, MessageType, readMessages, buildGoTo, buildDisconnect, buildOpenAssets } from './unreal-buffers';
 
 // Create a connection for the server. The connection uses Node's IPC as a transport
 let connection: Connection = createConnection(new IPCMessageReader(process), new IPCMessageWriter(process));
@@ -121,6 +123,27 @@ function connect_unreal() {
 					clearTimeout(ReceivingTypesTimeout);
 				typedb.FinishTypesFromUnreal();
 			}
+			else if(msg.type == MessageType.AssetDatabase)
+			{
+				let version = msg.readInt();
+				if (version == 1)
+				{
+					let assetCount = msg.readInt();
+					for (let i = 0; i < assetCount; i += 2)
+					{
+						let assetPath = msg.readString();
+						let className = msg.readString();
+
+						if (className.length == 0)
+							assets.RemoveAsset(assetPath);
+						else
+							assets.AddAsset(assetPath, className);
+					}
+				}
+			}
+			else if(msg.type == MessageType.AssetDatabaseFinished)
+			{
+			}
 		}
 	});
 
@@ -215,6 +238,12 @@ connection.onInitialize((_params): InitializeResult => {
 			documentHighlightProvider: true,
 			renameProvider: {
 				prepareProvider: true
+			},
+			codeLensProvider: {
+				resolveProvider: false
+			},
+			executeCommandProvider: {
+				commands: ["angelscript.openAssets"],
 			},
 			semanticTokensProvider: <SemanticTokensOptions> {
 				legend: <SemanticTokensLegend> {
@@ -427,8 +456,36 @@ connection.onDocumentHighlight(function (params : DocumentHighlightParams) : Arr
 
 connection.onCodeLens(function (params : CodeLensParams) : CodeLens[]
 {
-	return null;
+	if (!CanResolveModules())
+		return null;
+	let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+	if (!asmodule)
+		return null;
+
+	scriptfiles.ParseModuleAndDependencies(asmodule);
+	scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
+	scriptfiles.ResolveModule(asmodule);
+	return scriptlenses.ComputeCodeLenses(asmodule);
 })
+
+connection.onCodeLensResolve(function (lens : CodeLens) : CodeLens{
+	return lens;
+});
+
+connection.onExecuteCommand(function (params : ExecuteCommandParams)
+{
+	if (params.command == "angelscript.openAssets")
+	{
+		if (params.arguments && params.arguments[0])
+		{
+			let references = assets.GetAssetsImplementing(params.arguments[0]);
+			if (!references || references.length == 0)
+				return;
+
+			unreal.write(buildOpenAssets(references));
+		}
+	}
+});
 
 function TryResolveSymbols(asmodule : scriptfiles.ASModule) : SemanticTokens | null
 {

@@ -38,6 +38,9 @@ export enum MessageType
     Disconnect,
 
     DebugDatabaseFinished,
+    AssetDatabase,
+	AssetDatabaseFinished,
+	FindAssets,
 }
 
 export class Message
@@ -134,6 +137,13 @@ export function readMessages(buffer : Buffer) : Array<Message>
     return list;
 }
 
+function writeInt(value : number) : Buffer
+{
+    let newBuffer = Buffer.alloc(4);
+    newBuffer.writeInt32LE(value, 0);
+    return newBuffer;
+}
+
 function writeString(str : string) : Buffer
 {
     let newBuffer = Buffer.alloc(4);
@@ -160,5 +170,19 @@ export function buildDisconnect() : Buffer
     msg.writeUInt32LE(1, 0);
     msg.writeUInt8(MessageType.Disconnect, 4);
 
+    return msg;
+}
+
+export function buildOpenAssets(assets : Array<string>) : Buffer
+{
+    let head = Buffer.alloc(5);
+    head.writeUInt8(MessageType.FindAssets, 4);
+
+    let parts = [head, writeInt(1), writeInt(assets.length)];
+    for (let asset of assets)
+        parts.push(writeString(asset));
+
+    let msg = Buffer.concat(parts);
+    msg.writeUInt32LE(msg.length - 4, 0);
     return msg;
 }

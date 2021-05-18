@@ -897,8 +897,11 @@ export class DBType
     private findSymbolsInternal(result : Array<DBSymbol>, name : string, depth : number)
     {
         let syms = this.symbols.get(name);
-        for (let sym of syms)
-            result.push(sym);
+        if (syms)
+        {
+            for (let sym of syms)
+                result.push(sym);
+        }
 
         if (depth == 0)
             return;

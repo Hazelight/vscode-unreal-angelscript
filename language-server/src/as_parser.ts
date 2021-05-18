@@ -41,6 +41,7 @@ export class ASModule
     modulename : string;
     filename : string;
     uri : string;
+    displayUri : string;
 
     content : string = null;
     lastEdit : number = -1;
@@ -96,7 +97,7 @@ export class ASModule
     getLocation(offset : number) : Location
     {
         return Location.create(
-            this.uri,
+            this.displayUri,
             Range.create(
                 this.getPosition(offset),
                 this.getPosition(offset),
@@ -107,7 +108,7 @@ export class ASModule
     getLocationRange(start_offset : number, end_offset : number) : Location
     {
         return Location.create(
-            this.uri,
+            this.displayUri,
             this.getRange(start_offset, end_offset),
         )
     }
@@ -336,9 +337,6 @@ export class ASScope extends ASElement
 
     findScopeForType(typename : string) : ASScope
     {
-        if(typename.startsWith("__"))
-            typename = typename.substr(2);
-
         let dbtype = this.getDatabaseType();
         if(dbtype && dbtype.typename == typename)
             return this;
@@ -446,6 +444,7 @@ export function GetOrCreateModule(modulename : string, filename : string, uri : 
     if (!module.created)
     {
         module.uri = NormalizeUri(uri);
+        module.displayUri = uri.replace("%3A", ":");
         module.filename = filename;
         module.created = true;
         ModulesByUri.set(module.uri, module);
@@ -1021,6 +1020,8 @@ function GenerateTypeInformation(scope : ASScope)
 
             scope.module.types.push(dbtype);
             scope.dbtype = dbtype;
+
+            ExtendScopeToStatement(scope, scope.previous);
         }
         // Struct definition in global scope
         else if (scope.previous.ast.type == node_types.StructDefinition)
@@ -1034,6 +1035,8 @@ function GenerateTypeInformation(scope : ASScope)
 
             scope.module.types.push(dbtype);
             scope.dbtype = dbtype;
+
+            ExtendScopeToStatement(scope, scope.previous);
         }
         // Namespace definition in global scope
         else if (scope.previous.ast.type == node_types.NamespaceDefinition)
@@ -1046,6 +1049,8 @@ function GenerateTypeInformation(scope : ASScope)
 
             scope.module.namespaces.push(dbtype);
             scope.dbtype = dbtype;
+
+            ExtendScopeToStatement(scope, scope.previous);
         }
         // Enum definition in global scope
         else if (scope.previous.ast.type == node_types.EnumDefinition)
@@ -1059,6 +1064,8 @@ function GenerateTypeInformation(scope : ASScope)
 
             scope.module.types.push(dbtype);
             scope.dbtype = dbtype;
+
+            ExtendScopeToStatement(scope, scope.previous);
         }
         // Function declaration, either in a class or global
         else if (scope.previous.ast.type == node_types.FunctionDecl)
@@ -1315,9 +1322,6 @@ function GenerateTypeInformation(scope : ASScope)
                     {
                         if (!enumValue)
                             continue;
-
-                        // Emit symbol for enum value node
-                        AddIdentifierSymbol(scope, statement, enumValue.name, ASSymbolType.MemberVariable, scope.dbtype.typename, enumValue.name.value);
 
                         // Add enum value to type database
                         let dbprop = new typedb.DBProperty();
@@ -1830,6 +1834,9 @@ function getPostfixOperatorOverloadMethod(operator : any) : string
 
 function ResolveIteratorType(dbtype : typedb.DBType) : typedb.DBType
 {
+    if (!dbtype)
+        return null;
+
     // Check if we have an iterator method
     let iterator_sym = dbtype.findFirstSymbol("Iterator");
     if (iterator_sym && iterator_sym instanceof typedb.DBMethod)
@@ -2205,7 +2212,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, constrType.typename);
 
                         // If this is a delegate constructor call, mark it for later diagnostics
-                        if (left_type.isDelegate)
+                        if (left_type.isDelegate && node.children[1])
                         {
                             let delegateBind = new ASDelegateBind;
                             delegateBind.scope = scope;
@@ -2641,6 +2648,21 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         {
             let expr_type = DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
             return expr_type;
+        }
+        break;
+        // List of enum values
+        case node_types.EnumValueList:
+        {
+            if (scope.dbtype)
+            {
+                for (let enumValue of statement.ast.children)
+                {
+                    if (!enumValue)
+                        continue;
+                    // Emit symbol for enum value node
+                    AddIdentifierSymbol(scope, statement, enumValue.name, ASSymbolType.GlobalVariable, scope.dbtype.typename, enumValue.name.value);
+                }
+            }
         }
         break;
     }

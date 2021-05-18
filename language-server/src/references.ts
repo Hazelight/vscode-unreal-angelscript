@@ -85,9 +85,9 @@ export function FindReferences(uri : string, position : Position) : Array<Locati
     for (let checkmodule of scriptfiles.GetAllModules())
     {
         // Make sure the module is parsed and resolved
-        scriptfiles.ParseModuleAndDependencies(asmodule);
-        scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
-        scriptfiles.ResolveModule(asmodule);
+        scriptfiles.ParseModuleAndDependencies(checkmodule);
+        scriptfiles.PostProcessModuleTypesAndDependencies(checkmodule);
+        scriptfiles.ResolveModule(checkmodule);
 
         // Find symbols that match the symbol we're trying to find
         for (let symbol of checkmodule.symbols)
@@ -337,9 +337,9 @@ export function PerformRename(uri : string, position : Position, baseReplaceWith
         for (let checkmodule of scriptfiles.GetAllModules())
         {
             // Make sure the module is parsed and resolved
-            scriptfiles.ParseModuleAndDependencies(asmodule);
-            scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
-            scriptfiles.ResolveModule(asmodule);
+            scriptfiles.ParseModuleAndDependencies(checkmodule);
+            scriptfiles.PostProcessModuleTypesAndDependencies(checkmodule);
+            scriptfiles.ResolveModule(checkmodule);
 
             // Find symbols that match the symbol we're trying to find
             let fileEdits : Array<TextEdit> = null;
