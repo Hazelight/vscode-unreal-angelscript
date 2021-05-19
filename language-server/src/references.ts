@@ -32,16 +32,7 @@ export function FindReferences(uri : string, position : Position) : Array<Locati
     if (findSymbol.type == scriptfiles.ASSymbolType.LocalVariable
         || findSymbol.type == scriptfiles.ASSymbolType.Parameter)
     {
-        let considerScopes : Array<scriptfiles.ASScope> = [];
-        let checkscope = asmodule.getScopeAt(offset);
-        while (checkscope)
-        {
-            if (!checkscope.isInFunctionBody())
-                break;
-            considerScopes.push(checkscope);
-            checkscope = checkscope.parentscope;
-        }
-
+        let declaredScope = asmodule.getScopeDeclaringLocalSymbol(findSymbol);
         for (let symbol of asmodule.symbols)
         {
             if (symbol.type != findSymbol.type)
@@ -51,20 +42,13 @@ export function FindReferences(uri : string, position : Position) : Array<Locati
             if (symbol.symbol_name != findSymbol.symbol_name)
                 continue;
 
-            // Need to check if the symbol is in our scope or one of our parent scopes
-            let inScope = false;
-            for (let scope of considerScopes)
-            {
-                if (symbol.start >= scope.end_offset)
-                    continue;
-                if (symbol.end < scope.start_offset)
-                    continue;
-                inScope = true;
-                break;
-            }
+            // Need to check if the symbol is within where our symbol is declared
+            if (symbol.start >= declaredScope.end_offset)
+                continue;
+            if (symbol.end < declaredScope.start_offset)
+                continue;
 
-            if (inScope)
-                references.push(asmodule.getLocationRange(symbol.start, symbol.end));
+            references.push(asmodule.getLocationRange(symbol.start, symbol.end));
         }
 
         return references;
@@ -273,16 +257,9 @@ export function PerformRename(uri : string, position : Position, baseReplaceWith
     if (scopeLimited)
     {
         let fileEdits = new Array<TextEdit>();
-        edits.set(asmodule.uri, fileEdits);
+        edits.set(asmodule.displayUri, fileEdits);
 
-        let checkscope = asmodule.getScopeAt(offset);
-        while (checkscope)
-        {
-            if (!checkscope.isInFunctionBody())
-                break;
-            considerScopes.push(checkscope);
-            checkscope = checkscope.parentscope;
-        }
+        let declaredScope = asmodule.getScopeDeclaringLocalSymbol(findSymbol);
 
         // Find all symbols in the file that match
         for (let symbol of asmodule.symbols)
@@ -294,23 +271,11 @@ export function PerformRename(uri : string, position : Position, baseReplaceWith
             if (symbol.symbol_name != findSymbol.symbol_name)
                 continue;
 
-            // Need to check if the symbol is in our scope or one of our parent scopes
-            if (scopeLimited)
-            {
-                let inScope = false;
-                for (let scope of considerScopes)
-                {
-                    if (symbol.start >= scope.end_offset)
-                        continue;
-                    if (symbol.end < scope.start_offset)
-                        continue;
-                    inScope = true;
-                    break;
-                }
-
-                if (!inScope)
-                    continue;
-            }
+            // Need to check if the symbol is in our scope
+            if (symbol.start >= declaredScope.end_offset)
+                continue;
+            if (symbol.end < declaredScope.start_offset)
+                continue;
 
             fileEdits.push(
                 TextEdit.replace(
@@ -356,7 +321,7 @@ export function PerformRename(uri : string, position : Position, baseReplaceWith
                 if (!fileEdits)
                 {
                     fileEdits = new Array<TextEdit>();
-                    edits.set(asmodule.uri, fileEdits);
+                    edits.set(asmodule.displayUri, fileEdits);
                 }
 
                 let isAccessor = (symbol.type == scriptfiles.ASSymbolType.MemberAccessor

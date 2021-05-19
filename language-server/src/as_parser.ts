@@ -139,6 +139,28 @@ export class ASModule
             statement.start_offset + node.end,
         )
     }
+
+    getScopeDeclaringLocalSymbol(symbol : ASSymbol) : ASScope
+    {
+        if (symbol.type != ASSymbolType.Parameter && symbol.type != ASSymbolType.LocalVariable)
+            return null;
+
+        let checkscope = this.getScopeAt(symbol.start);
+        while (checkscope)
+        {
+            for (let scopevar of checkscope.variables)
+            {
+                if (scopevar.name == symbol.symbol_name)
+                    return checkscope;
+            }
+
+            if (!checkscope.isInFunctionBody())
+                break;
+            checkscope = checkscope.parentscope;
+        }
+
+        return null;
+    }
 };
 
 export class ASElement

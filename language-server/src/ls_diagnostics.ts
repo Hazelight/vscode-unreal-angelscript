@@ -21,7 +21,6 @@ export function UpdateCompileDiagnostics(uri : string, diagnostics : Array<Diagn
 function NotifyDiagnostics(uri : string, notifyEmpty = true)
 {
     let allDiagnostics : Array<Diagnostic> = [];
-
     let fromCompile = CompileDiagnostics.get(scriptfiles.NormalizeUri(uri));
     if (fromCompile)
     {
@@ -67,7 +66,7 @@ export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule)
     if (oldDiagnostics && oldDiagnostics.length != 0)
         notifyEmpty = true;
 
-    NotifyDiagnostics(asmodule.uri, notifyEmpty);
+    NotifyDiagnostics(asmodule.displayUri, notifyEmpty);
 }
 
 function AddScopeDiagnostics(scope : scriptfiles.ASScope, diagnostics : Array<Diagnostic>)

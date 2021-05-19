@@ -837,12 +837,12 @@ export class DBType
     }
 
     // NOTE: Prefix must be at least 2 characters
-    findFirstSymbolWithPrefix(prefix : string, allow_symbols = DBAllowSymbol.Any, depth = 100) : DBSymbol | null
+    findFirstSymbolWithPrefix(prefix : string, allow_symbols = DBAllowSymbol.Any, caseSensitive = true, depth = 100) : DBSymbol | null
     {
         if (prefix.length < 2)
             return null;
 
-        let charPrefix = prefix.substr(0, 2);
+        let charPrefix = prefix.substr(0, 2).toLowerCase();
         let syms = this.symbolsByPrefix.get(charPrefix);
         if (syms && syms.length != 0)
         {
@@ -852,8 +852,16 @@ export class DBType
                     continue;
                 if (allow_symbols == DBAllowSymbol.PropertyOnly && sym instanceof DBMethod)
                     continue;
-                if (sym.name.startsWith(prefix))
-                    return sym;
+                if (caseSensitive)
+                {
+                    if (sym.name.startsWith(prefix))
+                        return sym;
+                }
+                else
+                {
+                    if (sym.name.toLowerCase().startsWith(prefix.toLowerCase()))
+                        return sym;
+                }
             }
         }
         if (depth == 0)
@@ -864,7 +872,7 @@ export class DBType
             let dbsuper = GetType(this.supertype);
             if (dbsuper)
             {
-                let sym = dbsuper.findFirstSymbolWithPrefix(prefix, allow_symbols, depth-1);
+                let sym = dbsuper.findFirstSymbolWithPrefix(prefix, allow_symbols, caseSensitive, depth-1);
                 if (sym)
                     return sym;
             }
@@ -877,7 +885,7 @@ export class DBType
                 let dbsibling = GetType(sibling);
                 if (dbsibling)
                 {
-                    let sym = dbsibling.findFirstSymbolWithPrefix(prefix, allow_symbols, depth-1);
+                    let sym = dbsibling.findFirstSymbolWithPrefix(prefix, allow_symbols, caseSensitive, depth-1);
                     if (sym)
                         return sym;
                 }
@@ -941,7 +949,7 @@ export class DBType
 
         if (symbol.name.length > 2)
         {
-            let prefix = symbol.name.substr(0, 2);
+            let prefix = symbol.name.substr(0, 2).toLowerCase();
             let prefixSyms = this.symbolsByPrefix.get(prefix);
             if (!prefixSyms)
             {
@@ -967,7 +975,7 @@ export class DBType
 
         if (symbol.name.length > 2)
         {
-            let prefix = symbol.name.substr(0, 2);
+            let prefix = symbol.name.substr(0, 2).toLowerCase();
             let prefixSyms = this.symbolsByPrefix.get(prefix);
             if (prefixSyms)
             {
@@ -1131,15 +1139,15 @@ function GetTypenameCharPrefix(typename : string) : string
     {
         if (typename.length < 4)
             return null;
-        return typename.substr(2, 2);
+        return typename.substr(2, 2).toLowerCase();
     }
     else
     {
-        return typename.substr(0, 2);
+        return typename.substr(0, 2).toLowerCase();
     }
 }
 
-export function HasTypeWithPrefix(typenamePrefix : string) : boolean
+export function HasTypeWithPrefix(typenamePrefix : string, caseSensitive = true) : boolean
 {
     let charPrefix = GetTypenameCharPrefix(typenamePrefix);
     if (!charPrefix)
@@ -1150,10 +1158,20 @@ export function HasTypeWithPrefix(typenamePrefix : string) : boolean
     {
         for (let type of syms)
         {
-            if (type.typename.startsWith(typenamePrefix))
-                return true;
-            if (type.isEnum && type.typename.startsWith("__"+typenamePrefix))
-                return true;
+            if (caseSensitive)
+            {
+                if (type.typename.startsWith(typenamePrefix))
+                    return true;
+                if (type.isEnum && type.typename.startsWith("__"+typenamePrefix))
+                    return true;
+            }
+            else
+            {
+                if (type.typename.toLowerCase().startsWith(typenamePrefix.toLowerCase()))
+                    return true;
+                if (type.isEnum && type.typename.toLowerCase().startsWith("__"+typenamePrefix.toLowerCase()))
+                    return true;
+            }
         }
     }
 

@@ -26,24 +26,15 @@ export function HighlightOccurances(uri : string, position : Position) : Array<D
         return null;
 
     let scopeLimited = false;
-    let considerScopes : Array<scriptfiles.ASScope> = [];
-
     if (findSymbol.type == scriptfiles.ASSymbolType.LocalVariable)
         scopeLimited = true;
     else if (findSymbol.type == scriptfiles.ASSymbolType.Parameter)
         scopeLimited = true;
 
+    let declaredScope : scriptfiles.ASScope = null;
+
     if (scopeLimited)
-    {
-        let checkscope = asmodule.getScopeAt(offset);
-        while (checkscope)
-        {
-            if (!checkscope.isInFunctionBody())
-                break;
-            considerScopes.push(checkscope);
-            checkscope = checkscope.parentscope;
-        }
-    }
+        declaredScope = asmodule.getScopeDeclaringLocalSymbol(findSymbol);
 
     // Find all symbols in the file that match
     for (let symbol of asmodule.symbols)
@@ -58,18 +49,9 @@ export function HighlightOccurances(uri : string, position : Position) : Array<D
         // Need to check if the symbol is in our scope or one of our parent scopes
         if (scopeLimited)
         {
-            let inScope = false;
-            for (let scope of considerScopes)
-            {
-                if (symbol.start >= scope.end_offset)
-                    continue;
-                if (symbol.end < scope.start_offset)
-                    continue;
-                inScope = true;
-                break;
-            }
-
-            if (!inScope)
+            if (symbol.start >= declaredScope.end_offset)
+                continue;
+            if (symbol.end < declaredScope.start_offset)
                 continue;
         }
 

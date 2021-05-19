@@ -38,6 +38,7 @@ export enum MessageType
     Disconnect,
 
     DebugDatabaseFinished,
+    AssetDatabaseInit,
     AssetDatabase,
 	AssetDatabaseFinished,
 	FindAssets,

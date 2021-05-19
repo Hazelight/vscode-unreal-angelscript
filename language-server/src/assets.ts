@@ -50,3 +50,9 @@ export function GetShortAssetName(assetPath : string)
         return assetPath;
     return assetPath.substr(index+1);
 }
+
+export function ClearDatabase()
+{
+    AssetPathToClass.clear();
+    ClassToReferencingAssets.clear();
+}

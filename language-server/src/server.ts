@@ -141,6 +141,11 @@ function connect_unreal() {
 					}
 				}
 			}
+			else if(msg.type == MessageType.AssetDatabaseInit)
+			{
+				// Remove all old asset info from the database, we're receiving new stuff
+				assets.ClearDatabase();
+			}
 			else if(msg.type == MessageType.AssetDatabaseFinished)
 			{
 			}
