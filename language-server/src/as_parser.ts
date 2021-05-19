@@ -1,11 +1,10 @@
 import { TextDocument, } from "vscode-languageserver-textdocument";
-import { Range, Position, Location, UniquenessLevel, MarkupContent, } from "vscode-languageserver";
+import { Range, Position, Location, MarkupContent, } from "vscode-languageserver";
 
 import * as fs from 'fs';
 import * as nearley from 'nearley';
 
 import * as typedb from './database';
-import { RemoveScopeFromDatabase } from "./as_file";
 import { ProcessScriptTypeGeneratedCode } from "./generated_code";
 
 let grammar_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_statement.js"));
@@ -23,7 +22,7 @@ let parser_class_statement_initial = parser_class_statement.save();
 let parser_global_statement_initial = parser_global_statement.save();
 let parser_enum_statement_initial = parser_enum_statement.save();
 
-let node_types = require("../grammar/node_types.js");
+export let node_types = require("../grammar/node_types.js");
 
 export enum ASScopeType
 {
@@ -44,7 +43,8 @@ export class ASModule
     displayUri : string;
 
     content : string = null;
-    lastEdit : number = -1;
+    lastEditStart : number = -1;
+    lastEditEnd : number = -1;
 
     loaded: boolean = false;
     textDocument : TextDocument = null;
@@ -94,6 +94,13 @@ export class ASModule
         return this.rootscope.getScopeAt(offset);
     }
 
+    getStatementAt(offset : number) : ASStatement
+    {
+        if (!this.parsed)
+            return null;
+        return this.rootscope.getStatementAt(offset);
+    }
+
     getLocation(offset : number) : Location
     {
         return Location.create(
@@ -125,9 +132,9 @@ export class ASModule
 
     isEditingInside(start : number, end : number) : boolean
     {
-        if (this.lastEdit == -1)
+        if (this.lastEditStart == -1)
             return false;
-        return this.lastEdit >= start && this.lastEdit < end;
+        return start < this.lastEditEnd && end > this.lastEditStart;
     }
 
     isEditingNode(statement : ASStatement, node : any) : boolean
@@ -276,6 +283,36 @@ export class ASScope extends ASElement
                 return subscope.getScopeAt(offset);
         }
         return this;
+    }
+
+    getStatementAt(offset : number) : ASStatement
+    {
+        if (!this.parsed)
+            return null;
+        let element = this.element_head;
+        while (element)
+        {
+            if (element instanceof ASScope)
+            {
+                if (offset >= element.start_offset && offset < element.end_offset)
+                {
+                    let substatement = element.getStatementAt(offset);
+                    if (substatement)
+                        return substatement;
+                }
+            }
+            else if (element instanceof ASStatement)
+            {
+                if (offset >= element.start_offset && offset < element.end_offset)
+                {
+                    return element;
+                }
+            }
+
+            element = element.next;
+        }
+
+        return null;
     }
 
     getParentFunctionScope() : ASScope
@@ -583,34 +620,122 @@ export function UpdateModuleFromContent(module : ASModule, content : string)
     // this will help us determine whether to show errors or not in the future.
     if (module.content)
     {
-        module.lastEdit = -1;
+        let previousEditStart = module.lastEditStart;
+        let previousEditEnd = module.lastEditEnd;
+
+        module.lastEditStart = -1;
+        module.lastEditEnd = -1;
         let shortestLength = Math.min(module.content.length, content.length);
-        let isDelete = module.content.length > content.length;
+
+        // Find the start of the changed bit
         for (let i = 0; i < shortestLength; ++i)
         {
             if (module.content[i] != content[i])
             {
-                module.lastEdit = i;
-                if (content[i] != ' ' && content[i] != '\n' && content[i] != '\t' && content[i] != '\r')
-                {
-                    if (isDelete)
-                        module.lastEdit = i-1;
-                    else
-                        break;
-                }
+                module.lastEditStart = i;
+                break;
             }
         }
 
-        if (module.lastEdit == -1)
+        if (module.lastEditStart == -1)
         {
             // If we have added or removed stuff, our last edit was at the end of the file
             if (content.length != module.content.length)
-                module.lastEdit = content.length-1;
+            {
+                module.lastEditStart = content.length-1;
+                module.lastEditEnd = content.length;
+            }
+            else
+            {
+                module.lastEditStart = previousEditStart;
+                module.lastEditEnd = previousEditEnd;
+            }
+        }
+        else
+        {
+            let isDelete = module.content.length > content.length;
+            if (isDelete)
+            {
+                // Try to establish the deleted bit
+                let deleteLength = module.content.length - content.length;
+
+                let oldIndex = module.lastEditStart+deleteLength;
+                let newIndex = module.lastEditStart;
+
+                let remainderMatches = true;
+                while (oldIndex < module.content.length)
+                {
+                    if (module.content[oldIndex] != content[newIndex])
+                    {
+                        remainderMatches = false;
+                        break;
+                    }
+                    ++oldIndex;
+                    ++newIndex;
+                }
+
+                // If the remainder matches, find if the deleted bit had a line break in it
+                // If it did, we don't consider this an edit at all, since no remaining symbols could have changed
+                if (remainderMatches)
+                {
+                    let containsNewline = false;
+                    for (let i = 0; i < deleteLength; ++i)
+                    {
+                        if (module.content[module.lastEditStart+i] == '\n')
+                        {
+                            containsNewline = true;
+                            break;
+                        }
+                    }
+
+                    if (containsNewline)
+                        module.lastEditStart = -1;
+                    else
+                        module.lastEditStart -= 1;
+                }
+
+                if (module.lastEditStart != -1)
+                    module.lastEditEnd = module.lastEditStart+1;
+                else
+                    module.lastEditEnd = -1;
+            }
+            else
+            {
+                // Try to establish the added bit
+                let addLength = content.length - module.content.length;
+
+                let oldIndex = module.lastEditStart;
+                let newIndex = module.lastEditStart+addLength;
+
+                let remainderMatches = true;
+                while (oldIndex < module.content.length)
+                {
+                    if (module.content[oldIndex] != content[newIndex])
+                    {
+                        remainderMatches = false;
+                        break;
+                    }
+                    ++oldIndex;
+                    ++newIndex;
+                }
+
+                if (remainderMatches)
+                {
+                    // We inserted a single string of characters, mark a range edit
+                    module.lastEditEnd = module.lastEditStart + addLength;
+                }
+                else
+                {
+                    // No match, just treat it as a single character edit
+                    module.lastEditEnd = module.lastEditStart + 1;
+                }
+            }
         }
     }
     else
     {
-        module.lastEdit = -1;
+        module.lastEditStart = -1;
+        module.lastEditEnd = -1;
     }
 
     // Update the content in the module
@@ -623,7 +748,8 @@ export function UpdateModuleFromDisk(module : ASModule)
 {
     ClearModule(module);
     module.content = fs.readFileSync(module.filename, 'utf8');
-    module.lastEdit = -1;
+    module.lastEditStart = -1;
+    module.lastEditEnd = -1;
     LoadModule(module);
 }
 
@@ -1515,7 +1641,7 @@ function AddUnknownSymbol(scope : ASScope, statement: ASStatement, node : any, h
     {
         // If we are currently editing the document at the position of this symbol,
         // then we don't actually want to show it as an error if it can still become a valid symbol later
-        if (scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 1))
+        if (scope.module.isEditingNode(statement, node))
             return;
     }
 
@@ -1567,7 +1693,7 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
         if (errorOnUnknown && !DoesTypenameExist(node.name.value))
         {
             let hasPotentialCompletions = false;
-            if (scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 2))
+            if (scope.module.isEditingNode(statement, node))
                 hasPotentialCompletions = typedb.HasTypeWithPrefix(node.name.value);
             AddUnknownSymbol(scope, statement, node.name, hasPotentialCompletions);
             return null;
@@ -1984,7 +2110,7 @@ function ResolveTypeFromOperator(scope : ASScope, leftType : typedb.DBType, righ
     return null;
 }
 
-function ResolveFunctionFromExpression(scope : ASScope, node : any) : typedb.DBMethod
+export function ResolveFunctionFromExpression(scope : ASScope, node : any) : typedb.DBMethod
 {
     if (!node)
         return null;
@@ -2045,27 +2171,17 @@ function ResolveFunctionFromType(scope : ASScope, dbtype : typedb.DBType, name :
 
     if (allowUCS)
     {
-        // Check if this is a UCS call in the namespace
-        let nsType = scope.getNamespaceParentType();
-        if (nsType)
-        {
-            let usedSymbol = nsType.findFirstSymbol(name);
-            if (usedSymbol && usedSymbol instanceof typedb.DBMethod)
-            {
-                if (usedSymbol.args.length != 0 && typedb.CleanTypeName(usedSymbol.args[0].typename) == dbtype.typename)
-                    return usedSymbol;
-            }
-        }
-
         // Find a symbol in global scope
-        let globalType = scope.module.global_type;
-        if (globalType)
+        for (let globalType of scope.getAvailableGlobalTypes())
         {
-            let usedSymbol = globalType.findFirstSymbol(name);
-            if (usedSymbol && usedSymbol instanceof typedb.DBMethod)
+            if (globalType)
             {
-                if (usedSymbol.args.length != 0 && typedb.CleanTypeName(usedSymbol.args[0].typename) == dbtype.typename)
-                    return usedSymbol;
+                let usedSymbol = globalType.findFirstSymbol(name);
+                if (usedSymbol && usedSymbol instanceof typedb.DBMethod)
+                {
+                    if (usedSymbol.args.length != 0 && typedb.CleanTypeName(usedSymbol.args[0].typename) == dbtype.typename)
+                        return usedSymbol;
+                }
             }
         }
     }
@@ -2093,6 +2209,106 @@ function ResolveFunctionFromIdentifier(scope : ASScope, identifier : string) : t
     }
 
     return null;
+}
+
+export function ResolveFunctionOverloadsFromExpression(scope : ASScope, node : any, functions : Array<typedb.DBMethod>)
+{
+    if (!node)
+        return;
+
+    switch (node.type)
+    {
+        // X()
+        case node_types.Identifier:
+        {
+            ResolveFunctionOverloadsFromIdentifier(scope, node.value, functions);
+        }
+        break;
+        // X.Y()
+        case node_types.MemberAccess:
+        {
+            if (!node.children[0] || !node.children[1])
+                return;
+            let left_type = ResolveTypeFromExpression(scope, node.children[0]);
+            if (!left_type)
+                return;
+            ResolveFunctionOverloadsFromType(scope, left_type, node.children[1].value, true, functions);
+        }
+        break;
+        // X::Y()
+        case node_types.NamespaceAccess:
+        {
+            if (!node.children[0] || !node.children[1] || !node.children[0].value)
+                return;
+            if (node.children[0].value == "Super" && scope.getParentType())
+            {
+                let superType = typedb.GetType(scope.getParentType().supertype);
+                if (!superType)
+                    return;
+                ResolveFunctionOverloadsFromType(scope, superType, node.children[1].value, false, functions);
+            }
+            else
+            {
+                let nsType = typedb.GetType("__"+node.children[0].value);
+                if (!nsType)
+                    return;
+                ResolveFunctionOverloadsFromType(scope, nsType, node.children[1].value, false, functions);
+            }
+        }
+        break;
+    }
+}
+
+function ResolveFunctionOverloadsFromType(scope : ASScope, dbtype : typedb.DBType, name : string, allowUCS = false, functions : Array<typedb.DBMethod>)
+{
+    if (!dbtype || !name)
+        return;
+
+    // Find property with this name
+    let usedSymbols = dbtype.findSymbols(name);
+    if (usedSymbols)
+    {
+        for (let symbol of usedSymbols)
+        {
+            if (symbol instanceof typedb.DBMethod)
+                functions.push(symbol);
+        }
+    }
+
+    if (allowUCS)
+    {
+        // Check if this is a UCS call in a global scope
+        for (let globalType of scope.getAvailableGlobalTypes())
+        {
+            if (globalType)
+            {
+                let usedSymbols = globalType.findSymbols(name);
+                if (usedSymbols)
+                {
+                    for (let symbol of usedSymbols)
+                    {
+                        if (symbol instanceof typedb.DBMethod)
+                        {
+                            if (symbol.args.length != 0 && typedb.CleanTypeName(symbol.args[0].typename) == dbtype.typename)
+                                functions.push(symbol);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+function ResolveFunctionOverloadsFromIdentifier(scope : ASScope, identifier : string, functions : Array<typedb.DBMethod>)
+{
+    // Find a symbol in the class we're in
+    let insideType = scope.getParentType();
+    if (insideType)
+        ResolveFunctionOverloadsFromType(scope, insideType, identifier, true, functions);
+
+    // Find a symbol in global scope
+    for (let globalType of scope.getAvailableGlobalTypes())
+        ResolveFunctionOverloadsFromType(scope, globalType, identifier, false, functions);
 }
 
 function DetectScopeSymbols(scope : ASScope)
@@ -2494,7 +2710,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             let typenameSymbol : ASSymbol = null;
             if (node.typename)
             {
-                if (scope.module.isEditingInside(node.typename.start + statement.start_offset, node.typename.end + statement.start_offset + 2))
+                if (scope.module.isEditingNode(statement, node.typename))
                 {
                     // This one gets a bit tricky if we are currently editing the typename.
                     // It's very likely that we detected a statement that is incomplete as a variable declaration
@@ -2781,7 +2997,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
     }
     
     // We might be typing a typename at the start of a declaration, which accidentally got parsed as an identifier due to incompleteness
-    if (node == statement.ast && scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 2))
+    if (node == statement.ast && scope.module.isEditingNode(statement, node.start))
     {
         // It could be a type as well
         let symType = typedb.GetType(node.value);
@@ -2806,11 +3022,18 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         }
     }
 
+    // This could also be an 'auto' keyword
+    if (node.value == "auto")
+    {
+        AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, "auto");
+        return null;
+    }
+
     // This symbol is entirely unknown, maybe emit an invalid symbol so the user knows
     if (parseContext.allow_errors)
     {
         let hasPotentialCompletions = false;
-        if (scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 1))
+        if (scope.module.isEditingNode(statement, node))
         {
             // Check if the symbol that we're editing can still complete to something valid later
             hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, parseContext, node.value, typedb.DBAllowSymbol.Any);
@@ -2886,7 +3109,7 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
     if (allow_errors)
     {
         let hasPotentialCompletions = false;
-        if (scope.module.isEditingInside(identifier.start + statement.start_offset, identifier.end + statement.start_offset + 1))
+        if (scope.module.isEditingNode(statement, identifier))
         {
             // Check if the symbol that we're editing can still complete to something valid later
             hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInType(scope, statement, dbtype, findName, typedb.DBAllowSymbol.Any);
@@ -3063,7 +3286,7 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
     if (parseContext.allow_errors)
     {
         let hasPotentialCompletions = false;
-        if (scope.module.isEditingInside(node.start + statement.start_offset, node.end + statement.start_offset + 1))
+        if (scope.module.isEditingNode(statement, node))
         {
             // Check if the symbol that we're editing can still complete to something valid later
             hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInType(scope, statement, dbtype, node.value, typedb.DBAllowSymbol.Any);
@@ -3328,7 +3551,7 @@ function ParseScopeIntoStatements(scope : ASScope)
         // If we just typed a dot as the last character of the line,
         // and we aren't inside any parentheses, split on the dot.
         // This improves behaviour when in progress of typing a line above another line.
-        if ((curchar == '.' || (curchar == ':' && cur_offset > 0 && scope.module.content[cur_offset-1] == ':'))
+        if ((curchar == '.' || curchar == ':')
             && depth_paren == 0
             && scope.module.isEditingInside(cur_offset-16, cur_offset+1)
             && cur_offset+1 < scope.end_offset)
@@ -3336,6 +3559,7 @@ function ParseScopeIntoStatements(scope : ASScope)
             let nextchar = scope.module.content[cur_offset+1];
             if (nextchar == '\r' || nextchar == '\n')
             {
+                cur_offset += 1;
                 finishStatement();
             }
         }
@@ -3434,15 +3658,18 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
         // the next statement, but haven't typed the semicolon yet.
         // In this case we will try to split it into two statements instead.
         let trySplit = false;
-        if (!statement.ast && scope.module.isEditingInside(statement.start_offset, statement.end_offset))
+        if (!statement.ast)
         {
-            trySplit = true;
+            if (scope.module.isEditingInside(statement.start_offset, statement.end_offset))
+            {
+                trySplit = true;
+            }
         }
         if (!trySplit && statement.ast && statement.ast.type == node_types.VariableDecl && scope.module.isEditingInside(statement.start_offset, statement.end_offset))
         {
             let startLine = scope.module.getPosition(statement.start_offset).line;
             let endLine = scope.module.getPosition(statement.end_offset).line;
-            if (startLine != endLine && scope.module.getPosition(scope.module.lastEdit).line < endLine)
+            if (startLine != endLine && scope.module.getPosition(scope.module.lastEditStart).line < endLine)
             {
                 trySplit = true;
             }
@@ -3450,7 +3677,7 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
 
         if (trySplit)
         {
-            let splitContent = SplitStatementBasedOnEdit(statement.content, scope.module.lastEdit - statement.start_offset);
+            let splitContent = SplitStatementBasedOnEdit(statement.content, scope.module.lastEditStart - statement.start_offset);
             if (splitContent && splitContent.length != 0)
             {
                 let orig_start = statement.start_offset;
@@ -3485,6 +3712,13 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
                 }
             }
         }
+
+        /*if (!statement.ast)
+        {
+            console.log("Failed to parse: "+statement.content);
+            console.log("Statement: "+statement.start_offset+" -> "+statement.end_offset);
+            console.log("Edit: "+scope.module.lastEditStart+" -> "+scope.module.lastEditEnd);
+        }*/
     }
 
     // Also parse any subscopes we detected
@@ -3662,7 +3896,7 @@ function DisambiguateStatement(ast : any) : any
     return null;
 }
 
-function ParseStatement(scopetype : ASScopeType, statement : ASStatement, debug : boolean = false)
+export function ParseStatement(scopetype : ASScopeType, statement : ASStatement, debug : boolean = false)
 {
     statement.parsed = true;
     statement.ast = null;

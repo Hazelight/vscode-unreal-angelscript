@@ -918,7 +918,7 @@ export class DBType
         {
             let dbsuper = GetType(this.supertype);
             if (dbsuper)
-                dbsuper.findSymbols(name, depth-1);
+                dbsuper.findSymbolsInternal(result, name, depth-1);
         }
 
         if (this.siblingTypes)
@@ -927,7 +927,7 @@ export class DBType
             {
                 let dbsibling = GetType(sibling);
                 if (dbsibling)
-                    dbsibling.findSymbols(name, depth-1);
+                    dbsibling.findSymbolsInternal(result, name, depth-1);
             }
         }
     }

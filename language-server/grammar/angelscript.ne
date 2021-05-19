@@ -43,7 +43,10 @@ const lexer = moo.compile({
             default_token: "default",
             void_token: "void",
             const_token: "const",
+            final_token: "final",
+            override_token: "override",
             delegate_token: "delegate",
+            property_token: "property",
             event_token: "event",
             else_token: "else",
             while_token: "while",
@@ -565,7 +568,7 @@ parameter -> typename _ %identifier {%
     }; }
 %}
 
-parameter -> typename _ %identifier _ "=" _ expression {%
+parameter -> typename _ %identifier _ "=" optional_expression {%
     function (d) { return {
         ...Compound(d, n.Parameter, null),
         typename: d[0],
@@ -733,7 +736,7 @@ lvalue -> %lparen _ expression _ %rparen {%
 lvalue -> lvalue _ %lparen _ argumentlist _ %rparen {%
     function (d) { return Compound(d, n.FunctionCall, [d[0], d[4]]); }
 %}
-lvalue -> lvalue _ "[" _ expression _ "]" {%
+lvalue -> lvalue _ %lsqbracket optional_expression _ %rsqbracket {%
     function (d) { return Compound(d, n.IndexOperator, [d[0], d[4]]); }
 %}
 lvalue -> template_typename _ %lparen _ argumentlist _ %rparen {%
@@ -744,10 +747,10 @@ lvalue -> %cast_token _ "<" _ typename _ ">" _ %lparen _ optional_expression _ %
     function (d) { return Compound(d, n.CastOperation, [d[4], d[10]]); }
 %}
 # INCOMPLETE: Attempts to parse an incomplete cast while the user is typing
-expression -> %cast_token _ "<" {%
+expression -> %cast_token (_ "<"):? {%
     function (d) { return Compound(d, n.CastOperation, [null, null]); }
 %}
-expression -> %cast_token _ "<" _ typename _ ">" {%
+expression -> %cast_token _ "<" _ typename (_ ">"):? {%
     function (d) { return Compound(d, n.CastOperation, [d[4], null]); }
 %}
 
@@ -765,7 +768,10 @@ lvalue -> %identifier _ "::" {%
 %}
 # INCOMPLETE: Attempts to parse an incomplete namespace access while the user is typing
 lvalue -> %identifier _ ":" {%
-    function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]); }
+    function (d) { return {
+        ...Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]),
+        incomplete_colon: true
+     } }
 %}
 # INCOMPLETE: Attempts to parse an incomplete member access while the user is typing
 lvalue -> lvalue _ %dot {%
@@ -797,7 +803,10 @@ assignment -> lvalue _ %compound_assignment {%
 argumentlist -> null {%
     function(d) { return null; }
 %}
-argumentlist -> (argument _ "," _ ):* argument ",":? {%
+argumentlist -> %comma {%
+    function(d) { return null; }
+%}
+argumentlist -> (argument _ "," _ ):* argument %comma:? {%
     function(d) { 
         let args = [];
         if (d[0])
@@ -989,7 +998,7 @@ const_qualifier -> %const_token _ {%
     function (d) { return d[0].value; }
 %}
 ref_qualifiers -> _ "&" ("in" | "out" | "inout"):? {%
-    function (d) { return d[2] ? d[1].value+d[2].value : d[1].value; }
+    function (d) { return d[2] ? d[1].value+d[2][0].value : d[1].value; }
 %}
 
 func_qualifiers -> null {%
@@ -1007,8 +1016,12 @@ func_qualifiers -> _ (func_qualifier __ ):* func_qualifier {%
     }
 %}
 
-func_qualifier -> ("const" | "final" | "override" | "property") {% 
+func_qualifier -> (%const_token | %final_token | %override_token | %property_token) {% 
     function (d) { return d[0][0]; }
+%}
+
+func_qualifier -> %identifier {% 
+    function (d) { return d[0].value; }
 %}
 
 access_specifier -> ("private" | "protected" | "public") {%

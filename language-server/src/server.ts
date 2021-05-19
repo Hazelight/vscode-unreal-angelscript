@@ -15,10 +15,12 @@ import { Socket } from 'net';
 
 import * as scriptfiles from './as_parser';
 import * as completion from './completion';
+import * as parsedcompletion from './parsed_completion';
 import * as typedb from './database';
 import * as scriptreferences from './references';
 import * as scriptoccurances from './highlight_occurances';
 import * as scriptsemantics from './semantic_highlighting';
+import * as scriptsymbols from './symbols';
 import * as scriptdiagnostics from './ls_diagnostics';
 import * as scriptlenses from './code_lenses';
 import * as assets from './assets';
@@ -351,56 +353,78 @@ connection.onDidChangeWatchedFiles((_change) => {
 	}
 });
 
+function GetAndParseModule(uri : string) : scriptfiles.ASModule
+{
+	let asmodule = scriptfiles.GetModuleByUri(uri);
+	if (!asmodule)
+		return null;
+
+	scriptfiles.ParseModuleAndDependencies(asmodule);
+	if (CanResolveModules())
+	{
+		scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
+		scriptfiles.ResolveModule(asmodule);
+	}
+	return asmodule;
+}
+
 connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
-	let completions = completion.Complete(_textDocumentPosition);
+	let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
+	if (!asmodule)
+		return null;
+	let completions = parsedcompletion.Complete(asmodule, _textDocumentPosition.position);
 	return completions;
 });
 
 connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
-	return completion.Resolve(item);
+	return parsedcompletion.Resolve(item);
 });
 
 connection.onSignatureHelp((_textDocumentPosition: TextDocumentPositionParams): SignatureHelp => {
-	let help = completion.Signature(_textDocumentPosition);
+	let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
+	if (!asmodule)
+		return null;
+	let help = parsedcompletion.Signature(asmodule, _textDocumentPosition.position);
 	return help;
 });
 
 connection.onDefinition((_textDocumentPosition: TextDocumentPositionParams): Definition | null => {
-	let compl = completion.GetCompletionTypeAndMember(_textDocumentPosition);
-	if (!compl)
+	let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
+	if (!asmodule)
 		return null;
-
-	let [typename, symbolname] = compl;
-	
-	let definition = completion.GetDefinition(_textDocumentPosition);
-	if (definition)
-		return definition;
-
-	return null;
+	if (!asmodule.resolved)
+		return null;
+	return scriptsymbols.GetDefinition(asmodule, _textDocumentPosition.position);
 });
 
 connection.onImplementation((_textDocumentPosition: TextDocumentPositionParams): Definition | null => {
-	let compl = completion.GetCompletionTypeAndMember(_textDocumentPosition);
-	if (!compl)
+	let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
+	if (!asmodule)
 		return null;
-
-	let [typename, symbolname] = compl;
-	//connection.console.log("Looking up Symbol (Implementation): ["+typename+", "+symbolname+"]");
-
-	let definition = completion.GetDefinition(_textDocumentPosition);
+	if (!asmodule.resolved)
+		return null;
+	let definition = scriptsymbols.GetDefinition(asmodule, _textDocumentPosition.position);
 	if (definition)
 		return definition;
-		
-	// We didn't find a definition in angelscript, let's see what happens if we poke
-	// the unreal editor with the type and symbol we've resolved that we want.
-	if(unreal)
-		unreal.write(buildGoTo(completion.GetUnrealTypeFor(typename), symbolname));
+
+	let cppSymbol = scriptsymbols.GetCppSymbol(asmodule, _textDocumentPosition.position);
+	if (cppSymbol)
+	{
+		// the unreal editor with the type and symbol we've resolved that we want.
+		if (unreal)
+			unreal.write(buildGoTo(cppSymbol[0], cppSymbol[1]));
+	}
 
 	return null;
 });
 
 connection.onHover((_textDocumentPosition: TextDocumentPositionParams): Hover => {
-	return completion.GetHover(_textDocumentPosition);
+	let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
+	if (!asmodule)
+		return null;
+	if (!asmodule.resolved)
+		return null;
+	return scriptsymbols.GetHover(asmodule, _textDocumentPosition.position);
 });
 
 connection.onDocumentSymbol((_params : DocumentSymbolParams) : SymbolInformation[] => {

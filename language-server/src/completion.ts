@@ -7,7 +7,6 @@ import {
 
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
-import { type } from 'os';
 
 enum ASTermType
 {
