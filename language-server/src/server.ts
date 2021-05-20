@@ -309,7 +309,7 @@ function TickQueues()
 		{
 			if (!ParseQueue[ParseQueueIndex].parsed)
 				scriptfiles.ParseModule(ParseQueue[ParseQueueIndex]);
-			PostProcessTypesQueue.push(ParseQueue[LoadQueueIndex]);
+			PostProcessTypesQueue.push(ParseQueue[ParseQueueIndex]);
 		}
 	}
 	else if (ParseQueue.length != 0)

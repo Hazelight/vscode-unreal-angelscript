@@ -2770,7 +2770,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 return null;
             }
 
-            AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, nsType.typename);
+            let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, nsType.typename);
+            if (nsType.declaredModule && !scope.module.isModuleImported(nsType.declaredModule))
+                addedSymbol.isUnimported = true;
+
             if (node.children[1])
             {
                 parseContext.isWriteAccess = outerWriteAccess;

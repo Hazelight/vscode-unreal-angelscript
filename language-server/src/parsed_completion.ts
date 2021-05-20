@@ -28,6 +28,7 @@ class CompletionContext
     isIgnoredCode : boolean = false;
     isIncompleteNamespace : boolean = false;
     isFunctionDeclaration : boolean = false;
+    isInsideType : boolean = false;
     maybeTypename : boolean = false;
 
     subOuterStatement : scriptfiles.ASStatement = null;
@@ -103,7 +104,7 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
     }
 
     // Add completions for global functions we haven't imported
-    if (!context.priorType)
+    if (!context.isInsideType)
         AddUnimportedCompletions(context, completions);
     
     // Add completions for UCS calls to global functions
@@ -111,20 +112,20 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
         AddUCSCompletions(context, completions);
 
     // Complete typenames if we're in a context where that is possible
-    if (!context.priorType)
+    if (!context.isInsideType && !context.isIncompleteNamespace)
         AddTypenameCompletions(context, completions);
 
     // Complete keywords if appropriate
-    if (!context.priorType)
+    if (!context.isInsideType)
         AddCompletionsFromKeywords(context, completions);
 
     // Check if we're inside a function call and complete argument names
-    if (context.isSubExpression && context.subOuterFunctions && !context.priorType)
+    if (context.isSubExpression && context.subOuterFunctions && !context.isInsideType)
         AddCompletionsFromCallSignature(context, completions);
 
     // Check for snippet completions for method overrides
     if (context.scope && context.scope.scopetype == scriptfiles.ASScopeType.Class
-            && !context.isRightExpression && !context.isSubExpression && !context.priorType)
+            && !context.isRightExpression && !context.isSubExpression && !context.isInsideType)
     {
         AddMethodOverrideSnippets(context, completions, position);
     }
@@ -802,6 +803,29 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             break;
     }
 
+    // We haven't been able to parse it to a valid term, but try an invalid term as well
+    for (let i = candidates.length-1; i >= 0; --i)
+    {
+        let candidate = candidates[i];
+        context.statement.content = candidate.code;
+        context.isRightExpression = candidate.isRightExpression;
+        context.statement.ast = null;
+
+        // Try to parse as a proper statement in the scope
+        scriptfiles.ParseStatement(context.scope.scopetype, context.statement);
+
+        // Try to parse as an expression snippet instead
+        if (!context.statement.ast)
+            scriptfiles.ParseStatement(scriptfiles.ASScopeType.Code, context.statement);
+
+        if (!context.statement.ast)
+            continue;
+
+        // If we managed to parse a statement, extract the prior expression from it
+        ExtractPriorExpressionAndSymbol(context, context.statement.ast);
+        break;
+    }
+
     // Also find the function call we are a subexpression of
     let [subExprOffset, argumentIndex] = ScanOffsetOutsideSubExpression(content, offset-contentOffset, ignoreTable);
     if (subExprOffset != -1)
@@ -848,6 +872,13 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             context.maybeTypename = true;
     }
 
+    // Check if we're completing in a type, maybe invalid
+    if (context.priorType)
+        context.isInsideType = true;
+    else if (context.statement.ast && context.statement.ast.type == scriptfiles.node_types.MemberAccess)
+        context.isInsideType = true;
+    else if (context.statement.ast && context.statement.ast.type == scriptfiles.node_types.NamespaceAccess)
+        context.isInsideType = true;
     return context;
 }
 
