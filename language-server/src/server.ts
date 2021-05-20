@@ -351,8 +351,10 @@ function TickQueues()
 		ResolveQueueIndex = 0;
 	}
 
-	if (LoadQueue.length != 0 || ParseQueue.length != 0 || PostProcessTypesQueue.length != 0 || ResolveQueue.length != 0)
+	if (LoadQueue.length != 0 || ParseQueue.length != 0 || PostProcessTypesQueue.length != 0)
 		setTimeout(TickQueues, 1);
+	else if (ResolveQueue.length != 0)
+		setTimeout(TickQueues, 2);
 }
 
 function CanResolveModules()
