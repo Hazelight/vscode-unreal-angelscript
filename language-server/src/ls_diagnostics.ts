@@ -27,7 +27,7 @@ function NotifyDiagnostics(uri : string, notifyEmpty = true)
         allDiagnostics = allDiagnostics.concat(fromCompile);
 
         let asmodule = scriptfiles.GetModuleByUri(uri);
-        if (asmodule)
+        if (asmodule && asmodule.loaded)
             TrimDiagnosticPositions(asmodule, allDiagnostics);
     }
 
@@ -62,6 +62,9 @@ export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule)
 
     // Add diagnostics for delegate function bind verification
     VerifyDelegateBinds(asmodule, diagnostics);
+
+    // Add diagnostics for symbols that aren't imported
+    AddSymbolDiagnostics(asmodule, diagnostics);
 
     // Update stored diagnostics
     let oldDiagnostics = ParseDiagnostics.get(asmodule.uri);
@@ -115,8 +118,6 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
             continue;
         if (!delegateBind.node_object)
             continue;
-        if (asmodule.isEditingNode(delegateBind.statement, delegateBind.node_name))
-            continue;
         if (asmodule.isEditingNode(delegateBind.statement, delegateBind.node_object))
             continue;
 
@@ -136,13 +137,27 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
         if (!foundFunc || !(foundFunc instanceof typedb.DBMethod))
         {
             // We didn't find the function at all
+            let classType = delegateBind.scope.getParentType();
+            let delegateType = typedb.GetType(delegateBind.delegateType);
+            let data = null;
+
+            if (delegateType && classType && classType.typename == objType.typename)
+            {
+                data = {
+                    type: "delegateBind",
+                    delegate: delegateType.typename,
+                    name: funcName,
+                };
+            }
+
             diagnostics.push(<Diagnostic> {
                 severity: DiagnosticSeverity.Error,
                 range: asmodule.getRange(
                     delegateBind.statement.start_offset + delegateBind.node_expression.start,
                     delegateBind.statement.start_offset + delegateBind.node_expression.end),
                 message: "Function "+funcName+" does not exist in type "+objType.typename,
-                source: "angelscript"
+                source: "angelscript",
+                data: data,
             });
             continue;
         }
@@ -206,6 +221,9 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
 
 function TrimDiagnosticPositions(asmodule : scriptfiles.ASModule, diagnostics : Array<Diagnostic>)
 {
+    if (!asmodule || !asmodule.loaded)
+        return;
+
     for (let diag of diagnostics)
     {
         // Move the start
@@ -312,4 +330,24 @@ function AreDiagnosticsEqual(oldList : Array<Diagnostic>, newList : Array<Diagno
     }
 
     return true;
+}
+
+function AddSymbolDiagnostics(asmodule : scriptfiles.ASModule, diagnostics : Array<Diagnostic>)
+{
+    for (let symbol of asmodule.symbols)
+    {
+        if (!symbol.isUnimported)
+            continue;
+
+        diagnostics.push(<Diagnostic> {
+            severity: DiagnosticSeverity.Information,
+            range: asmodule.getRange(symbol.start, symbol.end),
+            message: symbol.symbol_name+" must be imported.",
+            source: "angelscript",
+            data: {
+                type: "import",
+                symbol: [symbol.type, symbol.container_type, symbol.symbol_name],
+            }
+        });
+    }
 }

@@ -34,7 +34,11 @@ export function HighlightOccurances(uri : string, position : Position) : Array<D
     let declaredScope : scriptfiles.ASScope = null;
 
     if (scopeLimited)
+    {
         declaredScope = asmodule.getScopeDeclaringLocalSymbol(findSymbol);
+        if (!declaredScope)
+            return null;
+    }
 
     // Find all symbols in the file that match
     for (let symbol of asmodule.symbols)

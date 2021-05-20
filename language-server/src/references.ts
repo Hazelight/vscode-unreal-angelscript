@@ -32,6 +32,8 @@ export function FindReferences(uri : string, position : Position) : Array<Locati
         || findSymbol.type == scriptfiles.ASSymbolType.Parameter)
     {
         let declaredScope = asmodule.getScopeDeclaringLocalSymbol(findSymbol);
+        if (!declaredScope)
+            return null;
         for (let symbol of asmodule.symbols)
         {
             if (symbol.type != findSymbol.type)
@@ -259,6 +261,8 @@ export function PerformRename(uri : string, position : Position, baseReplaceWith
         edits.set(asmodule.displayUri, fileEdits);
 
         let declaredScope = asmodule.getScopeDeclaringLocalSymbol(findSymbol);
+        if (!declaredScope)
+            return null;
 
         // Find all symbols in the file that match
         for (let symbol of asmodule.symbols)

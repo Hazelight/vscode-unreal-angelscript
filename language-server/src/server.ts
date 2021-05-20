@@ -9,7 +9,9 @@ import {
 	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder, ReferenceOptions, ReferenceParams,
 	CodeLens, CodeLensParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, DidOpenTextDocumentParams,
 	RenameParams, WorkspaceEdit, ResponseError, PrepareRenameParams, Range, Position, Command, SemanticTokensDeltaParams,
-	SemanticTokensDelta
+	SemanticTokensDelta,
+	CodeActionParams,
+	CodeAction
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -23,6 +25,7 @@ import * as scriptsemantics from './semantic_highlighting';
 import * as scriptsymbols from './symbols';
 import * as scriptdiagnostics from './ls_diagnostics';
 import * as scriptlenses from './code_lenses';
+import * as scriptactions from './code_actions';
 import * as assets from './assets';
 import * as fs from 'fs';
 let glob = require('glob');
@@ -124,6 +127,9 @@ function connect_unreal() {
 				if (ReceivingTypesTimeout)
 					clearTimeout(ReceivingTypesTimeout);
 				typedb.FinishTypesFromUnreal();
+
+				// Make sure no modules are resolved anymore
+				scriptfiles.ClearAllResolvedModules();
 			}
 			else if(msg.type == MessageType.AssetDatabase)
 			{
@@ -251,6 +257,9 @@ connection.onInitialize((_params): InitializeResult => {
 			},
 			executeCommandProvider: {
 				commands: ["angelscript.openAssets"],
+			},
+			codeActionProvider: {
+				resolveProvider: true,
 			},
 			semanticTokensProvider: <SemanticTokensOptions> {
 				legend: <SemanticTokensLegend> {
@@ -396,7 +405,10 @@ connection.onDefinition((_textDocumentPosition: TextDocumentPositionParams): Def
 		return null;
 	if (!asmodule.resolved)
 		return null;
-	return scriptsymbols.GetDefinition(asmodule, _textDocumentPosition.position);
+	let definitions = scriptsymbols.GetDefinition(asmodule, _textDocumentPosition.position);
+	if (definitions && definitions.length == 1)
+		return definitions[0];
+	return definitions;
 });
 
 connection.onImplementation((_textDocumentPosition: TextDocumentPositionParams): Definition | null => {
@@ -405,9 +417,13 @@ connection.onImplementation((_textDocumentPosition: TextDocumentPositionParams):
 		return null;
 	if (!asmodule.resolved)
 		return null;
-	let definition = scriptsymbols.GetDefinition(asmodule, _textDocumentPosition.position);
-	if (definition)
-		return definition;
+	let definitions = scriptsymbols.GetDefinition(asmodule, _textDocumentPosition.position);
+	if (definitions && definitions.length != 0)
+	{
+		if (definitions.length == 1)
+			return definitions[0];
+		return definitions;
+	}
 
 	let cppSymbol = scriptsymbols.GetCppSymbol(asmodule, _textDocumentPosition.position);
 	if (cppSymbol)
@@ -518,6 +534,31 @@ connection.onExecuteCommand(function (params : ExecuteCommandParams)
 	}
 });
 
+connection.onCodeAction(function (params : CodeActionParams) : Array<CodeAction>
+{
+	let asmodule = GetAndParseModule(params.textDocument.uri);
+	if (!asmodule)
+		return null;
+	if (!asmodule.resolved)
+		return null;
+
+	return scriptactions.GetCodeActions(asmodule, params.range, params.context.diagnostics);
+});
+
+connection.onCodeActionResolve(function (action : CodeAction) : CodeAction
+{
+	let data = action.data as any;
+	if (!data || !data.uri)
+		return action;
+	let asmodule = GetAndParseModule(data.uri);
+	if (!asmodule)
+		return action;
+	if (!asmodule.resolved)
+		return action;
+
+	return scriptactions.ResolveCodeAction(asmodule, action, data);
+});
+
 function TryResolveSymbols(asmodule : scriptfiles.ASModule) : SemanticTokens | null
 {
 	if (CanResolveModules())
@@ -620,15 +661,15 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 		connection.console.log(`Definition not found`);
 		return "";
 	}
+	{
+		let defArray = def as Location[];
+		let moduleName = getModuleName(defArray[0].uri);
 
-	let defArr = def as Location[];
-
-	let uri = defArr[0].uri;
-	let module = getModuleName(uri);
-
-	connection.console.log(`Definition found at ${module}`);
-
-	return module;
+		// Don't add an import to the module we're in
+		if (moduleName == asmodule.modulename)
+			return "-";
+		return moduleName;
+	}
 });
 	
  connection.onDidChangeTextDocument((params) => {
@@ -636,21 +677,28 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	// params.uri uniquely identifies the document.
 	// params.contentChanges describe the content changes to the document.
 
-	if (params.contentChanges.length == 0)
-		return;
-
-	let content = params.contentChanges[0].text;
-	let uri = params.textDocument.uri;
-	let modulename = getModuleName(uri);
-	
-	let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
-	scriptfiles.UpdateModuleFromContent(asmodule, content);
-	scriptfiles.ParseModuleAndDependencies(asmodule);
-	if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
+	try
 	{
-		scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
-		scriptfiles.ResolveModule(asmodule);
-		scriptdiagnostics.UpdateScriptModuleDiagnostics(asmodule);
+		if (params.contentChanges.length == 0)
+			return;
+
+		let content = params.contentChanges[0].text;
+		let uri = params.textDocument.uri;
+		let modulename = getModuleName(uri);
+		
+		let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
+		scriptfiles.UpdateModuleFromContent(asmodule, content);
+		scriptfiles.ParseModuleAndDependencies(asmodule);
+		if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
+		{
+			scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
+			scriptfiles.ResolveModule(asmodule);
+			scriptdiagnostics.UpdateScriptModuleDiagnostics(asmodule);
+		}
+	}
+	catch (error)
+	{
+		console.log("Error!");
 	}
  });
 

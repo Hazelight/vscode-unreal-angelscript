@@ -757,7 +757,7 @@ export class DBType
             return false;
         while(it)
         {
-            if (it.typename == dbCheck.typename)
+            if (it == dbCheck)
                 return true;
 
             if (it.supertype)
@@ -1033,6 +1033,95 @@ export let database = new Map<string, DBType>();
 export let databaseByPrefix = new Map<string, Array<DBType>>();
 export let UnrealTypesLoaded = false;
 let NextMethodId = 0;
+
+export let ScriptGlobals = new Map<string, Array<DBSymbol>>();
+export let ScriptGlobalsByPrefix = new Map<string, Array<DBSymbol>>();
+
+export function FindScriptGlobalSymbols(funcName : string) : Array<DBSymbol>
+{
+    return ScriptGlobals.get(funcName);
+}
+
+export function FindScriptGlobalSymbolsWithPrefix(prefix : string, caseSensitive = true) : Array<DBSymbol>
+{
+    console.dir(ScriptGlobalsByPrefix);
+    if (prefix.length < 2)
+        return null;
+
+    let charPrefix = prefix.substr(0, 2).toLowerCase();
+    let syms = ScriptGlobalsByPrefix.get(charPrefix);
+    if (syms && syms.length != 0)
+    {
+        let result = new Array<DBSymbol>();
+        for (let sym of syms)
+        {
+            if (caseSensitive)
+            {
+                if (sym.name.startsWith(prefix))
+                    result.push(sym);
+            }
+            else
+            {
+                if (sym.name.toLowerCase().startsWith(prefix.toLowerCase()))
+                    result.push(sym);
+            }
+        }
+        return result;
+    }
+
+    return null;
+}
+
+export function AddScriptGlobalSymbol(symbol : DBSymbol)
+{
+    let syms = ScriptGlobals.get(symbol.name);
+    if (!syms)
+    {
+        syms = new Array<DBMethod>();
+        ScriptGlobals.set(symbol.name, syms);
+    }
+
+    syms.push(symbol);
+
+    if (symbol.name.length > 2)
+    {
+        let prefix = symbol.name.substr(0, 2).toLowerCase();
+
+        let prefixSyms = ScriptGlobalsByPrefix.get(prefix);
+        if (!prefixSyms)
+        {
+            prefixSyms = new Array<DBMethod>();
+            ScriptGlobalsByPrefix.set(prefix, prefixSyms);
+        }
+
+        prefixSyms.push(symbol);
+    }
+}
+
+export function RemoveScriptGlobalSymbol(symbol : DBSymbol)
+{
+    {
+        let syms = ScriptGlobals.get(symbol.name);
+        if (syms)
+        {
+            let index = syms.indexOf(symbol);
+            if (index != -1)
+                syms.splice(index, 1);
+        }
+    }
+
+    if (symbol.name.length > 2)
+    {
+        let prefix = symbol.name.substr(0, 2).toLowerCase();
+        let prefixSyms = ScriptGlobalsByPrefix.get(prefix);
+        if (prefixSyms)
+        {
+            let index = prefixSyms.indexOf(symbol);
+            if (index != -1)
+                prefixSyms.splice(index, 1);
+        }
+    }
+}
 
 export function CleanTypeName(typename : string) : string
 {

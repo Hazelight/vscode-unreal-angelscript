@@ -9,7 +9,7 @@ export let SemanticTypeList : Array<string> = [
 	"local_variable", "member_variable", "member_accessor", "global_variable",
 	"global_accessor", "member_function", "global_function", "unknown_error",
     "typename", "typename_actor", "typename_component", "typename_struct", "typename_event",
-    "typename_delegate", "typename_primitive",
+    "typename_delegate", "typename_primitive", "unimported_symbol"
 ];
 
 for (let i = 0, Count = SemanticTypeList.length; i < Count; ++i)
@@ -31,6 +31,7 @@ export function HighlightSymbolsDelta(asmodule : scriptfiles.ASModule, previousI
 	let builder = new SemanticTokensBuilder();
 	BuildSymbols(asmodule, builder);
 	let newTokens = builder.build();
+	return newTokens;
 
 	// If the new tokens are identical to the previous ones, don't bother sending them
 	if (previousId && PrevTokens.resultId == previousId)
@@ -73,7 +74,11 @@ function BuildSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTokensB
 		let length = symbol.end - symbol.start;
 
 		let type = -1;
-        if (symbol.type == scriptfiles.ASSymbolType.Typename
+		if (symbol.isUnimported)
+		{
+			type = SemanticTypes.unimported_symbol;
+		}
+        else if (symbol.type == scriptfiles.ASSymbolType.Typename
 			|| symbol.type == scriptfiles.ASSymbolType.Namespace)
         {
 			let symName = symbol.symbol_name;

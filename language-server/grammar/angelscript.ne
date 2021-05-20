@@ -345,6 +345,13 @@ global_declaration -> ufunction_macro:? function_signature {%
 global_declaration -> delegate_decl {% id %}
 global_declaration-> event_decl {% id %}
 global_declaration -> var_decl {% id %}
+global_declaration -> typename {%
+    function (d) { return {
+        ...Compound(d, n.VariableDecl, null),
+        name: null,
+        typename: d[0],
+    }; }
+%}
 global_declaration -> ustruct_macro:? %struct_token _ %identifier {%
     function (d) { return {
         ...Compound(d, n.StructDefinition, null),
@@ -394,6 +401,17 @@ class_declaration -> uproperty_macro:? (access_specifier _):? var_decl {%
     function (d) {
         return ExtendedCompound(d, {
             ...d[2],
+            access: d[1] ? d[1][0].value : null,
+            macro: d[0],
+        });
+    }
+%}
+class_declaration -> uproperty_macro:? (access_specifier _):? typename {%
+    function (d) {
+        return ExtendedCompound(d, {
+            ...Compound(d, n.VariableDecl, null),
+            name: null,
+            typename: d[2],
             access: d[1] ? d[1][0].value : null,
             macro: d[0],
         });
@@ -520,6 +538,18 @@ function_signature -> function_return _ %identifier _ %lparen _ parameter_list _
         qualifiers: d[9],
     }; }
 %}
+
+# INCOMPLETE: Typing a function declaration with only the void token
+function_signature -> %void_token _ %identifier {%
+    function (d) { return {
+        ...Compound(d, n.FunctionDecl, null),
+        name: Identifier(d[2]),
+        returntype: d[0],
+        parameters: [],
+        qualifiers: [],
+    }; }
+%}
+
 function_return -> typename {% id %}
 function_return -> %void_token {%
     function (d) { return null; }
@@ -714,7 +744,11 @@ expr_postfix -> expr_postfix _ %postfix_operator {%
         operator: Operator(d[2]),
     };}
 %}
-expr_postfix -> expr_leaf {% id %}
+
+# INCOMPLETE: match the ! while we're typing !=
+expr_postfix -> expr_leaf "!":? {%
+    function (d) { return d[0]; }
+%}
 
 expr_leaf -> lvalue {% id %}
 expr_leaf -> constant {% id %}

@@ -93,6 +93,10 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
         AddCompletionsFromType(context, dbtype, completions, showEvents);
     }
 
+    // Add completions for global functions we haven't imported
+    if (!context.priorType)
+        AddUnimportedCompletions(context, completions, searchTypes);
+
     // Complete typenames if we're in a context where that is possible
     if (!context.priorType)
         AddTypenameCompletions(context, completions);
@@ -139,6 +143,12 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
     for (let func of context.subOuterFunctions)
     {
         let skipUCSType = false;
+        if (func.containingType && func.containingType.isNamespaceOrGlobalScope())
+        {
+            if (context.subOuterStatement.ast && context.subOuterStatement.ast.type == scriptfiles.node_types.MemberAccess)
+                skipUCSType = true;
+        }
+
         let params = new Array<ParameterInformation>();
         if (func.args)
         {
@@ -550,6 +560,10 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
     }
 }
 
+export function AddUnimportedCompletions(context : CompletionContext, completions : Array<CompletionItem>, importedTypes : Array<typedb.DBType>)
+{
+}
+
 function CanCompleteTo(completing : string, suggestion : string) : boolean
 {
     if (completing.startsWith("Get"))
@@ -751,16 +765,29 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             if (node.typename)
             {
                 let declType = typedb.GetType(node.typename.value);
-                if (declType)
+                context.priorExpression = null;
+                if (node.name)
                 {
-                    context.isNamingVariable = true;
-                    context.priorExpression = null;
-                    if (node.name)
-                        context.completingSymbol = node.name.value;
-                    context.priorType = null;
-                    return true;
+                    context.isNamingVariable = !!declType;
+                    context.completingSymbol = node.name.value;
                 }
+                else
+                {
+                    context.completingSymbol = node.typename.value;
+                }
+                context.priorType = null;
+                return true;
             }
+        }
+        break;
+        case scriptfiles.node_types.FunctionDecl:
+        {
+            context.isNamingVariable = true;
+            context.priorExpression = null;
+            if (node.name)
+                context.completingSymbol = node.name.value;
+            context.priorType = null;
+            return true;
         }
         break;
     }

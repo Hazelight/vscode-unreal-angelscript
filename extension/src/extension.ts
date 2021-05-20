@@ -89,7 +89,11 @@ export function activate(context: ExtensionContext) {
 		};
 		
 		client.sendRequest(GetModuleForSymbolRequest, params).then((result: string) => {
-			if (result == "")
+			if (result == "-")
+			{
+				return
+			}
+			else if (result == "")
 			{
 				// Find word under cursor
 				let wordRange = editor.document.getWordRangeAtPosition(editor.selection.anchor);
@@ -103,6 +107,7 @@ export function activate(context: ExtensionContext) {
 				// Module found!
 				let lines : string[] = editor.document.getText().split("\n");
 				let lastImportLine = 0;
+				let hasEmptyLine = false;
 
 				// Find if the module is already imported, or the position to append the new import
 				for(let i = 0; i < lines.length; ++i)
@@ -117,6 +122,7 @@ export function activate(context: ExtensionContext) {
 					if (lines[i].includes("import"))					
 					{
 						lastImportLine = i + 1;
+						hasEmptyLine = false;
 						continue;
 					}
 					else if (lines[i].trim().length != 0)
@@ -124,10 +130,18 @@ export function activate(context: ExtensionContext) {
 						// Break if we find a line that's not empty, signalling the end of the import-block
 						break;
 					}
+					else
+					{
+						hasEmptyLine = true;
+					}
 				}
 
+				let insertString = "import "+result+";\n";
+				if (!hasEmptyLine)
+					insertString += "\n";
+
 				editor.edit((edit: vscode.TextEditorEdit) => {
-					edit.insert(new vscode.Position(lastImportLine, 0), `import ${result};\n`);
+					edit.insert(new vscode.Position(lastImportLine, 0), insertString);
 				});
 			}
 		});

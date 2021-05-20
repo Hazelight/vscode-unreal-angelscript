@@ -8,14 +8,29 @@ import {
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 
-export function GetDefinition(asmodule : scriptfiles.ASModule, position : Position) : Definition
+export function GetDefinition(asmodule : scriptfiles.ASModule, position : Position) : Array<Location>
 {
     let offset = asmodule.getOffset(position);
     let findSymbol = asmodule.getSymbolAt(offset);
     if (!findSymbol)
         return null;
 
-    let definitions = new Array<Location>();
+    let defs = GetSymbolDefinition(asmodule, findSymbol);
+    let locations = new Array<Location>();
+    for (let def of defs)
+        locations.push(def.location);
+    return locations;
+}
+
+export interface SymbolDeclaration
+{
+    location : Location,
+    module : scriptfiles.ASModule,
+};
+
+export function GetSymbolDefinition(asmodule : scriptfiles.ASModule, findSymbol : scriptfiles.ASSymbol) : Array<SymbolDeclaration>
+{
+    let definitions = new Array<SymbolDeclaration>();
     switch (findSymbol.type)
     {
         case scriptfiles.ASSymbolType.Typename:
@@ -26,7 +41,12 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
             {
                 let symbolModule = scriptfiles.GetModule(dbtype.declaredModule);
                 if (symbolModule)
-                    return symbolModule.getLocation(dbtype.moduleOffset);
+                {
+                    return [{
+                        module: symbolModule,
+                        location: symbolModule.getLocation(dbtype.moduleOffset),
+                    }];
+                }
             }
 
             dbtype = typedb.GetType("__"+findSymbol.symbol_name);
@@ -34,14 +54,21 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
             {
                 let symbolModule = scriptfiles.GetModule(dbtype.declaredModule);
                 if (symbolModule)
-                    return symbolModule.getLocation(dbtype.moduleOffset);
+                {
+                    return [{
+                        module: symbolModule,
+                        location: symbolModule.getLocation(dbtype.moduleOffset),
+                    }];
+                }
             }
         }
         break;
         case scriptfiles.ASSymbolType.LocalVariable:
         case scriptfiles.ASSymbolType.Parameter:
         {
-            let scope = asmodule.getScopeAt(offset);
+            if (!asmodule)
+                return [];
+            let scope = asmodule.getScopeAt(findSymbol.start);
             while (scope)
             {
                 if (!scope.isInFunctionBody())
@@ -50,7 +77,12 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
                 for (let asvar of scope.variables)
                 {
                     if (asvar.name == findSymbol.symbol_name)
-                        return asmodule.getLocationRange(asvar.start_offset_name, asvar.end_offset_name);
+                    {
+                        return [{
+                            module: asmodule,
+                            location: asmodule.getLocationRange(asvar.start_offset_name, asvar.end_offset_name),
+                        }];
+                    }
                 }
                 scope = scope.parentscope;
             }
@@ -74,7 +106,12 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
                         continue;
                     let symbolModule = scriptfiles.GetModule(sym.declaredModule);
                     if (symbolModule)
-                        definitions.push(symbolModule.getLocation(sym.moduleOffset));
+                    {
+                        definitions.push({
+                            module: symbolModule,
+                            location: symbolModule.getLocation(sym.moduleOffset)
+                        });
+                    }
                 }
             }
         }
@@ -103,17 +140,18 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
                         continue;
                     let symbolModule = scriptfiles.GetModule(sym.declaredModule);
                     if (symbolModule)
-                        definitions.push(symbolModule.getLocation(sym.moduleOffset));
+                    {
+                        definitions.push({
+                            module: symbolModule,
+                            location: symbolModule.getLocation(sym.moduleOffset)
+                        });
+                    }
                 }
             }
         }
         break;
     }
 
-    if (definitions.length == 0)
-        return null;
-    if (definitions.length == 1)
-        return definitions[0];
     return definitions;
 }
 

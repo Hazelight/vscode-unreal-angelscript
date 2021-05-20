@@ -345,6 +345,13 @@ var grammar = {
     {"name": "global_declaration", "symbols": ["delegate_decl"], "postprocess": id},
     {"name": "global_declaration", "symbols": ["event_decl"], "postprocess": id},
     {"name": "global_declaration", "symbols": ["var_decl"], "postprocess": id},
+    {"name": "global_declaration", "symbols": ["typename"], "postprocess": 
+        function (d) { return {
+            ...Compound(d, n.VariableDecl, null),
+            name: null,
+            typename: d[0],
+        }; }
+        },
     {"name": "global_declaration$ebnf$2", "symbols": ["ustruct_macro"], "postprocess": id},
     {"name": "global_declaration$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "global_declaration", "symbols": ["global_declaration$ebnf$2", (lexer.has("struct_token") ? {type: "struct_token"} : struct_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
@@ -407,12 +414,28 @@ var grammar = {
             });
         }
         },
-    {"name": "class_declaration$ebnf$3", "symbols": ["ufunction_macro"], "postprocess": id},
+    {"name": "class_declaration$ebnf$3", "symbols": ["uproperty_macro"], "postprocess": id},
     {"name": "class_declaration$ebnf$3", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "class_declaration$ebnf$4$subexpression$1", "symbols": ["access_specifier", "_"]},
     {"name": "class_declaration$ebnf$4", "symbols": ["class_declaration$ebnf$4$subexpression$1"], "postprocess": id},
     {"name": "class_declaration$ebnf$4", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "class_declaration", "symbols": ["class_declaration$ebnf$3", "class_declaration$ebnf$4", "function_signature"], "postprocess": 
+    {"name": "class_declaration", "symbols": ["class_declaration$ebnf$3", "class_declaration$ebnf$4", "typename"], "postprocess": 
+        function (d) {
+            return ExtendedCompound(d, {
+                ...Compound(d, n.VariableDecl, null),
+                name: null,
+                typename: d[2],
+                access: d[1] ? d[1][0].value : null,
+                macro: d[0],
+            });
+        }
+        },
+    {"name": "class_declaration$ebnf$5", "symbols": ["ufunction_macro"], "postprocess": id},
+    {"name": "class_declaration$ebnf$5", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "class_declaration$ebnf$6$subexpression$1", "symbols": ["access_specifier", "_"]},
+    {"name": "class_declaration$ebnf$6", "symbols": ["class_declaration$ebnf$6$subexpression$1"], "postprocess": id},
+    {"name": "class_declaration$ebnf$6", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "class_declaration", "symbols": ["class_declaration$ebnf$5", "class_declaration$ebnf$6", "function_signature"], "postprocess": 
         function (d) {
             return ExtendedCompound(d, {
                 ...d[2],
@@ -532,6 +555,15 @@ var grammar = {
             returntype: d[0],
             parameters: d[6],
             qualifiers: d[9],
+        }; }
+        },
+    {"name": "function_signature", "symbols": [(lexer.has("void_token") ? {type: "void_token"} : void_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
+        function (d) { return {
+            ...Compound(d, n.FunctionDecl, null),
+            name: Identifier(d[2]),
+            returntype: d[0],
+            parameters: [],
+            qualifiers: [],
         }; }
         },
     {"name": "function_return", "symbols": ["typename"], "postprocess": id},
@@ -730,7 +762,11 @@ var grammar = {
             operator: Operator(d[2]),
         };}
         },
-    {"name": "expr_postfix", "symbols": ["expr_leaf"], "postprocess": id},
+    {"name": "expr_postfix$ebnf$1", "symbols": [{"literal":"!"}], "postprocess": id},
+    {"name": "expr_postfix$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "expr_postfix", "symbols": ["expr_leaf", "expr_postfix$ebnf$1"], "postprocess": 
+        function (d) { return d[0]; }
+        },
     {"name": "expr_leaf", "symbols": ["lvalue"], "postprocess": id},
     {"name": "expr_leaf", "symbols": ["constant"], "postprocess": id},
     {"name": "lvalue", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
