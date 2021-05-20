@@ -1,5 +1,4 @@
 import * as scriptfiles from './as_parser';
-import * as completion from './completion';
 import * as typedb from './database';
 
 import { Range, Position, Location, TextEdit, ResponseError } from "vscode-languageserver";

@@ -1164,12 +1164,15 @@ function GenerateTypeInformation(scope : ASScope)
             dbtype.supertype = classdef.superclass ? classdef.superclass.value : "UObject";
             if (classdef.documentation)
                 dbtype.documentation = typedb.FormatDocumentationComment(classdef.documentation);
+
             dbtype.moduleOffset = scope.previous.start_offset + classdef.name.start;
 
             scope.module.types.push(dbtype);
             scope.dbtype = dbtype;
 
             ExtendScopeToStatement(scope, scope.previous);
+            dbtype.moduleScopeStart = scope.start_offset;
+            dbtype.moduleScopeEnd = scope.end_offset;
         }
         // Struct definition in global scope
         else if (scope.previous.ast.type == node_types.StructDefinition)
@@ -1185,6 +1188,8 @@ function GenerateTypeInformation(scope : ASScope)
             scope.dbtype = dbtype;
 
             ExtendScopeToStatement(scope, scope.previous);
+            dbtype.moduleScopeStart = scope.start_offset;
+            dbtype.moduleScopeEnd = scope.end_offset;
         }
         // Namespace definition in global scope
         else if (scope.previous.ast.type == node_types.NamespaceDefinition)
@@ -1199,6 +1204,8 @@ function GenerateTypeInformation(scope : ASScope)
             scope.dbtype = dbtype;
 
             ExtendScopeToStatement(scope, scope.previous);
+            dbtype.moduleScopeStart = scope.start_offset;
+            dbtype.moduleScopeEnd = scope.end_offset;
         }
         // Enum definition in global scope
         else if (scope.previous.ast.type == node_types.EnumDefinition)
@@ -1214,6 +1221,8 @@ function GenerateTypeInformation(scope : ASScope)
             scope.dbtype = dbtype;
 
             ExtendScopeToStatement(scope, scope.previous);
+            dbtype.moduleScopeStart = scope.start_offset;
+            dbtype.moduleScopeEnd = scope.end_offset;
         }
         // Function declaration, either in a class or global
         else if (scope.previous.ast.type == node_types.FunctionDecl)

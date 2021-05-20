@@ -155,8 +155,10 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
             label: func.format(null, skipUCSType),
             parameters: params,
         };
-        if (func.documentation)
-            sig.documentation = func.documentation;
+
+        let doc = func.findAvailableDocumentation();
+        if (doc)
+            sig.documentation = doc;
 
         sigHelp.signatures.push(sig);
     }
@@ -1585,10 +1587,13 @@ export function Resolve(item : CompletionItem) : CompletionItem
             docStr += "```angelscript_snippet\n"+setFunc.args[0].typename+"\xa0"+item.data[2]+"\n```\n\n";
         }
 
-        if (getFunc && getFunc.documentation && getFunc.documentation.length != 0)
-            docStr += "\n"+getFunc.documentation.replace(/\n/g,"\n\n")+"\n\n";
-        else if (setFunc && setFunc.documentation && setFunc.documentation.length != 0)
-            docStr += "\n"+setFunc.documentation.replace(/\n/g,"\n\n")+"\n\n";
+        let doc : string = null;
+        if (getFunc)
+            doc = getFunc.findAvailableDocumentation();
+        if (!doc && setFunc)
+            doc = setFunc.findAvailableDocumentation();
+        if (doc)
+            docStr += "\n"+doc.replace(/\n/g,"\n\n")+"\n\n";
             
         item.documentation = <MarkupContent> {
             kind: MarkupKind.Markdown,
@@ -1606,8 +1611,9 @@ export function Resolve(item : CompletionItem) : CompletionItem
                 value: "```angelscript_snippet\n"+complStr+"\n```\n\n",
             };
 
-            if (func.documentation)
-                item.documentation.value += "\n"+func.documentation.replace(/\n/g,"\n\n")+"\n\n";
+            let doc = func.findAvailableDocumentation();
+            if (doc)
+                item.documentation.value += "\n"+doc.replace(/\n/g,"\n\n")+"\n\n";
         }
     }
     else if (kind == "decl_snippet")
@@ -1621,8 +1627,9 @@ export function Resolve(item : CompletionItem) : CompletionItem
                 value: "```angelscript_snippet\n"+complStr+"\n```\n\n",
             };
 
-            if (func.documentation)
-                item.documentation.value += "\n"+func.documentation.replace(/\n/g,"\n\n")+"\n\n";
+            let doc = func.findAvailableDocumentation();
+            if (doc)
+                item.documentation.value += "\n"+doc.replace(/\n/g,"\n\n")+"\n\n";
         }
     }
 

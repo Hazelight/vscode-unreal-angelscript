@@ -35,6 +35,14 @@
             }
 		},
 		{
+			"match": "\\b([A-Za-z0-9_]+)\\(",
+            "captures": {
+                "1": {
+                    "name": "entity.name.function.member.angelscript"
+                }
+            }
+		},
+		{
 			"match": "([A-Za-z0-9_]+)?::([A-Za-z0-9_]+)\\(",
             "captures": {
                 "1": {

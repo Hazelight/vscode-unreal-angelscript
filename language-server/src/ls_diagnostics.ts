@@ -42,6 +42,12 @@ function NotifyDiagnostics(uri : string, notifyEmpty = true)
     }
 }
 
+function HasCompileDiagnostics(asmodule : scriptfiles.ASModule)
+{
+    let fromCompile = CompileDiagnostics.get(asmodule.uri);
+    return fromCompile && fromCompile.length != 0;
+}
+
 export function OnDiagnosticsChanged(bindFunction : any)
 {
     NotifyFunctions.push(bindFunction);
@@ -60,6 +66,13 @@ export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule)
     // Update stored diagnostics
     let oldDiagnostics = ParseDiagnostics.get(asmodule.uri);
     ParseDiagnostics.set(asmodule.uri, diagnostics);
+
+    // If no diagnostics have changed, and we don't have any compiletime ones, don't send
+    if (oldDiagnostics && AreDiagnosticsEqual(oldDiagnostics, diagnostics))
+    {
+        if (!HasCompileDiagnostics(asmodule))
+            return;
+    }
 
     // Notify diagnostics if we have any, or if we had any prior to this
     let notifyEmpty = false;

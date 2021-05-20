@@ -1,7 +1,7 @@
 import * as typedb from './database';
 import * as scriptfiles from './as_parser';
 
-import { Range, Position, Location, SemanticTokens, SemanticTokensBuilder } from "vscode-languageserver";
+import { Range, Position, Location, SemanticTokens, SemanticTokensBuilder, SemanticTokensDelta } from "vscode-languageserver";
 
 export let SemanticTypes : any = {};
 export let SemanticTypeList : Array<string> = [
@@ -15,10 +15,58 @@ export let SemanticTypeList : Array<string> = [
 for (let i = 0, Count = SemanticTypeList.length; i < Count; ++i)
 	SemanticTypes[SemanticTypeList[i]] = i;
 
+let PrevTokens : SemanticTokens = null;
 export function HighlightSymbols(asmodule : scriptfiles.ASModule) : SemanticTokens
 {
-    let builder = new SemanticTokensBuilder();
+	let builder = new SemanticTokensBuilder();
+	BuildSymbols(asmodule, builder);
 
+	let tokens = builder.build();
+	PrevTokens = tokens;
+	return tokens;
+}
+
+export function HighlightSymbolsDelta(asmodule : scriptfiles.ASModule, previousId : string = null) : SemanticTokens | SemanticTokensDelta
+{
+	let builder = new SemanticTokensBuilder();
+	BuildSymbols(asmodule, builder);
+	let newTokens = builder.build();
+
+	// If the new tokens are identical to the previous ones, don't bother sending them
+	if (previousId && PrevTokens.resultId == previousId)
+	{
+		let identicalToPrevious = true;
+		if (PrevTokens.data.length != newTokens.data.length)
+		{
+			identicalToPrevious = false;
+		}
+		else
+		{
+			for (let i = 0; i < newTokens.data.length; ++i)
+			{
+				if (PrevTokens.data[i] != newTokens.data[i])
+				{
+					identicalToPrevious = false;
+					break;
+				}
+			}
+		}
+
+		if (identicalToPrevious)
+		{
+			return <SemanticTokensDelta> {
+				edits: [],
+				resultId: newTokens.resultId,
+			};
+		}
+	}
+
+	PrevTokens = newTokens;
+	return newTokens;
+}
+
+function BuildSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTokensBuilder)
+{
 	for (let symbol of asmodule.symbols)
 	{
 		let pos = asmodule.getPosition(symbol.start);
@@ -108,6 +156,4 @@ export function HighlightSymbols(asmodule : scriptfiles.ASModule) : SemanticToke
 		let modifiers = 0;
 		builder.push(pos.line, pos.character, length, type, modifiers);
 	}
-
-    return builder.build();
 }

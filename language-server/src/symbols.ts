@@ -86,9 +86,13 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
             if (!insideType)
                 return null;
             
+            let accessName = findSymbol.symbol_name;
+            if (accessName.startsWith("Get") || accessName.startsWith("Set"))
+                accessName = accessName.substr(3);
+
             let dbSymbols = [
-                ...insideType.findSymbols("Get"+findSymbol.symbol_name),
-                ...insideType.findSymbols("Set"+findSymbol.symbol_name),
+                ...insideType.findSymbols("Get"+accessName),
+                ...insideType.findSymbols("Set"+accessName),
             ];
 
             for (let sym of dbSymbols)
@@ -211,21 +215,31 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
             }
         }
         break;
-        case scriptfiles.ASSymbolType.MemberVariable:
         case scriptfiles.ASSymbolType.MemberFunction:
         case scriptfiles.ASSymbolType.GlobalFunction:
+        {
+            let insideType = typedb.GetType(findSymbol.container_type);
+            if (!insideType)
+                return null;
+            
+            let sym = insideType.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.FunctionOnly);
+            if (sym instanceof typedb.DBMethod)
+            {
+                return GetHoverForFunction(insideType, sym, false);
+            }
+        }
+        break;
+        case scriptfiles.ASSymbolType.MemberVariable:
         case scriptfiles.ASSymbolType.GlobalVariable:
         {
             let insideType = typedb.GetType(findSymbol.container_type);
             if (!insideType)
                 return null;
             
-            let dbSymbols = insideType.findSymbols(findSymbol.symbol_name);
-            for (let sym of dbSymbols)
+            let sym = insideType.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.PropertyOnly);
+            if (sym instanceof typedb.DBProperty)
             {
-                if (sym instanceof typedb.DBMethod || sym instanceof typedb.DBProperty)
-                {
-                }
+                return GetHoverForProperty(insideType, sym);
             }
         }
         break;
@@ -236,15 +250,30 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
             if (!insideType)
                 return null;
             
+            let accessName = findSymbol.symbol_name;
+            if (accessName.startsWith("Get") || accessName.startsWith("Set"))
+                accessName = accessName.substr(3);
+
             let dbSymbols = [
-                ...insideType.findSymbols("Get"+findSymbol.symbol_name),
-                ...insideType.findSymbols("Set"+findSymbol.symbol_name),
+                ...insideType.findSymbols("Get"+accessName),
+                ...insideType.findSymbols("Set"+accessName),
             ];
 
             for (let sym of dbSymbols)
             {
-                if (sym instanceof typedb.DBMethod || sym instanceof typedb.DBProperty)
+                // Find the symbol that has documentation
+                if (sym instanceof typedb.DBMethod && sym.findAvailableDocumentation())
                 {
+                    return GetHoverForFunction(insideType, sym, true)
+                }
+            }
+
+            for (let sym of dbSymbols)
+            {
+                // Fall back to first symbol
+                if (sym instanceof typedb.DBMethod)
+                {
+                    return GetHoverForFunction(insideType, sym, true)
                 }
             }
         }
@@ -266,12 +295,19 @@ function FormatHoverDocumentation(doc : string) : string
 
 function GetHoverForType(hoveredType : typedb.DBType) : Hover
 {
+    if (hoveredType.isPrimitive)
+        return null;
+
     let hover = "";
     hover += FormatHoverDocumentation(hoveredType.documentation);
     hover += "```angelscript_snippet\n";
     if (hoveredType.isEnum)
     {
         hover += "enum "+hoveredType.typename.substr(2);
+    }
+    else if (hoveredType.isNamespace())
+    {
+        hover += "namespace "+hoveredType.typename.substr(2);
     }
     else if (hoveredType.isDelegate)
     {
@@ -293,15 +329,11 @@ function GetHoverForType(hoveredType : typedb.DBType) : Hover
     }
     else
     {
-        if (!hoveredType.isPrimitive)
-        {
-            if (hoveredType.isNamespace())
-                hover += "namespace ";
-            else if (hoveredType.isStruct)
-                hover += "struct ";
-            else
-                hover += "class ";
-        }
+        if (hoveredType.isStruct)
+            hover += "struct ";
+        else
+            hover += "class ";
+
         hover += hoveredType.typename;
         if (hoveredType.supertype)
             hover += " : "+hoveredType.supertype;
@@ -327,4 +359,166 @@ function GetHoverForLocalVariable(scope : scriptfiles.ASScope, asvar : scriptfil
         kind: "markdown",
         value: hover,
     }};
+}
+
+function GetHoverForProperty(type : typedb.DBType, prop : typedb.DBProperty) : Hover
+{
+    let prefix = null;
+    if(type.typename.startsWith("__"))
+    {
+        if(type.typename != "__")
+            prefix = type.typename.substring(2)+"::";
+    }
+    /*else if(!type.typename.startsWith("//"))
+        prefix = type.typename+".";*/
+
+    let hover = "";
+    hover += FormatHoverDocumentation(prop.documentation);
+    hover += "```angelscript_snippet\n"+prop.format(prefix)+"\n```";
+
+    return <Hover> {contents: <MarkupContent> {
+        kind: "markdown",
+        value: hover,
+    }};
+}
+
+function GetHoverForFunction(type : typedb.DBType, func : typedb.DBMethod, isAccessor : boolean) : Hover
+{
+    let prefix = null;
+    if(type.typename.startsWith("__"))
+    {
+        if(type.typename != "__")
+            prefix = type.typename.substring(2)+"::";
+    }
+    else if(!type.typename.startsWith("//"))
+        prefix = type.typename+".";
+
+    let hover = "";
+
+    let doc = func.findAvailableDocumentation();
+    if (doc)
+        hover += FormatHoverDocumentation(doc);
+
+    if (isAccessor)
+    {
+        if (func.name.startsWith("Get"))
+            hover += "```angelscript_snippet\n"+func.returnType+" "+prefix+func.name.substr(3)+"\n```";
+        else if (func.args && func.args.length > 0)
+            hover += "```angelscript_snippet\n"+func.args[0].typename+" "+prefix+func.name.substr(3)+"\n```";
+    }
+    else
+    {
+        hover += "```angelscript_snippet\n"+func.format(prefix)+"\n```";
+    }
+
+    return <Hover> {contents: <MarkupContent> {
+        kind: "markdown",
+        value: hover,
+    }};
+}
+
+export function DocumentSymbols( uri : string ) : SymbolInformation[]
+{
+    let symbols = new Array<SymbolInformation>();
+    let asmodule = scriptfiles.GetModuleByUri(uri);
+    if (!asmodule)
+        return symbols;
+
+    AddModuleSymbols(asmodule, symbols);
+    AddScopeSymbols(asmodule, asmodule.rootscope, symbols);
+    return symbols;
+}
+
+export function WorkspaceSymbols( query : string ) : SymbolInformation[]
+{
+    let symbols = new Array<SymbolInformation>();
+    console.log("Query: "+query);
+    for (let asmodule of scriptfiles.GetAllModules())
+    {
+        AddModuleSymbols(asmodule, symbols, query);
+        AddScopeSymbols(asmodule, asmodule.rootscope, symbols, query);
+    }
+    return symbols;
+}
+
+function AddModuleSymbols(asmodule : scriptfiles.ASModule, symbols : Array<SymbolInformation>, query : string = null)
+{
+    for (let dbtype of [...asmodule.types, ...asmodule.namespaces])
+    {
+        if (dbtype.isShadowedNamespace())
+            continue;
+
+        let scopeSymbol = <SymbolInformation> {
+            name : dbtype.typename,
+        };
+
+        if (dbtype.moduleScopeStart != -1)
+            scopeSymbol.location = asmodule.getLocationRange(dbtype.moduleOffset, dbtype.moduleScopeEnd);
+        else
+            scopeSymbol.location = asmodule.getLocation(dbtype.moduleOffset);
+
+        if (scopeSymbol.name.startsWith("__"))
+            scopeSymbol.name = scopeSymbol.name.substr(2);
+
+        if (dbtype.isNamespace())
+            scopeSymbol.kind = SymbolKind.Namespace;
+        else if (dbtype.isEnum)
+            scopeSymbol.kind = SymbolKind.Enum;
+        else if (dbtype.isStruct)
+            scopeSymbol.kind = SymbolKind.Struct;
+        else
+            scopeSymbol.kind = SymbolKind.Class;
+
+        symbols.push(scopeSymbol);
+    }
+}
+
+function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.ASScope, symbols: Array<SymbolInformation>, query : string = null)
+{
+    let scopeType = scope.getDatabaseType();
+    if (scopeType)
+    {
+        if (scope.scopetype == scriptfiles.ASScopeType.Class)
+        {
+            for (let classVar of scope.variables)
+            {
+                if (classVar.isArgument)
+                    continue;
+
+                symbols.push(<SymbolInformation> {
+                    name : classVar.name,
+                    kind : SymbolKind.Variable,
+                    location : asmodule.getLocationRange(classVar.start_offset_name, classVar.end_offset_name),
+                    containerName : scopeType.typename,
+                });
+            }
+        }
+    }
+
+    let scopeFunc = scope.getDatabaseFunction();
+    if (scopeFunc)
+    {
+        let scopeSymbol = <SymbolInformation> {
+            name : scopeFunc.name+"()",
+            location : asmodule.getLocationRange(scope.start_offset, scope.end_offset),
+        };
+
+        if (scope.scopetype == scriptfiles.ASScopeType.Function)
+        {
+            if (scope.parentscope.scopetype == scriptfiles.ASScopeType.Class)
+            {
+                scopeSymbol.kind = SymbolKind.Method;
+                scopeSymbol.containerName = scope.parentscope.getDatabaseType().typename;
+            }
+            else
+            {
+                scopeSymbol.kind = SymbolKind.Function;
+            }
+
+            symbols.push(scopeSymbol);
+        }
+    }
+
+    for (let subscope of scope.scopes)
+        AddScopeSymbols(asmodule, subscope, symbols);
 }

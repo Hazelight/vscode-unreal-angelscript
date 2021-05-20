@@ -1,5 +1,3 @@
-import { GetCompletionTypeAndMember } from "./completion";
-
 export enum DBAllowSymbol
 {
     Any,
@@ -290,6 +288,26 @@ export class DBMethod implements DBSymbol
             decl += " property";
         return decl;
     }
+
+    // Get documentation either from this function or from the
+    // first parent function we're overriding
+    findAvailableDocumentation() : string
+    {
+        if (this.documentation)
+            return this.documentation;
+        if (this.containingType)
+        {
+            let supertype = GetType(this.containingType.supertype);
+            while (supertype)
+            {
+                let parentFunc = supertype.findFirstSymbol(this.name, DBAllowSymbol.FunctionOnly);
+                if (parentFunc && parentFunc instanceof DBMethod && parentFunc.documentation)
+                    return parentFunc.documentation;
+                supertype = GetType(supertype.supertype);
+            }
+        }
+        return null;
+    }
 };
 
 export class DBType
@@ -319,6 +337,8 @@ export class DBType
 
     declaredModule : string;
     moduleOffset : number;
+    moduleScopeStart : number = -1;
+    moduleScopeEnd : number = -1;
 
     siblingTypes : Array<string>;
     subTypes : Array<string>;

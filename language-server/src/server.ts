@@ -8,13 +8,13 @@ import {
 	TextDocumentSyncKind, SemanticTokensOptions, SemanticTokensLegend,
 	SemanticTokensParams, SemanticTokens, SemanticTokensBuilder, ReferenceOptions, ReferenceParams,
 	CodeLens, CodeLensParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, DidOpenTextDocumentParams,
-	RenameParams, WorkspaceEdit, ResponseError, PrepareRenameParams, Range, Position, Command
+	RenameParams, WorkspaceEdit, ResponseError, PrepareRenameParams, Range, Position, Command, SemanticTokensDeltaParams,
+	SemanticTokensDelta
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
 
 import * as scriptfiles from './as_parser';
-import * as completion from './completion';
 import * as parsedcompletion from './parsed_completion';
 import * as typedb from './database';
 import * as scriptreferences from './references';
@@ -258,7 +258,9 @@ connection.onInitialize((_params): InitializeResult => {
 					tokenModifiers: [],
 				},
 				range: false,
-				full: true,
+				full: {
+					delta: true,
+				},
 			},
 		}
 	}
@@ -428,11 +430,11 @@ connection.onHover((_textDocumentPosition: TextDocumentPositionParams): Hover =>
 });
 
 connection.onDocumentSymbol((_params : DocumentSymbolParams) : SymbolInformation[] => {
-	return completion.DocumentSymbols(_params.textDocument.uri);
+	return scriptsymbols.DocumentSymbols(_params.textDocument.uri);
 });
 
 connection.onWorkspaceSymbol((_params : WorkspaceSymbolParams) : SymbolInformation[] => {
-	return completion.WorkspaceSymbols(_params.query);
+	return scriptsymbols.WorkspaceSymbols(_params.query);
 });
 
 connection.onReferences(function (params : ReferenceParams) : Location[]
@@ -533,7 +535,7 @@ function TryResolveSymbols(asmodule : scriptfiles.ASModule) : SemanticTokens | n
 	}
 }
 
-connection.languages.semanticTokens.on(function(params : SemanticTokensParams) : SemanticTokens | Thenable<SemanticTokens>
+function WaitForResolveSymbols(params : SemanticTokensParams) : SemanticTokens | Thenable<SemanticTokens>
 {
 	let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
 	let result = TryResolveSymbols(asmodule);
@@ -553,6 +555,24 @@ connection.languages.semanticTokens.on(function(params : SemanticTokensParams) :
 		timerFunc(resolve, reject, 50);
 	});
 	return promise;
+};
+
+connection.languages.semanticTokens.onDelta(function (params : SemanticTokensDeltaParams) : SemanticTokensDelta | Thenable<SemanticTokensDelta> | SemanticTokens | Thenable<SemanticTokens>
+{
+	if (!CanResolveModules())
+		return WaitForResolveSymbols(params);
+
+	let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+	scriptfiles.ParseModuleAndDependencies(asmodule);
+	scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
+	scriptfiles.ResolveModule(asmodule);
+	let delta = scriptsemantics.HighlightSymbolsDelta(asmodule, params.previousResultId);
+	return delta;
+});
+
+connection.languages.semanticTokens.on(function(params : SemanticTokensParams) : SemanticTokens | Thenable<SemanticTokens>
+{
+	return WaitForResolveSymbols(params);
 });
 
 function getPathName(uri : string) : string
@@ -588,8 +608,13 @@ function getModuleName(uri : string) : string
 
 connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : string => {
 	let pos : TextDocumentPositionParams = params[0];
+	let asmodule = GetAndParseModule(pos.textDocument.uri);
+	if (!asmodule)
+		return null;
+	if (!asmodule.resolved)
+		return null;
 
-	let def = completion.GetDefinition(pos);
+	let def = scriptsymbols.GetDefinition(asmodule, pos.position);
 	if (def == null)
 	{
 		connection.console.log(`Definition not found`);
