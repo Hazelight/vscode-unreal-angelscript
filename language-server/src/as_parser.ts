@@ -1115,9 +1115,9 @@ function MakeMacroSpecifiers(macro : any, macroSpecifiers : Map<string, string>,
                     if (!metaEntry.name)
                         continue;
                     if (metaEntry.value)
-                        macroMeta.set(metaEntry.name.value, metaEntry.value.value);
+                        macroMeta.set(metaEntry.name.value.toLowerCase(), metaEntry.value.value);
                     else
-                        macroMeta.set(metaEntry.name.value, "");
+                        macroMeta.set(metaEntry.name.value.toLowerCase(), "");
                 }
             }
             else
@@ -1208,6 +1208,11 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
             dbprop.macroMeta = new Map<string, string>();
 
             MakeMacroSpecifiers(vardecl.macro, dbprop.macroSpecifiers, dbprop.macroMeta);
+
+            // Check if we have keywords
+            let keywords = dbprop.macroMeta.get("keywords");
+            if (keywords)
+                dbprop.keywords = keywords.split(" ");
         }
 
         scope.dbtype.properties.push(dbprop);
@@ -1241,6 +1246,19 @@ function GenerateTypeInformation(scope : ASScope)
             scope.module.types.push(dbtype);
             scope.dbtype = dbtype;
 
+            if (classdef.macro)
+            {
+                dbtype.macroSpecifiers = new Map<string, string>();
+                dbtype.macroMeta = new Map<string, string>();
+
+                MakeMacroSpecifiers(classdef.macro, dbtype.macroSpecifiers, dbtype.macroMeta);
+
+                // Check if we have keywords
+                let keywords = dbtype.macroMeta.get("keywords");
+                if (keywords)
+                    dbtype.keywords = keywords.split(" ");
+            }
+
             ExtendScopeToStatement(scope, scope.previous);
             dbtype.moduleScopeStart = scope.start_offset;
             dbtype.moduleScopeEnd = scope.end_offset;
@@ -1257,6 +1275,19 @@ function GenerateTypeInformation(scope : ASScope)
 
             scope.module.types.push(dbtype);
             scope.dbtype = dbtype;
+
+            if (structdef.macro)
+            {
+                dbtype.macroSpecifiers = new Map<string, string>();
+                dbtype.macroMeta = new Map<string, string>();
+
+                MakeMacroSpecifiers(structdef.macro, dbtype.macroSpecifiers, dbtype.macroMeta);
+
+                // Check if we have keywords
+                let keywords = dbtype.macroMeta.get("keywords");
+                if (keywords)
+                    dbtype.keywords = keywords.split(" ");
+            }
 
             ExtendScopeToStatement(scope, scope.previous);
             dbtype.moduleScopeStart = scope.start_offset;
@@ -1322,6 +1353,11 @@ function GenerateTypeInformation(scope : ASScope)
                 // Mark as event
                 if (dbfunc.macroSpecifiers.has("BlueprintEvent") || dbfunc.macroSpecifiers.has("BlueprintOverride"))
                     dbfunc.isEvent = true;
+
+                // Check if we have keywords
+                let keywords = dbfunc.macroMeta.get("keywords");
+                if (keywords)
+                    dbfunc.keywords = keywords.split(" ");
             }
 
             if (funcdef.access)
@@ -1357,6 +1393,8 @@ function GenerateTypeInformation(scope : ASScope)
             }
 
             ExtendScopeToStatement(scope, scope.previous);
+            dbfunc.moduleScopeStart = scope.previous.start_offset + funcdef.name.start;
+            dbfunc.moduleScopeEnd = scope.end_offset;
         }
         // Constructor declaration placed inside a class
         else if (scope.previous.ast.type == node_types.ConstructorDecl)
@@ -2583,7 +2621,9 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 if (enumType && enumType.isEnum)
                 {
                     left_type = enumType;
-                    AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, enumType.typename);
+                    let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, enumType.typename);
+                    if (enumType.declaredModule && !scope.module.isModuleImported(enumType.declaredModule))
+                        addedSymbol.isUnimported = true;
                 }
                 else
                 {
@@ -2591,7 +2631,9 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     if (constrType)
                     {
                         left_type = constrType;
-                        AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, constrType.typename);
+                        let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, constrType.typename);
+                        if (constrType.declaredModule && !scope.module.isModuleImported(constrType.declaredModule))
+                            addedSymbol.isUnimported = true;
 
                         // If this is a delegate constructor call, mark it for later diagnostics
                         if (left_type.isDelegate && node.children[1])
@@ -3194,13 +3236,15 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
     }
     
     // We might be typing a typename at the start of a declaration, which accidentally got parsed as an identifier due to incompleteness
-    if (node == statement.ast && scope.module.isEditingNode(statement, node.start))
+    if (node == statement.ast && scope.module.isEditingInside(statement.start_offset + node.start, statement.end_offset + node.end + 1))
     {
         // It could be a type as well
         let symType = typedb.GetType(node.value);
         if (symType)
         {
-            AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, symType.typename);
+            let addedSymbol = AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, symType.typename);
+            if (symType.declaredModule && !scope.module.isModuleImported(symType.declaredModule))
+                addedSymbol.isUnimported = true;
 
             // We do not return the symbol here, because we tried to parse a typename as an identifier
             // This should only happen on incomplete statements.
@@ -3211,7 +3255,9 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         let nsType = typedb.GetType("__"+node.value);
         if (nsType)
         {
-            AddIdentifierSymbol(scope, statement, node, ASSymbolType.Namespace, null, nsType.typename);
+            let addedSymbol = AddIdentifierSymbol(scope, statement, node, ASSymbolType.Namespace, null, nsType.typename);
+            if (nsType.declaredModule && !scope.module.isModuleImported(nsType.declaredModule))
+                addedSymbol.isUnimported = true;
 
             // We do not return the symbol here, because we tried to parse a namespace as an identifier
             // This should only happen on incomplete statements.

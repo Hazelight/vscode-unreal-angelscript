@@ -655,14 +655,31 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	if (!asmodule.resolved)
 		return null;
 
-	let def = scriptsymbols.GetDefinition(asmodule, pos.position);
-	if (def == null)
+	// See if we can find an unimported symbol on this line first
+	let unimportedSymbol = scriptsymbols.FindUnimportedSymbolOnLine(asmodule, pos.position);
+	if (unimportedSymbol)
+	{
+		let symbolDefs = scriptsymbols.GetSymbolDefinition(asmodule, unimportedSymbol);
+		if (symbolDefs)
+		{
+			for (let def of symbolDefs)
+			{
+				if (def.module.modulename == asmodule.modulename)
+					continue;
+				return def.module.modulename;
+			}
+		}
+	}
+
+	// Fall back to grabbing it by definition
+	let definitions = scriptsymbols.GetDefinition(asmodule, pos.position);
+	if (definitions == null)
 	{
 		connection.console.log(`Definition not found`);
 		return "";
 	}
 	{
-		let defArray = def as Location[];
+		let defArray = definitions as Location[];
 		let moduleName = getModuleName(defArray[0].uri);
 
 		// Don't add an import to the module we're in

@@ -771,7 +771,7 @@ lvalue -> lvalue _ %lparen _ argumentlist _ %rparen {%
     function (d) { return Compound(d, n.FunctionCall, [d[0], d[4]]); }
 %}
 lvalue -> lvalue _ %lsqbracket optional_expression _ %rsqbracket {%
-    function (d) { return Compound(d, n.IndexOperator, [d[0], d[4]]); }
+    function (d) { return Compound(d, n.IndexOperator, [d[0], d[3]]); }
 %}
 lvalue -> template_typename _ %lparen _ argumentlist _ %rparen {%
     function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
@@ -1161,5 +1161,38 @@ comment_documentation -> %WS:* (%block_comment %WS:? | %line_comment %WS:? | %pr
             return comment;
         }
         return null;
+    }
+%}
+
+statement -> scuffed_template_statement (_ ">"):? {% id %}
+class_statement -> scuffed_template_statement {% id %}
+global_statement -> scuffed_template_statement {% id %}
+
+scuffed_template_statement -> %template_basetype (_ "<"):? {%
+    function (d) {
+        let node = {
+            ...Compound(d, n.VariableDecl, null),
+            name: null,
+            typename: {
+                ...CompoundLiteral(n.Typename, [d[0]], null),
+                name: Identifier(d[0]),
+            },
+        };
+        return node;
+    }
+%}
+scuffed_template_statement -> %template_basetype _ "<" _ typename {%
+    function (d) {
+        let node = {
+            ...Compound(d, n.VariableDecl, null),
+            name: null,
+            typename: {
+                ...CompoundLiteral(n.Typename, d, null),
+                basetype: Identifier(d[0]),
+                subtypes: [d[4]]
+            },
+        };
+        node.typename.value += ">";
+        return node;
     }
 %}

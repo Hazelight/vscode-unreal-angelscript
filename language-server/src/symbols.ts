@@ -22,6 +22,31 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
     return locations;
 }
 
+export function FindUnimportedSymbolOnLine(asmodule : scriptfiles.ASModule, position : Position) : scriptfiles.ASSymbol
+{
+    let offset = asmodule.getOffset(position);
+    let findSymbol = asmodule.getSymbolAt(offset);
+    if (findSymbol.isUnimported)
+        return findSymbol;
+
+    let lineStartOffset = asmodule.getOffset(
+        Position.create(position.line, 0)
+    );
+    let lineEndOffset = asmodule.getOffset(
+        Position.create(position.line, 10000)
+    );
+
+    for (let sym of asmodule.symbols)
+    {
+        if (!sym.overlapsRange(lineStartOffset, lineEndOffset))
+            continue;
+        if (sym.isUnimported)
+            return sym;
+    }
+
+    return null;
+}
+
 export interface SymbolDeclaration
 {
     location : Location,
@@ -538,8 +563,12 @@ function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.AS
     {
         let scopeSymbol = <SymbolInformation> {
             name : scopeFunc.name+"()",
-            location : asmodule.getLocationRange(scope.start_offset, scope.end_offset),
         };
+
+        if (scopeFunc.moduleScopeStart != -1)
+            scopeSymbol.location = asmodule.getLocationRange(scopeFunc.moduleOffset, scopeFunc.moduleScopeEnd);
+        else
+            scopeSymbol.location = asmodule.getLocation(scopeFunc.moduleOffset);
 
         if (scope.scopetype == scriptfiles.ASScopeType.Function)
         {

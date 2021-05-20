@@ -785,7 +785,7 @@ var grammar = {
         function (d) { return Compound(d, n.FunctionCall, [d[0], d[4]]); }
         },
     {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("lsqbracket") ? {type: "lsqbracket"} : lsqbracket), "optional_expression", "_", (lexer.has("rsqbracket") ? {type: "rsqbracket"} : rsqbracket)], "postprocess": 
-        function (d) { return Compound(d, n.IndexOperator, [d[0], d[4]]); }
+        function (d) { return Compound(d, n.IndexOperator, [d[0], d[3]]); }
         },
     {"name": "lvalue", "symbols": ["template_typename", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
@@ -1207,6 +1207,43 @@ var grammar = {
                 return comment;
             }
             return null;
+        }
+        },
+    {"name": "statement$ebnf$3$subexpression$1", "symbols": ["_", {"literal":">"}]},
+    {"name": "statement$ebnf$3", "symbols": ["statement$ebnf$3$subexpression$1"], "postprocess": id},
+    {"name": "statement$ebnf$3", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "statement", "symbols": ["scuffed_template_statement", "statement$ebnf$3"], "postprocess": id},
+    {"name": "class_statement", "symbols": ["scuffed_template_statement"], "postprocess": id},
+    {"name": "global_statement", "symbols": ["scuffed_template_statement"], "postprocess": id},
+    {"name": "scuffed_template_statement$ebnf$1$subexpression$1", "symbols": ["_", {"literal":"<"}]},
+    {"name": "scuffed_template_statement$ebnf$1", "symbols": ["scuffed_template_statement$ebnf$1$subexpression$1"], "postprocess": id},
+    {"name": "scuffed_template_statement$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "scuffed_template_statement", "symbols": [(lexer.has("template_basetype") ? {type: "template_basetype"} : template_basetype), "scuffed_template_statement$ebnf$1"], "postprocess": 
+        function (d) {
+            let node = {
+                ...Compound(d, n.VariableDecl, null),
+                name: null,
+                typename: {
+                    ...CompoundLiteral(n.Typename, [d[0]], null),
+                    name: Identifier(d[0]),
+                },
+            };
+            return node;
+        }
+        },
+    {"name": "scuffed_template_statement", "symbols": [(lexer.has("template_basetype") ? {type: "template_basetype"} : template_basetype), "_", {"literal":"<"}, "_", "typename"], "postprocess": 
+        function (d) {
+            let node = {
+                ...Compound(d, n.VariableDecl, null),
+                name: null,
+                typename: {
+                    ...CompoundLiteral(n.Typename, d, null),
+                    basetype: Identifier(d[0]),
+                    subtypes: [d[4]]
+                },
+            };
+            node.typename.value += ">";
+            return node;
         }
         },
     {"name": "main", "symbols": ["_", "global_statement", "_"], "postprocess": 

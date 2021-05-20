@@ -5,12 +5,20 @@ import {
 import * as typedb from './database';
 import * as scriptfiles from './as_parser';
 
+let CommonTypenames = new Set<string>([
+    "FVector", "FRotator", "FTransform", "FQuat"
+]);
+let CommonTemplateTypes = new Set<string>(
+    ['TArray', 'TMap', 'TSet', 'TSubclassOf', 'TSoftObjectPtr', 'TSoftClassPtr', 'TInstigated', 'TPerPlayer'],
+);
+
 class CompletionContext
 {
     scope : scriptfiles.ASScope = null;
     statement : scriptfiles.ASStatement = null;
 
     completingSymbol : string = null;
+    completingNode : any = null;
     priorExpression : any = null;
     priorType : typedb.DBType = null;
 
@@ -20,6 +28,7 @@ class CompletionContext
     isIgnoredCode : boolean = false;
     isIncompleteNamespace : boolean = false;
     isFunctionDeclaration : boolean = false;
+    maybeTypename : boolean = false;
 
     subOuterStatement : scriptfiles.ASStatement = null;
     subOuterFunctions : Array<typedb.DBMethod> = null;
@@ -95,7 +104,11 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
 
     // Add completions for global functions we haven't imported
     if (!context.priorType)
-        AddUnimportedCompletions(context, completions, searchTypes);
+        AddUnimportedCompletions(context, completions);
+    
+    // Add completions for UCS calls to global functions
+    if (context.priorType)
+        AddUCSCompletions(context, completions);
 
     // Complete typenames if we're in a context where that is possible
     if (!context.priorType)
@@ -303,9 +316,14 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         if (!context.isRightExpression && !context.isSubExpression)
         {
             AddCompletionsFromKeywordList(context, [
-                "return",
                 "if", "else", "while", "for",
             ], completions);
+
+            completions.push({
+                    label: "return",
+                    kind: CompletionItemKind.Keyword,
+                    commitCharacters: [" ", ";"],
+            });
         }
     }
     else
@@ -341,7 +359,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
             {
                 AddCompletionsFromKeywordList(context, [
                     "default", "UFUNCTION",
-                ], completions);
+                ], completions)
             }
 
             if (context.isSubExpression && /^\s*UFUNCTION\s*$/.test(context.subOuterStatement.content))
@@ -351,6 +369,17 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                 ], completions);
             }
         }
+    }
+}
+
+function GetTypenameCommitChars(context : CompletionContext, typename : string, commitChars : Array<string>)
+{
+    if (context.maybeTypename)
+    {
+        if (CommonTypenames.has(typename))
+            commitChars.push(" ");
+        if (CommonTemplateTypes.has(typename))
+            commitChars.push("<");
     }
 }
 
@@ -381,7 +410,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
 
         if (dbtype.isEnum)
         {
-            if (CanCompleteTo(context.completingSymbol, typename))
+            if (CanCompleteSymbol(context, dbtype))
             {
                 // Allow completing to qualified enum values when appropriate
                 if ((context.isSubExpression && !context.isFunctionDeclaration) || context.isRightExpression)
@@ -402,18 +431,23 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
                         kind: CompletionItemKind.Enum,
                         data: ["type", dbtype.typename],
                         commitCharacters: [":"],
+                        filterText: GetSymbolFilterText(context, dbtype),
                 });
             }
         }
         else
         {
-            if (CanCompleteTo(context.completingSymbol, typename))
+            if (CanCompleteSymbol(context, dbtype))
             {
+                let commitChars = [":"];
+                GetTypenameCommitChars(context, typename, commitChars);
+
                 completions.push({
                         label: typename,
                         kind: kind,
                         data: ["type", dbtype.typename],
-                        commitCharacters: [":"],
+                        commitCharacters: commitChars,
+                        filterText: GetSymbolFilterText(context, dbtype),
                 });
             }
         }
@@ -472,7 +506,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
     let props = new Set<string>();
     for (let prop of curtype.allProperties())
     {
-        if (CanCompleteTo(context.completingSymbol, prop.name))
+        if (CanCompleteSymbol(context, prop))
         {
             if (!isPropertyAccessibleFromScope(curtype, prop, context.scope))
                 continue;
@@ -483,6 +517,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                     detail: prop.typename,
                     data: ["prop", curtype.typename, prop.name],
                     commitCharacters: [".", ";", ","],
+                    filterText: GetSymbolFilterText(context, prop),
             };
 
             if (context.isIncompleteNamespace)
@@ -495,10 +530,13 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
     let setterStr = "Set"+context.completingSymbol;
     for (let func of curtype.allMethods())
     {
-        if (func.name.startsWith("Get") && CanCompleteTo(getterStr, func.name) && func.isProperty)
+        if (!CanCompleteSymbol(context, func))
+            continue;
+        if (!isFunctionAccessibleFromScope(curtype, func, context.scope))
+            continue;
+
+        if (func.isProperty && func.name.startsWith("Get"))
         {
-            if (!isFunctionAccessibleFromScope(curtype, func, context.scope))
-                continue;
             let propname = func.name.substr(3);
             if(!props.has(propname) && func.args.length == 0)
             {
@@ -508,6 +546,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                         detail: func.returnType,
                         data: ["accessor", curtype.typename, propname],
                         commitCharacters: [".", ";", ","],
+                        filterText: GetSymbolFilterText(context, func),
                 };
 
                 if (context.isIncompleteNamespace)
@@ -517,10 +556,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             }
         }
         
-        if (func.name.startsWith("Set") && CanCompleteTo(setterStr, func.name) && func.isProperty)
+        if (func.isProperty && func.name.startsWith("Set"))
         {
-            if (!isFunctionAccessibleFromScope(curtype, func, context.scope))
-                continue;
             let propname = func.name.substr(3);
             if(!props.has(propname) && func.args.length == 1 && func.returnType == "void")
             {
@@ -530,6 +567,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                         detail: func.args[0].typename,
                         data: ["accessor", curtype.typename, propname],
                         commitCharacters: [".", ";", ","],
+                        filterText: GetSymbolFilterText(context, func),
                 };
 
                 if (context.isIncompleteNamespace)
@@ -539,29 +577,106 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             }
         }
 
-        if (CanCompleteTo(context.completingSymbol, func.name))
+        if(!func.name.startsWith("op") && (!func.isEvent || showEvents))
         {
-            if (!isFunctionAccessibleFromScope(curtype, func, context.scope))
-                continue;
-            if(!func.name.startsWith("op") && (!func.isEvent || showEvents))
-            {
-                let compl = <CompletionItem>{
-                        label: func.name,
-                        kind: func.isEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
-                        data: ["func", curtype.typename, func.name, func.id],
-                        commitCharacters: ["("],
-                };
+            let commitChars = ["("];
+            if (func.isConstructor)
+                GetTypenameCommitChars(context, func.name, commitChars);
 
-                if (context.isIncompleteNamespace)
-                    compl.insertText = ":"+compl.label;
+            let compl = <CompletionItem>{
+                    label: func.name,
+                    kind: func.isEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
+                    data: ["func", curtype.typename, func.name, func.id],
+                    commitCharacters: commitChars,
+                    filterText: GetSymbolFilterText(context, func),
+            };
+
+            if (context.isIncompleteNamespace)
+                compl.insertText = ":"+compl.label;
+            completions.push(compl);
+        }
+    }
+}
+
+export function AddUnimportedCompletions(context : CompletionContext, completions : Array<CompletionItem>)
+{
+    if (!context.scope)
+        return;
+
+    // Not yet imported global symbols
+    for (let [name, globalSymbols] of typedb.ScriptGlobals)
+    {
+        for (let sym of globalSymbols)
+        {
+            if (!sym.containingType)
+                continue;
+            if (sym instanceof typedb.DBProperty)
+            {
+                if (context.scope.module.isModuleImported(sym.declaredModule))
+                    continue;
+                if (!CanCompleteSymbol(context, sym))
+                    continue;
+
+                let compl = <CompletionItem>{
+                    label: sym.name,
+                    kind : CompletionItemKind.Field,
+                    detail: sym.typename,
+                    data: ["prop", sym.containingType.typename, sym.name],
+                    commitCharacters: [".", ";", ","],
+                    filterText: GetSymbolFilterText(context, sym),
+                };
+                completions.push(compl);
+            }
+            else if (sym instanceof typedb.DBMethod)
+            {
+                if (context.scope.module.isModuleImported(sym.declaredModule))
+                    continue;
+                if (!CanCompleteSymbol(context, sym))
+                    continue;
+
+                let compl = <CompletionItem>{
+                    label: sym.name,
+                    kind: sym.isEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
+                    data: ["func", sym.containingType.typename, sym.name, sym.id],
+                    commitCharacters: ["("],
+                    filterText: GetSymbolFilterText(context, sym),
+                };
                 completions.push(compl);
             }
         }
     }
 }
 
-export function AddUnimportedCompletions(context : CompletionContext, completions : Array<CompletionItem>, importedTypes : Array<typedb.DBType>)
+export function AddUCSCompletions(context : CompletionContext, completions : Array<CompletionItem>)
 {
+    if (!context.scope)
+        return;
+
+    // Not yet imported UCS functions
+    for (let [name, globalSymbols] of typedb.ScriptGlobals)
+    {
+        for (let sym of globalSymbols)
+        {
+            if (!sym.containingType)
+                continue;
+            if (sym instanceof typedb.DBMethod)
+            {
+                if (!CanCompleteSymbol(context, sym))
+                    continue;
+                if (sym.args && sym.args.length != 0 && context.priorType.inheritsFrom(sym.args[0].typename))
+                {
+                    let compl = <CompletionItem>{
+                        label: sym.name,
+                        kind: sym.isEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
+                        data: ["func_ucs", sym.containingType.typename, sym.name, sym.id],
+                        commitCharacters: ["("],
+                        filterText: GetSymbolFilterText(context, sym),
+                    };
+                    completions.push(compl);
+                }
+            }
+        }
+    }
 }
 
 function CanCompleteTo(completing : string, suggestion : string) : boolean
@@ -578,6 +693,38 @@ function CanCompleteTo(completing : string, suggestion : string) : boolean
     }
 
     return suggestion.toLowerCase().indexOf(completing.toLowerCase()) != -1;
+}
+
+function CanCompleteSymbol(context : CompletionContext, symbol : typedb.DBSymbol | typedb.DBType) : boolean
+{
+    if (symbol instanceof typedb.DBType)
+    {
+        if (symbol.keywords)
+            return CanCompleteTo(context.completingSymbol, GetSymbolFilterText(context, symbol));
+        return CanCompleteTo(context.completingSymbol, symbol.typename);
+    }
+    else
+    {
+        if (symbol.keywords)
+            return CanCompleteTo(context.completingSymbol, GetSymbolFilterText(context, symbol));
+        return CanCompleteTo(context.completingSymbol, symbol.name);
+    }
+}
+
+function GetSymbolFilterText(context : CompletionContext, symbol : typedb.DBSymbol | typedb.DBType) : string | undefined
+{
+    if (symbol instanceof typedb.DBType)
+    {
+        if (!symbol.keywords)
+            return undefined;
+        return [symbol.typename, ...symbol.keywords].join(" ");
+    }
+    else
+    {
+        if (!symbol.keywords)
+            return undefined;
+        return [symbol.name, ...symbol.keywords].join(" ");
+    }
 }
 
 function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : number) : CompletionContext
@@ -690,6 +837,17 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         }
     }
 
+    // Record some data about the statement we parsed
+    if (context.completingNode)
+    {
+        if (context.completingNode.type == scriptfiles.node_types.Typename)
+            context.maybeTypename = true;
+        if (context.isFunctionDeclaration && context.isSubExpression && context.completingNode == context.statement.ast)
+            context.maybeTypename = true;
+        if (context.completingNode == context.statement.ast && !context.isRightExpression && !context.isSubExpression && !context.isNamingVariable)
+            context.maybeTypename = true;
+    }
+
     return context;
 }
 
@@ -704,6 +862,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         {
             context.priorExpression = null;
             context.completingSymbol = node.value;
+            context.completingNode = node;
             context.priorType = null;
             return true;
         }
@@ -715,6 +874,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                 context.completingSymbol = node.children[1].value;
             else
                 context.completingSymbol = "";
+            context.completingNode = node.children[1];
             context.priorType = scriptfiles.ResolveTypeFromExpression(context.scope, node.children[0]);
             if (context.priorType)
                 return true;
@@ -731,6 +891,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                 context.completingSymbol = node.children[1].value;
             else
                 context.completingSymbol = "";
+            context.completingNode = node.children[1];
             if (node.children[0].value == "Super" && context.scope.getParentType())
                 context.priorType = typedb.GetType(context.scope.getParentType().supertype);
             else
@@ -770,10 +931,12 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                 {
                     context.isNamingVariable = !!declType;
                     context.completingSymbol = node.name.value;
+                    context.completingNode = node.name;
                 }
                 else
                 {
                     context.completingSymbol = node.typename.value;
+                    context.completingNode = node.typename;
                 }
                 context.priorType = null;
                 return true;
@@ -786,6 +949,9 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             context.priorExpression = null;
             if (node.name)
                 context.completingSymbol = node.name.value;
+            else
+                context.completingSymbol = "";
+            context.completingNode = node.name;
             context.priorType = null;
             return true;
         }
@@ -883,7 +1049,7 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
             {
                 if (depth_sqbracket == 0)
                 {
-                    if (!wasExpectingTerm)
+                    if (!wasExpectingTerm && depth_paren == 0)
                     {
                         let c = addCandidate(1);
                         endParse = true;
@@ -917,7 +1083,7 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
             {
                 if (depth_paren == 0)
                 {
-                    if (!wasExpectingTerm)
+                    if (!wasExpectingTerm && depth_sqbracket == 0)
                     {
                         let c = addCandidate(1);
                         endParse = true;
@@ -1627,12 +1793,13 @@ export function Resolve(item : CompletionItem) : CompletionItem
             value: docStr,
         };
     }
-    else if (kind == "func")
+    else if (kind == "func" || kind == "func_ucs")
     {
         let func = type.getMethodWithIdHint(item.data[2], item.data[3]);
         if (func)
         {
-            let complStr = NoBreakingSpaces(NicifyDefinition(func, func.format()));
+            let isUCS = (kind == "func_ucs");
+            let complStr = NoBreakingSpaces(NicifyDefinition(func, func.format(null, isUCS)));
             item.documentation = <MarkupContent> {
                 kind: MarkupKind.Markdown,
                 value: "```angelscript_snippet\n"+complStr+"\n```\n\n",
