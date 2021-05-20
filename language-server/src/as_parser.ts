@@ -1584,7 +1584,7 @@ function GenerateTypeInformation(scope : ASScope)
     }
 
     // Add variables for each declaration inside the scope
-    for (let i = 0, count = scope.statements.length; i < count; ++i)
+    for (let i = 0; i < scope.statements.length; ++i)
     {
         let statement = scope.statements[i];
         if (!statement)
@@ -1820,12 +1820,33 @@ function MoveStatementToSubScope(scope : ASScope, statement : ASStatement, optio
         newStatement.end_offset = statement.end_offset;
         newStatement.parsed = true;
 
-        newStatement.next = subscope.element_head;
-        if (subscope.element_head)
-            subscope.element_head.previous = newStatement;
-        subscope.element_head = newStatement;
+        // If we're editing the first line, and it is a variable declaration,
+        // don't move it into the new subscope, but leave it where it is.
+        // This happens if we're in the middle of editing a new statement
+        let moveToSubScope = true;
+        if (optional_statement.type == node_types.VariableDecl
+            && scope.module.isEditingInside(statement.start_offset, statement.end_offset))
+        {
+            if (scope.module.lastEditEnd <= statement.start_offset + optional_statement.typename.start)
+                moveToSubScope = false;
+        }
 
-        subscope.statements.push(newStatement);
+        if (moveToSubScope)
+        {
+            newStatement.next = subscope.element_head;
+            if (subscope.element_head)
+                subscope.element_head.previous = newStatement;
+            subscope.element_head = newStatement;
+            subscope.statements.push(newStatement);
+        }
+        else
+        {
+            newStatement.next = subscope.next;
+            newStatement.previous = subscope;
+            subscope.next = newStatement;
+
+            scope.statements.push(newStatement);
+        }
     }
 
     // Move the main statement to the new scope
