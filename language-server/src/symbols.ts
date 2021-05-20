@@ -495,8 +495,7 @@ export function DocumentSymbols( uri : string ) : SymbolInformation[]
 export function WorkspaceSymbols( query : string ) : SymbolInformation[]
 {
     let symbols = new Array<SymbolInformation>();
-    console.log("Query: "+query);
-    for (let asmodule of scriptfiles.GetAllModules())
+    for (let asmodule of scriptfiles.GetAllParsedModules())
     {
         AddModuleSymbols(asmodule, symbols, query);
         AddScopeSymbols(asmodule, asmodule.rootscope, symbols, query);

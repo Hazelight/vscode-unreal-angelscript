@@ -67,6 +67,7 @@ export class ASModule
     delegateBinds : Array<ASDelegateBind> = [];
 
     flatImportList = new Set<string>();
+    preParsedImports = new Array<string>();
 
     getOffset(position : Position) : number
     {
@@ -476,11 +477,23 @@ let ASKeywords = [
     "UFUNCTION", "UPROPERTY", "UCLASS", "USTRUCT", "nullptr", "true", "false", "this", "auto",
     "final", "property", "override",
 ];
-let ModuleDatabase = new Map<string, ASModule>();
+export let ModuleDatabase = new Map<string, ASModule>();
 let ModulesByUri = new Map<string, ASModule>();
 
 // Get all modules currently loaded
-export function GetAllModules() : Array<ASModule>
+export function GetAllLoadedModules() : Array<ASModule>
+{
+    let files : Array<ASModule> = [];
+    for (let module of ModuleDatabase)
+    {
+        if (module[1].loaded)
+            files.push(module[1]);
+    }
+    return files;
+}
+
+// Get all modules currently parsed
+export function GetAllParsedModules() : Array<ASModule>
 {
     let files : Array<ASModule> = [];
     for (let module of ModuleDatabase)
@@ -516,6 +529,7 @@ export function GetOrCreateModule(modulename : string, filename : string, uri : 
     let module = GetModule(modulename);
     if (!module.created)
     {
+        module.modulename = modulename;
         module.uri = NormalizeUri(uri);
         module.displayUri = uri.replace("%3A", ":");
         module.filename = filename;
@@ -793,10 +807,18 @@ export function UpdateModuleFromDisk(module : ASModule)
     if (!module.filename)
         return;
     ClearModule(module);
-    module.content = fs.readFileSync(module.filename, 'utf8');
+    try
+    {
+        module.content = fs.readFileSync(module.filename, 'utf8');
+    }
+    catch (readError)
+    {
+        console.dir(readError);
+    }
     module.lastEditStart = -1;
     module.lastEditEnd = -1;
     LoadModule(module);
+    PreParseImports(module);
 }
 
 // Called when the debug database changes, and all modules need to stop being resolved
@@ -820,6 +842,133 @@ function LoadModule(module : ASModule)
         return;
     module.loaded = true;
     module.textDocument = TextDocument.create(module.uri, "angelscript", 1, module.content)
+}
+
+// Use a simple regex to lift out import statements for find references
+let re_import_statement = /\s*import\s+([A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*);/g;
+function PreParseImports(module : ASModule)
+{
+    module.preParsedImports = [];
+    re_import_statement.lastIndex = 0;
+    while (true)
+    {
+        let match = re_import_statement.exec(module.content);
+        if (!match)
+            break;
+
+        module.preParsedImports.push(match[1]);
+    }
+}
+
+// Get all modules that could potentially have imported this symbol
+export function GetModulesPotentiallyImportingSymbol(asmodule : ASModule, findSymbol : ASSymbol) : Array<ASModule>
+{
+    switch (findSymbol.type)
+    {
+        case ASSymbolType.Typename:
+        case ASSymbolType.TemplateBaseType:
+        case ASSymbolType.Namespace:
+        {
+            let dbtype = typedb.GetType(findSymbol.symbol_name);
+            if (dbtype)
+            {
+                // Limit to things importing this type if it's a script type
+                if (dbtype.declaredModule)
+                    return GetModulesPotentiallyImporting(dbtype.declaredModule);
+                else
+                    return GetAllLoadedModules();
+            }
+        }
+        break;
+        case ASSymbolType.GlobalFunction:
+        case ASSymbolType.MemberFunction:
+        case ASSymbolType.MemberAccessor:
+        case ASSymbolType.GlobalAccessor:
+        case ASSymbolType.GlobalVariable:
+        case ASSymbolType.MemberVariable:
+        {
+            let dbtype = typedb.GetType(findSymbol.container_type);
+            if (dbtype)
+            {
+                // Limit to things importing this type if it's a script type
+                if (dbtype.declaredModule)
+                    return GetModulesPotentiallyImporting(dbtype.declaredModule);
+                else
+                    return GetAllLoadedModules();
+            }
+        }
+        break;
+        case ASSymbolType.Parameter:
+        case ASSymbolType.LocalVariable:
+            // These can only be used within the same module
+            return [asmodule];
+        break;
+        case ASSymbolType.UnknownError:
+        case ASSymbolType.NoSymbol:
+            // Don't know anything about these
+            return [];
+        break;
+    }
+
+    // Don't know enough to limit
+    return GetAllLoadedModules();
+}
+
+// Get all modules that could potentially have imported this module
+export function GetModulesPotentiallyImporting(findModule : string) : Array<ASModule>
+{
+    let markedModules = new Set<string>();
+
+    let anyMarked = true;
+    markedModules.add(findModule);
+
+    while (anyMarked)
+    {
+        anyMarked = false;
+        for (let module of ModuleDatabase.values())
+        {
+            // Already marked
+            if (markedModules.has(module.modulename))
+                continue;
+
+            // Check if any of our imports are marked
+            let importsMarkedModule = false;
+            if (module.parsed)
+            {
+                for (let parsedImport of module.importedModules)
+                {
+                    if (markedModules.has(parsedImport.modulename))
+                    {
+                        importsMarkedModule = true;
+                        break;
+                    }
+                }
+            }
+            else if (module.preParsedImports)
+            {
+                for (let foundImport of module.preParsedImports)
+                {
+                    if (markedModules.has(foundImport))
+                    {
+                        importsMarkedModule = true;
+                        break;
+                    }
+                }
+            }
+
+            // Mark the module if it imports a marked module
+            if (importsMarkedModule)
+            {
+                markedModules.add(module.modulename);
+                anyMarked = true;
+            }
+        }
+    }
+
+    let modules = new Array<ASModule>();
+    for (let markedName of markedModules)
+        modules.push(GetModule(markedName));
+    return modules;
 }
 
 function ClearModule(module : ASModule)
@@ -858,6 +1007,7 @@ function ClearModule(module : ASModule)
     module.content = null;
     module.importedModules = [];
     module.flatImportList.clear();
+    module.preParsedImports = [];
 }
 
 export function GetSymbolLocation(modulename : string, typename : string, symbolname : string) : Location | null

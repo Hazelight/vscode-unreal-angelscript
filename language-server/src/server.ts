@@ -44,6 +44,8 @@ let LoadQueue : Array<scriptfiles.ASModule> = [];
 let LoadQueueIndex = 0;
 let PostProcessTypesQueue : Array<scriptfiles.ASModule> = [];
 let PostProcessTypesQueueIndex = 0;
+let ResolveQueue : Array<scriptfiles.ASModule> = [];
+let ResolveQueueIndex = 0;
 
 let ReceivingTypesTimeout : any = null;
 let SetTypeTimeout = false;
@@ -323,6 +325,7 @@ function TickQueues()
 			{
 				if (!PostProcessTypesQueue[PostProcessTypesQueueIndex].typesPostProcessed)
 					scriptfiles.PostProcessModuleTypes(PostProcessTypesQueue[PostProcessTypesQueueIndex]);
+				ResolveQueue.push(PostProcessTypesQueue[PostProcessTypesQueueIndex]);
 			}
 		}
 	}
@@ -331,14 +334,35 @@ function TickQueues()
 		PostProcessTypesQueue = [];
 		PostProcessTypesQueueIndex = 0;
 	}
+	else if (ResolveQueueIndex < ResolveQueue.length)
+	{
+		if (CanResolveModules())
+		{
+			for (let n = 0; n < 1 && ResolveQueueIndex < ResolveQueue.length; ++n, ++ResolveQueueIndex)
+			{
+				if (!ResolveQueue[ResolveQueueIndex].resolved)
+					scriptfiles.ResolveModule(ResolveQueue[ResolveQueueIndex]);
+			}
+		}
+	}
+	else if (ResolveQueue.length != 0)
+	{
+		ResolveQueue = [];
+		ResolveQueueIndex = 0;
+	}
 
-	if (LoadQueue.length != 0 || ParseQueue.length != 0 || PostProcessTypesQueue.length != 0)
+	if (LoadQueue.length != 0 || ParseQueue.length != 0 || PostProcessTypesQueue.length != 0 || ResolveQueue.length != 0)
 		setTimeout(TickQueues, 1);
 }
 
 function CanResolveModules()
 {
 	return typedb.HasTypesFromUnreal();
+}
+
+function IsInitialParseDone()
+{
+	return CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0;
 }
 
 scriptdiagnostics.OnDiagnosticsChanged( function (uri : string, diagnostics : Array<Diagnostic>){
@@ -453,15 +477,39 @@ connection.onWorkspaceSymbol((_params : WorkspaceSymbolParams) : SymbolInformati
 	return scriptsymbols.WorkspaceSymbols(_params.query);
 });
 
-connection.onReferences(function (params : ReferenceParams) : Location[]
+connection.onReferences(function (params : ReferenceParams) : Location[] | Thenable<Location[]>
 {
 	if (!CanResolveModules())
 		return null;
-	return scriptreferences.FindReferences(params.textDocument.uri, params.position);
+	if (LoadQueue.length != 0)
+		return null;
+
+	let generator = scriptreferences.FindReferences(params.textDocument.uri, params.position);
+	let result = generator.next();
+	if (result && result.value)
+		return result.value;
+
+	return new Promise((resolve, reject) => {
+		let timerHandle = setInterval(MakeProgress, 1);
+		function MakeProgress()
+		{
+			let result = generator.next();
+			if (result && result.value)
+			{
+				clearInterval(timerHandle);
+				resolve(result.value);
+			}
+		}
+	});
 });
 
 connection.onPrepareRename(function (params : PrepareRenameParams) : Range | ResponseError<void>
 {
+	if (!CanResolveModules())
+		return null;
+	if (LoadQueue.length != 0)
+		return null;
+
 	let result : Range | ResponseError<void> = null;
 	if (!CanResolveModules())
 		result = new ResponseError<void>(0, "Please wait for all script parsing to finish...");
@@ -477,27 +525,37 @@ connection.onPrepareRename(function (params : PrepareRenameParams) : Range | Res
 	return result;
 });
 
-connection.onRenameRequest(function (params : RenameParams) : WorkspaceEdit
+connection.onRenameRequest(function (params : RenameParams) : WorkspaceEdit | Thenable<WorkspaceEdit>
 {
 	if (!CanResolveModules())
 		return null;
-
-	let result = scriptreferences.PerformRename(params.textDocument.uri, params.position, params.newName);
-	if (!result)
+	if (LoadQueue.length != 0)
 		return null;
 
-	let workspaceEdit : WorkspaceEdit = {};
-	workspaceEdit.changes = {};
-	for (let [uri, edits] of result)
-		workspaceEdit.changes[uri] = edits;
+	let generator = scriptreferences.PerformRename(params.textDocument.uri, params.position, params.newName);
+	return new Promise((resolve, reject) => {
+		let timerHandle = setInterval(MakeProgress, 1);
+		function MakeProgress()
+		{
+			let result = generator.next();
+			if (result && result.value)
+			{
+				clearInterval(timerHandle);
 
-	return workspaceEdit;
+				let workspaceEdit : WorkspaceEdit = {};
+				workspaceEdit.changes = {};
+				for (let [uri, edits] of result.value)
+					workspaceEdit.changes[uri] = edits;
+				resolve(workspaceEdit);
+			}
+		}
+	});
 });
 
 connection.onDocumentHighlight(function (params : DocumentHighlightParams) : Array<DocumentHighlight>
 {
 	if (!CanResolveModules())
-		return null;
+		return null
 	return scriptoccurances.HighlightOccurances(params.textDocument.uri, params.position);
 })
 
