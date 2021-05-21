@@ -193,7 +193,28 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
         {
             for (let i = 0; i < delegateType.delegateArgs.length; ++i)
             {
-                if (!typedb.TypenameEquals(delegateType.delegateArgs[i].typename, foundFunc.args[i].typename))
+                let signatureArg = delegateType.delegateArgs[i].typename;
+                let boundArg = foundFunc.args[i].typename;
+
+                if (!typedb.TypenameEquals(signatureArg, boundArg))
+                {
+                    signatureMatches = false;
+                    break;
+                }
+
+                if (signatureArg.endsWith("&in") != boundArg.endsWith("&in"))
+                {
+                    signatureMatches = false;
+                    break;
+                }
+
+                if (signatureArg.endsWith("&") != boundArg.endsWith("&"))
+                {
+                    signatureMatches = false;
+                    break;
+
+                }
+                if (signatureArg.endsWith("&out") != boundArg.endsWith("&out"))
                 {
                     signatureMatches = false;
                     break;

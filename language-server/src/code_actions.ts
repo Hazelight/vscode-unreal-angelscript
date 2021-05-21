@@ -174,19 +174,41 @@ function ResolveGenerateDelegateFunctionAction(asmodule : scriptfiles.ASModule, 
     snippet += data.name;
     snippet += "(";
 
+    let preambleLength = data.name.length + delegateType.delegateReturn.length + 10;
+    let lineLength = preambleLength + indent.length;
     if (delegateType.delegateArgs)
     {
         for (let i = 0; i < delegateType.delegateArgs.length; ++i)
         {
             let arg = delegateType.delegateArgs[i];
-            if (i != 0)
+            let argLength = arg.typename.length;
+            if (arg.name)
+                argLength += arg.name.length + 1;
+
+            if (lineLength + argLength > 100)
+            {
+                if (i != 0)
+                {
+                    snippet += ",";
+                    lineLength += 1;
+                }
+                snippet += "\n"+indent+" ".repeat(preambleLength);
+                lineLength = indent.length + preambleLength;
+            }
+            else if (i != 0)
+            {
                 snippet += ", ";
+                lineLength += 2;
+            }
+
             snippet += arg.typename;
             if (arg.name)
             {
                 snippet += " ";
                 snippet += arg.name;
             }
+
+            lineLength += argLength;
         }
     }
 

@@ -2290,7 +2290,7 @@ function ResolveIteratorType(dbtype : typedb.DBType) : typedb.DBType
         return null;
 
     // Check if we have an iterator method
-    let iterator_sym = dbtype.findFirstSymbol("Iterator");
+    let iterator_sym = dbtype.findFirstSymbol("Iterator", typedb.DBAllowSymbol.FunctionOnly);
     if (iterator_sym && iterator_sym instanceof typedb.DBMethod)
     {
         // Check the return type of the method
@@ -2299,7 +2299,7 @@ function ResolveIteratorType(dbtype : typedb.DBType) : typedb.DBType
             return dbtype;
 
         // Check the Proceed method of the iterator and take its return value as the type
-        let proceed_sym = return_type.findFirstSymbol("Proceed");
+        let proceed_sym = return_type.findFirstSymbol("Proceed", typedb.DBAllowSymbol.FunctionOnly);
         if (proceed_sym && proceed_sym instanceof typedb.DBMethod)
         {
             let proceed_return = typedb.GetType(proceed_sym.returnType);
@@ -2317,7 +2317,7 @@ function ResolvePropertyType(dbtype : typedb.DBType, name : string) : typedb.DBT
         return null;
 
     // Find property with this name
-    let usedSymbol = dbtype.findFirstSymbol(name, typedb.DBAllowSymbol.FunctionOnly);
+    let usedSymbol = dbtype.findFirstSymbol(name, typedb.DBAllowSymbol.PropertyOnly);
     if (usedSymbol && usedSymbol instanceof typedb.DBProperty)
         return typedb.GetType(usedSymbol.typename);
 
