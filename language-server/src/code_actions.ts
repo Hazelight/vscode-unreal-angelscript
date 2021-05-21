@@ -1,4 +1,4 @@
-import { CodeAction, CodeActionKind, Command, Diagnostic, Position, Range, WorkspaceEdit, TextEdit } from "vscode-languageserver-types";
+import { CodeAction, CodeActionKind, Command, Diagnostic, Position, Range, WorkspaceEdit, TextEdit, SymbolTag } from "vscode-languageserver-types";
 import * as typedb from "./database";
 import * as scriptfiles from "./as_parser";
 import * as scriptsymbols from "./symbols";
@@ -54,9 +54,13 @@ function AddImportActions(asmodule : scriptfiles.ASModule, range_start : number,
             }
         }
 
+        let symbolDisplayName = symbol.symbol_name;
+        if (symbolDisplayName.startsWith("__"))
+            symbolDisplayName = symbolDisplayName.substr(2);
+
         actions.push(<CodeAction> {
             kind: CodeActionKind.QuickFix,
-            title: "Import "+symbol.symbol_name,
+            title: "Import "+symbolDisplayName,
             source: "angelscript",
             diagnostics: appliedTo,
             isPreferred: true,

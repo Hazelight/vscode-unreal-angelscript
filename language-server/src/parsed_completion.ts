@@ -295,7 +295,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
     if (!context.isRightExpression && !context.isSubExpression)
     {
         AddCompletionsFromKeywordList(context, [
-            "const",
+            "const", "case", "default",
         ], completions);
     }
 
@@ -303,10 +303,27 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         && (!context.isSubExpression && !context.isRightExpression))
     {
         AddCompletionsFromKeywordList(context, [
-            "UCLASS",
             "delegate", "event", "class", "struct",
             "property"
         ], completions);
+
+        if (CanCompleteTo(context.completingSymbol, "UCLASS"))
+        {
+            completions.push({
+                    label: "UCLASS",
+                    kind: CompletionItemKind.Keyword,
+                    commitCharacters: ["("],
+            });
+        }
+
+        if (CanCompleteTo(context.completingSymbol, "USTRUCT"))
+        {
+            completions.push({
+                    label: "USTRUCT",
+                    kind: CompletionItemKind.Keyword,
+                    commitCharacters: ["("],
+            });
+        }
     }
 
     if (context.scope && inFunctionBody)
@@ -339,8 +356,17 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         if (!context.isRightExpression && !context.isSubExpression)
         {
             AddCompletionsFromKeywordList(context, [
-                "UPROPERTY", "override", "final", "property", "private", "protected",
+                "override", "final", "property", "private", "protected",
             ], completions);
+
+            if (CanCompleteTo(context.completingSymbol, "UPROPERTY"))
+            {
+                completions.push({
+                        label: "UPROPERTY",
+                        kind: CompletionItemKind.Keyword,
+                        commitCharacters: ["("],
+                });
+            }
         }
 
         if (context.isSubExpression && /^\s*UPROPERTY\s*$/.test(context.subOuterStatement.content))
@@ -355,9 +381,14 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         {
             if (!context.isRightExpression && !context.isSubExpression)
             {
-                AddCompletionsFromKeywordList(context, [
-                    "default", "UFUNCTION",
-                ], completions)
+                if (CanCompleteTo(context.completingSymbol, "UFUNCTION"))
+                {
+                    completions.push({
+                            label: "UFUNCTION",
+                            kind: CompletionItemKind.Keyword,
+                            commitCharacters: ["("],
+                    });
+                }
             }
 
             if (context.isSubExpression && /^\s*UFUNCTION\s*$/.test(context.subOuterStatement.content))
@@ -373,8 +404,17 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         if (!context.isRightExpression && !context.isSubExpression)
         {
             AddCompletionsFromKeywordList(context, [
-                "mixin", "UFUNCTION",
+                "mixin",
             ], completions)
+
+            if (CanCompleteTo(context.completingSymbol, "UFUNCTION"))
+            {
+                completions.push({
+                        label: "UFUNCTION",
+                        kind: CompletionItemKind.Keyword,
+                        commitCharacters: ["("],
+                });
+            }
         }
 
         if (context.isSubExpression && /^\s*UFUNCTION\s*$/.test(context.subOuterStatement.content))
@@ -966,10 +1006,15 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         case scriptfiles.node_types.ElseStatement:
             return ExtractPriorExpressionAndSymbol(context, node.children[0]);
         case scriptfiles.node_types.ReturnStatement:
-        case scriptfiles.node_types.CaseStatement:
         case scriptfiles.node_types.DefaultCaseStatement:
             context.isRightExpression = true;
             return ExtractPriorExpressionAndSymbol(context, node.children[0]);
+        case scriptfiles.node_types.CaseStatement:
+            context.isRightExpression = true;
+            if (node.children[1])
+                return ExtractPriorExpressionAndSymbol(context, node.children[1]);
+            else
+                return ExtractPriorExpressionAndSymbol(context, node.children[0]);
         break;
         case scriptfiles.node_types.VariableDecl:
         {

@@ -363,10 +363,32 @@ export class ASScope extends ASElement
 
     getParentType() : typedb.DBType
     {
-        let typeScope = this.getParentTypeScope();
-        if (!typeScope)
+        if (this.dbtype && this.scopetype != ASScopeType.Namespace && this.scopetype != ASScopeType.Global)
+            return this.dbtype;
+
+        if (this.parentscope)
+        {
+            if (this.parentscope.dbtype && this.parentscope.scopetype != ASScopeType.Namespace && this.parentscope.scopetype != ASScopeType.Global)
+                return this.parentscope.dbtype;
+
+            let checkscope : ASScope = this.parentscope.parentscope;;
+            while (checkscope != null)
+            {
+                if (checkscope.scopetype == ASScopeType.Namespace)
+                    break;
+                if (checkscope.scopetype == ASScopeType.Global)
+                    break;
+                if (checkscope.dbtype)
+                    return checkscope.dbtype;
+                checkscope = checkscope.parentscope;
+            }
             return null;
-        return typeScope.getDatabaseType();
+        }
+        else
+        {
+            return null;
+        }
+        
     }
 
     getGlobalOrNamespaceParentType() : typedb.DBType
@@ -1526,10 +1548,11 @@ function GenerateTypeInformation(scope : ASScope)
                         dbfunc.isProperty = true;
                     else if (qual == "const")
                         dbfunc.isConst = true;
-                    else if (qual == "mixin")
-                        dbfunc.isMixin = true;
                 }
             }
+
+            if (funcdef.mixin)
+                dbfunc.isMixin = true;
 
             scope.dbfunc = dbfunc;
             if (scope.parentscope && scope.parentscope.dbtype)
@@ -2476,20 +2499,39 @@ export function ResolveFunctionFromExpression(scope : ASScope, node : any) : typ
         {
             if (!node.children[0] || !node.children[1] || !node.children[0].value)
                 return null;
-            if (node.children[0].value == "Super" && scope.getParentType())
+            let insideType = scope.getParentType();
+            if (insideType)
             {
-                let superType = typedb.GetType(scope.getParentType().supertype);
-                if (!superType)
-                    return null;
-                return ResolveFunctionFromType(scope, superType, node.children[1].value);
+                // Access the super type
+                if (node.children[0].value == "Super")
+                {
+                    let superType = typedb.GetType(scope.getParentType().supertype);
+                    if (superType)
+                        return ResolveFunctionFromType(scope, superType, node.children[1].value);
+                    else
+                        return null;
+                }
+
+                // If we inherit from this class, we could be accessing a function in a super scope
+                let nsClass = typedb.GetType(node.children[0].value);
+                if (nsClass && insideType.inheritsFrom(nsClass.typename))
+                {
+                    let superSymbol = ResolveFunctionFromType(scope, nsClass, node.children[1].value);
+                    if(superSymbol)
+                        return superSymbol;
+                }
             }
-            else
+
+            // Access a function in the namespace
+            let nsType = typedb.GetType("__"+node.children[0].value);
+            if (nsType)
             {
-                let nsType = typedb.GetType("__"+node.children[0].value);
-                if (!nsType)
-                    return null;
-                return ResolveFunctionFromType(scope, nsType, node.children[1].value);
+                let namespaceSymbol = ResolveFunctionFromType(scope, nsType, node.children[1].value);
+                if(namespaceSymbol)
+                    return namespaceSymbol;
             }
+
+            return null;
         }
         break;
     }
@@ -2608,6 +2650,35 @@ export function ResolveFunctionOverloadsFromExpression(scope : ASScope, node : a
                     return;
                 ResolveFunctionOverloadsFromType(scope, nsType, node.children[1].value, false, functions);
             }
+        }
+        break;
+        case node_types.NamespaceAccess:
+        {
+            if (!node.children[0] || !node.children[1] || !node.children[0].value)
+                return;
+
+            let insideType = scope.getParentType();
+            if (insideType)
+            {
+                // Access the super type
+                if (node.children[0].value == "Super")
+                {
+                    let superType = typedb.GetType(scope.getParentType().supertype);
+                    if (superType)
+                        ResolveFunctionOverloadsFromType(scope, superType, node.children[1].value, false, functions);
+                    return;
+                }
+
+                // If we inherit from this class, we could be accessing a function in a super scope
+                let nsClass = typedb.GetType(node.children[0].value);
+                if (nsClass && insideType.inheritsFrom(nsClass.typename))
+                    ResolveFunctionOverloadsFromType(scope, nsClass, node.children[1].value, false, functions);
+            }
+
+            // Access a function in the namespace
+            let nsType = typedb.GetType("__"+node.children[0].value);
+            if (nsType)
+                ResolveFunctionOverloadsFromType(scope, nsType, node.children[1].value, false, functions);
         }
         break;
     }
@@ -2772,13 +2843,33 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (!node.children[0] || !node.children[0].value)
                 return null;
 
-            let nsType = null;
-            if (node.children[0].value == "Super" && scope.getParentType())
-                nsType = typedb.GetType(scope.getParentType().supertype);
-            else
-                nsType = typedb.GetType("__"+node.children[0].value);
+            let insideType = scope.getParentType();
+            let nsType : typedb.DBType = null;
+            let parentType : typedb.DBType = null;
+            if (insideType)
+            {
+                if (node.children[0].value == "Super")
+                {
+                    nsType = typedb.GetType(scope.getParentType().supertype);
+                }
+                else
+                {
+                    nsType = typedb.GetType("__"+node.children[0].value);
 
-            if (!nsType)
+                    // We might be calling a function on one of our super classes
+                    if (typedb.AllowsFunctions(symbol_type))
+                    {
+                        if (insideType.inheritsFrom(node.children[0].value))
+                            parentType = typedb.GetType(node.children[0].value);
+                    }
+                }
+            }
+            else
+            {
+                nsType = typedb.GetType("__"+node.children[0].value);
+            }
+
+            if (!nsType && !parentType)
             {
                 if (parseContext.allow_errors)
                 {
@@ -2794,6 +2885,19 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
 
             if (node.children[1])
             {
+                if (parentType)
+                {
+                    // Check if we're calling a function in the super type
+                    let prevErrors = parseContext.allow_errors;
+                    parseContext.isWriteAccess = outerWriteAccess;
+                    parseContext.allow_errors = false;
+                    let parentSymbol = DetectSymbolsInType(scope, statement, parentType, node.children[1], parseContext, symbol_type);
+                    parseContext.allow_errors = prevErrors;
+
+                    if (parentSymbol)
+                        return parentSymbol;
+                }
+
                 parseContext.isWriteAccess = outerWriteAccess;
                 return DetectSymbolsInType(scope, statement, nsType, node.children[1], parseContext, symbol_type);
             }

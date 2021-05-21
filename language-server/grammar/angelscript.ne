@@ -271,6 +271,27 @@ statement -> %case_token _ case_label _ %colon optional_statement {%
     function (d) { return Compound(d, n.CaseStatement, [d[2], d[5]]); }
 %}
 
+statement -> %case_token _ %identifier {%
+    function (d) { return Compound(d, n.CaseStatement, [Identifier(d[2]), null]); }
+%}
+
+statement -> %case_token _ %identifier _ %colon {%
+    function (d) { return Compound(d, n.CaseStatement, [{
+        ...Compound(d, n.NamespaceAccess, [d[2], null]),
+        incomplete_colon: true,
+    }, null]); }
+%}
+
+statement -> %case_token _ %identifier _ %ns {%
+    function (d) { return Compound(d, n.CaseStatement, [{
+        ...Compound(d, n.NamespaceAccess, [d[2], null]),
+    }, null]); }
+%}
+
+statement -> %case_token _ case_label {%
+    function (d) { return Compound(d, n.CaseStatement, [d[2], null]); }
+%}
+
 statement -> %default_token %colon optional_statement {%
     function (d) { return Compound(d, n.DefaultCaseStatement, [d[2]]); }
 %}
@@ -335,11 +356,12 @@ global_statement -> %import_token _ function_signature _ "from" _ (%dqstring | %
     }
 %}
 
-global_declaration -> ufunction_macro:? function_signature {%
+global_declaration -> ufunction_macro:? (%mixin_token _):? function_signature {%
     function (d) {
         return ExtendedCompound(d, {
-            ...d[1],
+            ...d[2],
             macro: d[0],
+            mixin: !!d[1],
         });
     }
 %}
@@ -1051,7 +1073,7 @@ func_qualifiers -> _ (func_qualifier __ ):* func_qualifier {%
     }
 %}
 
-func_qualifier -> (%const_token | %final_token | %override_token | %property_token | %mixin_token) {% 
+func_qualifier -> (%const_token | %final_token | %override_token | %property_token) {% 
     function (d) { return d[0][0]; }
 %}
 
