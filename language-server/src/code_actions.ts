@@ -321,7 +321,13 @@ function FindInsertPositionForGeneratedMethod(asmodule : scriptfiles.ASModule, a
         }
 
         let scopeStartPos = asmodule.getPosition(startOffset);
-        if (scopeStartPos.line >= afterPosition.line)
+        let checkStartPos = scopeStartPos;
+        if (subscope.element_head instanceof scriptfiles.ASStatement)
+            checkStartPos = asmodule.getPosition(subscope.element_head.start_offset);
+        else if (!subscope.element_head)
+            checkStartPos = asmodule.getPosition(subscope.end_offset);
+
+        if (checkStartPos.line >= afterPosition.line)
         {
             prefix += "\n";
             return [Position.create(scopeStartPos.line-1, 10000), indent, prefix, suffix];
@@ -329,6 +335,8 @@ function FindInsertPositionForGeneratedMethod(asmodule : scriptfiles.ASModule, a
     }
 
     let endOfClass = asmodule.getPosition(classScope.end_offset);
+    if (!asmodule.isLineEmpty(endOfClass.line-1))
+        prefix += "\n";
     return [endOfClass, indent, prefix, suffix];
 }
 
