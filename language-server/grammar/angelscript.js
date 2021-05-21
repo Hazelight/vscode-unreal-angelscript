@@ -883,7 +883,8 @@ var grammar = {
     {"name": "argumentlist$ebnf$1", "symbols": []},
     {"name": "argumentlist$ebnf$1$subexpression$1", "symbols": ["argument", "_", {"literal":","}, "_"]},
     {"name": "argumentlist$ebnf$1", "symbols": ["argumentlist$ebnf$1", "argumentlist$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "argumentlist$ebnf$2", "symbols": [(lexer.has("comma") ? {type: "comma"} : comma)], "postprocess": id},
+    {"name": "argumentlist$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
+    {"name": "argumentlist$ebnf$2", "symbols": ["argumentlist$ebnf$2$subexpression$1"], "postprocess": id},
     {"name": "argumentlist$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "argumentlist", "symbols": ["argumentlist$ebnf$1", "argument", "argumentlist$ebnf$2"], "postprocess": 
         function(d) { 

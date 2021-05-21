@@ -243,6 +243,7 @@ connection.onInitialize((_params): InitializeResult => {
 			},
 			signatureHelpProvider: {
 				triggerCharacters: ["(", ")", ","],
+				retriggerCharacters: ["="],
 			},
 			hoverProvider: true,
 			documentSymbolProvider: true,

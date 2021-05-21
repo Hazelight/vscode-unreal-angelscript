@@ -16,6 +16,7 @@ class CompletionContext
 {
     scope : scriptfiles.ASScope = null;
     statement : scriptfiles.ASStatement = null;
+    baseStatement : scriptfiles.ASStatement = null;
 
     completingSymbol : string = null;
     completingNode : any = null;
@@ -34,6 +35,7 @@ class CompletionContext
     subOuterStatement : scriptfiles.ASStatement = null;
     subOuterFunctions : Array<typedb.DBMethod> = null;
     subOuterArgumentIndex : number = -1;
+    fullOuterStatement : scriptfiles.ASStatement = null;
 }
 
 class CompletionExpressionCandidate
@@ -42,6 +44,13 @@ class CompletionExpressionCandidate
     end : number = -1;
     code : string = null;
     isRightExpression : boolean = false;
+};
+
+class CompletionArguments
+{
+    isAfterNamedArgument : boolean = false;
+    currentArgumentName : string = null;
+    usedArgumentNames : Array<string> = [];
 };
 
 export function Complete(asmodule : scriptfiles.ASModule, position : Position) : Array<CompletionItem>
@@ -133,6 +142,75 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
     return completions;
 }
 
+function GenerateCompletionArguments(context : CompletionContext) : CompletionArguments
+{
+    let args = new CompletionArguments();
+    if (context.fullOuterStatement && context.fullOuterStatement.ast)
+    {
+        if (context.fullOuterStatement.ast.type == scriptfiles.node_types.FunctionCall
+            || context.fullOuterStatement.ast.type == scriptfiles.node_types.ConstructorCall)
+        {
+            let arglist = context.fullOuterStatement.ast.children[1];
+            if (arglist && arglist.children)
+            {
+                for (let i = 0; i < arglist.children.length; ++i)
+                {
+                    let argnode = arglist.children[i];
+                    if (argnode && argnode.type == scriptfiles.node_types.NamedArgument)
+                    {
+                        if (argnode.children[0])
+                            args.usedArgumentNames.push(argnode.children[0].value);
+                        if (i <= context.subOuterArgumentIndex)
+                            args.isAfterNamedArgument = true;
+                        if (i == context.subOuterArgumentIndex && argnode.children[0])
+                            args.currentArgumentName = argnode.children[0].value;
+                    }
+                }
+            }
+        }
+    }
+    return args;
+}
+
+function ScoreMethodForArguments(context : CompletionContext, argContext : CompletionArguments, func : typedb.DBMethod) : [number, number]
+{
+    let score = 0;
+
+    // Check if we've passed too many arguments
+    if (context.subOuterArgumentIndex > func.args.length)
+        score -= 50;
+
+    // Check if all named arguments we're using are matched
+    let activeArg = -1;
+    for (let usedName of argContext.usedArgumentNames)
+    {
+        let foundArg = -1;
+        for (let argIndex = 0; argIndex < func.args.length; ++argIndex)
+        {
+            if (func.args[argIndex].name == usedName)
+            {
+                foundArg = argIndex;
+                break;
+            }
+        }
+
+        if (foundArg == -1)
+        {
+            if (argContext.currentArgumentName && usedName == argContext.currentArgumentName)
+                score -= 100;
+            else
+                score -= 10;
+        }
+        else
+        {
+            if (argContext.currentArgumentName && usedName == argContext.currentArgumentName)
+                activeArg = foundArg;
+        }
+    }
+
+    return [score, activeArg];
+}
+
 export function Signature(asmodule : scriptfiles.ASModule, position : Position) : SignatureHelp
 {
     if (!asmodule)
@@ -148,14 +226,36 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
     if (context.subOuterFunctions.length == 0)
         return null;
 
+    let argContext = GenerateCompletionArguments(context);
+
     let sigHelp = <SignatureHelp> {
         signatures : new Array<SignatureInformation>(),
         activeSignature : 0,
-        activeParameter : context.subOuterArgumentIndex,
+        activeParameter : 0,
     };
 
-    for (let func of context.subOuterFunctions)
+    let bestFunction = -1;
+    let bestFunctionScore = 0;
+    let bestFunctionActiveArg = -1;
+    for (let i = 0; i < context.subOuterFunctions.length; ++i)
     {
+        let func = context.subOuterFunctions[i];
+
+        // Keep track of the best function
+        let [score, activeArg] = ScoreMethodForArguments(context, argContext, func);
+        if (score > bestFunctionScore || bestFunction == -1)
+        {
+            bestFunctionScore = score;
+            bestFunction = i;
+
+            if (argContext.currentArgumentName && activeArg != -1)
+                bestFunctionActiveArg = activeArg;
+            else if (argContext.isAfterNamedArgument)
+                bestFunctionActiveArg = -1;
+            else
+                bestFunctionActiveArg = context.subOuterArgumentIndex;
+        }
+        
         let skipFirstArg = false;
         if (func.containingType && func.containingType.isNamespaceOrGlobalScope() && func.isMixin)
             skipFirstArg = true;
@@ -184,6 +284,11 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
         sigHelp.signatures.push(sig);
     }
 
+    if (bestFunction != -1)
+    {
+        sigHelp.activeSignature = bestFunction;
+        sigHelp.activeParameter = bestFunctionActiveArg;
+    }
     return sigHelp.signatures.length == 0 ? null : sigHelp;
 }
 
@@ -192,14 +297,18 @@ function AddCompletionsFromCallSignature(context : CompletionContext, completion
     if (context.subOuterFunctions.length == 0)
         return;
 
-    // Check if we're inside a function call and complete argument names
-    let activeMethod = context.subOuterFunctions[0];
-    for (let method of context.subOuterFunctions)
+    let argContext = GenerateCompletionArguments(context);
+
+    // Find the best function to complete with
+    let activeMethod : typedb.DBMethod = null;
+    let bestScore = 0;
+    for (let func of context.subOuterFunctions)
     {
-        if (method.args.length > context.subOuterArgumentIndex)
+        let [score, activeArg] = ScoreMethodForArguments(context, argContext, func);
+        if (score > bestScore || !activeMethod)
         {
-            activeMethod = method;
-            break;
+            activeMethod = func;
+            bestScore = score;
         }
     }
 
@@ -246,6 +355,10 @@ function AddCompletionsFromCallSignature(context : CompletionContext, completion
         {
             for (let arg of activeMethod.args)
             {
+                // Skip named arguments we've already seen
+                if (argContext.usedArgumentNames.indexOf(arg.name) != -1)
+                    continue;
+
                 let complStr = arg.name+" = ";
                 if (CanCompleteTo(context.completingSymbol, complStr))
                 {
@@ -792,17 +905,17 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
     let context = new CompletionContext();
 
     let contentOffset = 0;
-    let baseStatement = asmodule.getStatementAt(offset);
+    context.baseStatement = asmodule.getStatementAt(offset);
     let content : string = null;
 
-    if (baseStatement)
+    if (context.baseStatement)
     {
-        content = baseStatement.content;
-        contentOffset = baseStatement.start_offset;
+        content = context.baseStatement.content;
+        contentOffset = context.baseStatement.start_offset;
 
-        if (baseStatement.ast)
+        if (context.baseStatement.ast)
         {
-            switch (baseStatement.ast.type)
+            switch (context.baseStatement.ast.type)
             {
                 case scriptfiles.node_types.FunctionDecl:
                 case scriptfiles.node_types.EventDecl:
@@ -867,6 +980,8 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
     {
         let candidate = candidates[i];
         context.statement.content = candidate.code;
+        context.statement.end_offset = offset + 1;
+        context.statement.start_offset = offset + 1 - candidate.code.length;
         context.isRightExpression = candidate.isRightExpression;
         context.statement.ast = null;
 
@@ -886,7 +1001,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
     }
 
     // Also find the function call we are a subexpression of
-    let [subExprOffset, argumentIndex] = ScanOffsetOutsideSubExpression(content, offset-contentOffset, ignoreTable);
+    let [subExprOffset, argumentIndex] = ScanOffsetStartOfOuterExpression(content, offset-contentOffset, ignoreTable);
     if (subExprOffset != -1)
     {
         context.isSubExpression = true;
@@ -899,6 +1014,8 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             let candidate = subCandidates[i];
             context.subOuterStatement.content = candidate.code;
             context.subOuterStatement.ast = null;
+            context.subOuterStatement.end_offset = subExprOffset + 1 + contentOffset;
+            context.subOuterStatement.start_offset = context.subOuterStatement.end_offset - candidate.code.length;
 
             // Try to parse as a proper statement in the scope
             scriptfiles.ParseStatement(context.scope.scopetype, context.subOuterStatement);
@@ -917,6 +1034,32 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             {
                 break;
             }
+        }
+    }
+
+    // Try to parse the entire function statement we've found
+    if (context.subOuterStatement && context.subOuterStatement.ast)
+    {
+        let subEndOffset = ScanOffsetEndOfOuterExpression(content, offset-contentOffset, ignoreTable);
+        if (subEndOffset != -1)
+        {
+            let entireExpression = content.substring(
+                context.subOuterStatement.start_offset - contentOffset,
+                subEndOffset+1
+            );
+
+            context.fullOuterStatement = new scriptfiles.ASStatement();
+            context.fullOuterStatement.content = entireExpression
+            context.fullOuterStatement.ast = null;
+            context.fullOuterStatement.end_offset = context.subOuterStatement.start_offset;
+            context.fullOuterStatement.start_offset = subEndOffset + 1 + contentOffset;
+
+            // Try to parse as a proper statement in the scope
+            scriptfiles.ParseStatement(context.scope.scopetype, context.fullOuterStatement);
+
+            // Try to parse as an expression snippet instead
+            if (!context.fullOuterStatement.ast)
+                scriptfiles.ParseStatement(scriptfiles.ASScopeType.Code, context.fullOuterStatement);
         }
     }
 
@@ -1310,7 +1453,7 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
     return candidates;
 }
 
-function ScanOffsetOutsideSubExpression(content : string, offset : number, ignoreTable : Array<number>) : [number, number]
+function ScanOffsetStartOfOuterExpression(content : string, offset : number, ignoreTable : Array<number>) : [number, number]
 {
     let depth_paren = 0;
     let depth_sqbracket = 0;
@@ -1430,6 +1573,121 @@ function ScanOffsetOutsideSubExpression(content : string, offset : number, ignor
     }
 
     return [-1, 0];
+}
+
+function ScanOffsetEndOfOuterExpression(content : string, offset : number, ignoreTable : Array<number>) : number
+{
+    let depth_paren = 0;
+    let depth_sqbracket = 0;
+    let depth_anglebracket = 0;
+    let sq_string = false;
+    let dq_string = false;
+    let argumentIndex = 0;
+
+    let ignoreTableIndex = 0;
+    for (let curOffset = offset; curOffset < content.length; ++curOffset)
+    {
+        let char = content[curOffset];
+
+        // Ignore characters that are in the ignore table completely
+        while (ignoreTableIndex < ignoreTable.length && curOffset > ignoreTable[ignoreTableIndex+1])
+            ignoreTableIndex += 2;
+        if (ignoreTableIndex < ignoreTable.length)
+        {
+            let ignoreStart = ignoreTable[ignoreTableIndex];
+            let ignoreEnd = ignoreTable[ignoreTableIndex+1];
+            if (curOffset >= ignoreStart && curOffset < ignoreEnd)
+                continue;
+        }
+
+        switch (char)
+        {
+            case ';':
+            {
+                if (!sq_string && !dq_string)
+                {
+                    return -1;
+                }
+            }
+            break;
+            case ')':
+            {
+                if (depth_sqbracket == 0)
+                {
+                    if (depth_paren == 0)
+                    {
+                        return curOffset;
+                    }
+                    else
+                    {
+                        depth_paren -= 1;
+                    }
+                }
+            }
+            break;
+            case '(':
+            {
+                if (depth_sqbracket == 0)
+                {
+                    depth_paren += 1;
+                }
+            }
+            break;
+            case ']':
+            {
+                if (depth_paren == 0)
+                {
+                    if (depth_sqbracket == 0)
+                    {
+                        return -1;
+                    }
+                    else
+                    {
+                        depth_sqbracket -= 1;
+                    }
+                }
+            }
+            break;
+            case '[':
+            {
+                if (depth_paren == 0)
+                {
+                    depth_sqbracket += 1;
+                }
+            }
+            break;
+            case '>':
+            {
+                if (depth_paren == 0 && depth_sqbracket == 0)
+                {
+                    if (depth_anglebracket != 0)
+                    {
+                        depth_anglebracket -= 1;
+                    }
+                }
+            }
+            break;
+            case '<':
+            {
+                if (depth_paren == 0 && depth_sqbracket == 0)
+                {
+                    depth_anglebracket += 1;
+                }
+            }
+            break;
+            case '{':
+            case '}':
+            {
+                if (depth_paren == 0 && depth_sqbracket == 0 && depth_anglebracket == 0)
+                {
+                    return -1;
+                }
+            }
+            break;
+        }
+    }
+
+    return -1;
 }
 
 function isEditScope(inScope : scriptfiles.ASScope) : boolean

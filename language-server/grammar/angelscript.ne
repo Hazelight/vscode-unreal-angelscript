@@ -863,7 +863,7 @@ argumentlist -> null {%
 argumentlist -> %comma {%
     function(d) { return null; }
 %}
-argumentlist -> (argument _ "," _ ):* argument %comma:? {%
+argumentlist -> (argument _ "," _ ):* argument (_ %comma):? {%
     function(d) { 
         let args = [];
         if (d[0])

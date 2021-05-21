@@ -2812,7 +2812,9 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         return;
 
     let outerWriteAccess = parseContext.isWriteAccess;
+    let outerArgumentFunction = parseContext.argumentFunction;
     parseContext.isWriteAccess = false;
+    parseContext.argumentFunction = null;
 
     // Add symbols for parameters in function declarations
     switch (node.type)
@@ -2830,6 +2832,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.Identifier:
         {
             parseContext.isWriteAccess = outerWriteAccess;
+            parseContext.argumentFunction = outerArgumentFunction;
             return DetectIdentifierSymbols(scope, statement, node, parseContext, symbol_type);
         }
         break;
@@ -2974,7 +2977,6 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             }
 
             // Detect symbols in the argument expressions
-            let prevMethod = parseContext.argumentFunction;
             if (left_symbol && left_symbol instanceof typedb.DBMethod)
                 parseContext.argumentFunction = left_symbol;
             else
@@ -2996,8 +2998,6 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             }
 
             DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
-
-            parseContext.argumentFunction = prevMethod;
 
             // Pass through the return type to be used for the next level
             return left_type;
@@ -3023,7 +3023,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (node.children)
             {
                 for (let child of node.children)
+                {
+                    parseContext.argumentFunction = outerArgumentFunction;
                     DetectNodeSymbols(scope, statement, child, parseContext);
+                }
             }
         }
         break;
@@ -3546,6 +3549,16 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                     return typedb.GetType(usedSymbol.args[0].typename);
                 }
             }
+        }
+    }
+
+    // If we're inside a function call's argument list, we could be typing one of the argument names
+    if (parseContext.argumentFunction && parseContext.argumentFunction.args)
+    {
+        for (let arg of parseContext.argumentFunction.args)
+        {
+            if (arg.name == node.value)
+                return null;
         }
     }
     
