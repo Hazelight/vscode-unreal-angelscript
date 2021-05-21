@@ -19,7 +19,6 @@ const { Subject } = require('await-notify');
 
 
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
-	stopOnEntry?: boolean;
 	trace?: boolean;
 	port?: number;
 }
@@ -178,9 +177,6 @@ export class ASDebugSession extends LoggingDebugSession
 
 		// wait until configuration has finished (and configurationDoneRequest has been called)
 		await this._configurationDone.wait(1000);
-
-		// start the program in the runtime
-		//this._runtime.start(args.program, !!args.stopOnEntry);
 
 		this.sendResponse(response);
 	}

@@ -72,11 +72,6 @@
                     "launch": {
                         "required": [],
                         "properties": {
-                            "stopOnEntry": {
-                                "type": "boolean",
-                                "description": "Automatically stop after launch.",
-                                "default": true
-                            },
                             "trace": {
                                 "type": "boolean",
                                 "description": "Enable logging of the Debug Adapter Protocol.",
@@ -94,8 +89,7 @@
                     {
                         "type": "angelscript",
                         "request": "launch",
-                        "name": "Debug Angelscript",
-                        "stopOnEntry": false
+                        "name": "Debug Angelscript"
                     }
                 ],
                 "configurationSnippets": [
@@ -105,8 +99,7 @@
                         "body": {
                             "type": "angelscript",
                             "request": "launch",
-                            "name": "Debug Angelscript",
-                            "stopOnEntry": false
+                            "name": "Debug Angelscript"
                         }
                     }
                 ]
