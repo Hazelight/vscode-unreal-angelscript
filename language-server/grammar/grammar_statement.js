@@ -385,15 +385,18 @@ var grammar = {
         },
     {"name": "global_declaration$ebnf$4", "symbols": ["uclass_macro"], "postprocess": id},
     {"name": "global_declaration$ebnf$4", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "global_declaration$ebnf$5$subexpression$1", "symbols": ["_", (lexer.has("colon") ? {type: "colon"} : colon), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)]},
+    {"name": "global_declaration$ebnf$5$subexpression$1", "symbols": ["_", (lexer.has("colon") ? {type: "colon"} : colon)]},
     {"name": "global_declaration$ebnf$5", "symbols": ["global_declaration$ebnf$5$subexpression$1"], "postprocess": id},
     {"name": "global_declaration$ebnf$5", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "global_declaration", "symbols": ["global_declaration$ebnf$4", (lexer.has("class_token") ? {type: "class_token"} : class_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "global_declaration$ebnf$5"], "postprocess": 
+    {"name": "global_declaration$ebnf$6$subexpression$1", "symbols": ["_", (lexer.has("identifier") ? {type: "identifier"} : identifier)]},
+    {"name": "global_declaration$ebnf$6", "symbols": ["global_declaration$ebnf$6$subexpression$1"], "postprocess": id},
+    {"name": "global_declaration$ebnf$6", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "global_declaration", "symbols": ["global_declaration$ebnf$4", (lexer.has("class_token") ? {type: "class_token"} : class_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "global_declaration$ebnf$5", "global_declaration$ebnf$6"], "postprocess": 
         function (d) { return {
             ...Compound(d, n.ClassDefinition, null),
             name: Identifier(d[3]),
             macro: d[0],
-            superclass: d[4] ? Identifier(d[4][3]) : null,
+            superclass: d[5] ? Identifier(d[5][1]) : null,
         }}
         },
     {"name": "global_declaration", "symbols": [(lexer.has("enum_token") ? {type: "enum_token"} : enum_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 

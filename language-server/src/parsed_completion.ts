@@ -1715,6 +1715,8 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
                 includeParamsOnly = true;
             if (method.returnType && CanCompleteTo(context.completingSymbol, method.returnType))
                 includeReturnType = true;
+            if (method.isPrivate)
+                continue;
 
             if (!includeParamsOnly && !includeReturnType)
                 continue;

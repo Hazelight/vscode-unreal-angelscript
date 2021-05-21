@@ -382,12 +382,12 @@ global_declaration -> ustruct_macro:? %struct_token _ %identifier {%
         macro: d[0],
     }}
 %}
-global_declaration -> uclass_macro:? %class_token _ %identifier ( _ %colon _ %identifier ):? {%
+global_declaration -> uclass_macro:? %class_token _ %identifier ( _ %colon):? (_ %identifier):? {%
     function (d) { return {
         ...Compound(d, n.ClassDefinition, null),
         name: Identifier(d[3]),
         macro: d[0],
-        superclass: d[4] ? Identifier(d[4][3]) : null,
+        superclass: d[5] ? Identifier(d[5][1]) : null,
     }}
 %}
 global_declaration -> %enum_token _ %identifier {%

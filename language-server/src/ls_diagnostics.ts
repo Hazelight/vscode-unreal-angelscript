@@ -247,6 +247,9 @@ function TrimDiagnosticPositions(asmodule : scriptfiles.ASModule, diagnostics : 
 
     for (let diag of diagnostics)
     {
+        let orig_start = diag.range.start;
+        let orig_end = diag.range.end;
+
         // Move the start
         {
             let offset = asmodule.getOffset(Position.create(diag.range.start.line, 0));
@@ -300,6 +303,16 @@ function TrimDiagnosticPositions(asmodule : scriptfiles.ASModule, diagnostics : 
                         diag.range.end = asmodule.getPosition(offset+1);
                     break;
                 }
+            }
+        }
+
+        // Don't make it too small
+        if (diag.range.start.line == diag.range.end.line)
+        {
+            if (diag.range.end.character - diag.range.start.character <= 3)
+            {
+                diag.range.start = orig_start;
+                diag.range.end = orig_end;
             }
         }
     }

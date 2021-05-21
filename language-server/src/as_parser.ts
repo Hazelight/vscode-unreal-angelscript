@@ -116,6 +116,22 @@ export class ASModule
         )
     }
 
+    getLineText(line : number) : string
+    {
+        return this.content.substring(
+            this.getOffset(Position.create(line, 0)),
+            this.getOffset(Position.create(line, 10000)),
+        );
+    }
+
+    isLineEmpty(line : number) : boolean
+    {
+        return /^\s*$/.test(this.content.substring(
+            this.getOffset(Position.create(line, 0)),
+            this.getOffset(Position.create(line, 10000)),
+        ));
+    }
+
     getLocationRange(start_offset : number, end_offset : number) : Location
     {
         return Location.create(

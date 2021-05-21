@@ -15,6 +15,12 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
     // Actions for generating delegate bind functions
     AddGenerateDelegateFunctionActions(asmodule, range_start, range_end, actions, diagnostics);
 
+    // Actions for method override snippets
+    AddMethodOverrideSnippets(asmodule, range_start, range_end, actions, diagnostics);
+
+    // Actionts for adding casts
+    AddCastHelpers(asmodule, range_start, range_end, actions, diagnostics);
+
     return actions;
 }
 
@@ -24,6 +30,10 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
         ResolveImportAction(asmodule, action, data);
     else if (data.type == "delegateBind")
         ResolveGenerateDelegateFunctionAction(asmodule, action, data);
+    else if (data.type == "methodOverride")
+        ResolveMethodOverrideSnippet(asmodule, action, data);
+    else if (data.type == "addCast")
+        ResolveCastHelper(asmodule, action, data);
     return action;
 }
 
@@ -166,25 +176,47 @@ function ResolveGenerateDelegateFunctionAction(asmodule : scriptfiles.ASModule, 
     if (!delegateType)
         return;
 
-    let [insertPosition, indent] = FindInsertPositionForGeneratedMethod(asmodule, data.position);
-    let snippet = "\n"+indent+"UFUNCTION()\n";
-    snippet += indent+"private ";
-    if (delegateType.delegateReturn)
-        snippet += delegateType.delegateReturn;
+    let [insertPosition, indent, prefix, suffix] = FindInsertPositionForGeneratedMethod(asmodule, data.position);
+    let snippet = prefix;
+    snippet += indent+"UFUNCTION()\n";
+    snippet += GenerateMethodHeaderString("private ", indent, data.name, delegateType.delegateReturn, delegateType.delegateArgs);
+    snippet += "\n";
+    snippet += indent+"{\n";
+    snippet += indent+"}\n";
+    snippet += suffix;
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(insertPosition, snippet)
+    ];
+}
+
+function GenerateMethodHeaderString(prefix : string, indent : string, name : string, returnType : string, args : Array<typedb.DBArg>) : string
+{
+    let snippet = indent+prefix;
+    let preambleLength = name.length + 2 + prefix.length;
+    if (returnType)
+    {
+        snippet += returnType;
+        preambleLength += returnType.length;
+    }
     else
+    {
         snippet += "void";
+        preambleLength += 4;
+    }
 
     snippet += " ";
-    snippet += data.name;
+    snippet += name;
     snippet += "(";
 
-    let preambleLength = data.name.length + delegateType.delegateReturn.length + 10;
     let lineLength = preambleLength + indent.length;
-    if (delegateType.delegateArgs)
+    if (args)
     {
-        for (let i = 0; i < delegateType.delegateArgs.length; ++i)
+        for (let i = 0; i < args.length; ++i)
         {
-            let arg = delegateType.delegateArgs[i];
+            let arg = args[i];
             let argLength = arg.typename.length;
             if (arg.name)
                 argLength += arg.name.length + 1;
@@ -216,24 +248,23 @@ function ResolveGenerateDelegateFunctionAction(asmodule : scriptfiles.ASModule, 
         }
     }
 
-    snippet += ")\n";
-    snippet += indent+"{\n";
-    snippet += indent+"}\n";
-
-    action.edit = <WorkspaceEdit> {};
-    action.edit.changes = {};
-    action.edit.changes[asmodule.displayUri] = [
-        TextEdit.insert(insertPosition, snippet)
-    ];
+    snippet += ")";
+    return snippet;
 }
 
-function FindInsertPositionForGeneratedMethod(asmodule : scriptfiles.ASModule, afterPosition : Position) : [Position, string]
+function FindInsertPositionForGeneratedMethod(asmodule : scriptfiles.ASModule, afterPosition : Position) : [Position, string, string, string]
 {
     let offset = asmodule.getOffset(afterPosition);
     let curScope = asmodule.getScopeAt(offset);
 
     let classScope = curScope.getParentTypeScope();
     let indent : string = null;
+    let prefix : string = "";
+    let suffix : string = "";
+
+    // Just insert right here
+    if (!classScope)
+        return [Position.create(afterPosition.line, 0), "\t", prefix, suffix];
 
     // Find the first line in the class that has content, and base indentation on that
     for (let statement of classScope.statements)
@@ -272,16 +303,242 @@ function FindInsertPositionForGeneratedMethod(asmodule : scriptfiles.ASModule, a
             break;
     }
     if (!indent)
-        indent = "";
+        indent = "\t";
 
     // Find the first scope in our parent that starts after the position, and insert before it
+    let classStartPos = asmodule.getPosition(classScope.start_offset);
+
     for (let subscope of classScope.scopes)
     {
-        let scopeEndPos = asmodule.getPosition(subscope.start_offset);
-        if (scopeEndPos.line >= afterPosition.line)
-            return [Position.create(scopeEndPos.line+1, 0), indent];
+        let startOffset = subscope.start_offset;
+        while (startOffset < subscope.end_offset)
+        {
+            let curchar = asmodule.content[startOffset];
+            if (curchar == ' ' || curchar == '\t' || curchar == '\r' || curchar == '\n')
+                ++startOffset;
+            else
+                break;
+        }
+
+        let scopeStartPos = asmodule.getPosition(startOffset);
+        if (scopeStartPos.line >= afterPosition.line)
+        {
+            prefix += "\n";
+            return [Position.create(scopeStartPos.line-1, 10000), indent, prefix, suffix];
+        }
     }
 
     let endOfClass = asmodule.getPosition(classScope.end_offset);
-    return [endOfClass, indent];
+    return [endOfClass, indent, prefix, suffix];
+}
+
+function AddMethodOverrideSnippets(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+{
+    let scope = asmodule.getScopeAt(range_start);
+    if (!scope)
+        return;
+
+    let typeOfScope = scope.getParentType();
+    if (!typeOfScope || !typeOfScope.supertype)
+        return;
+
+    let validScope = false;
+    if (scope.scopetype == scriptfiles.ASScopeType.Class)
+    {
+        validScope = true;
+    }
+    // If we're inside the actual function declaration that's fine too
+    else if (scope.scopetype == scriptfiles.ASScopeType.Function)
+    {
+        let statement = scope.parentscope.getStatementAt(range_start);
+        if (statement && statement.ast && statement.ast.type == scriptfiles.node_types.FunctionDecl)
+        {
+            validScope = true;
+        }
+    }
+    if (!validScope)
+        return;
+
+    let checktype = typedb.GetType(typeOfScope.supertype);
+    let foundOverrides = new Set<string>();
+    while (checktype)
+    {
+        for (let method of checktype.methods)
+        {
+            if (checktype.isUnrealType() && !method.isEvent)
+                continue;
+            if (foundOverrides.has(method.name))
+                continue;
+
+            // Ignore methods we've already overridden
+            let existingSymbol = typeOfScope.findFirstSymbol(method.name, typedb.DBAllowSymbol.FunctionOnly);
+            if (!existingSymbol || !existingSymbol.containingType)
+                continue;
+            if (existingSymbol.containingType == typeOfScope)
+                continue;
+
+            // Ignore private methods
+            if (method.isPrivate)
+                continue;
+
+            actions.push(<CodeAction> {
+                kind: CodeActionKind.RefactorRewrite,
+                title: "Override: "+method.name+"()",
+                source: "angelscript",
+                data: {
+                    uri: asmodule.uri,
+                    type: "methodOverride",
+                    inside: method.containingType.typename,
+                    name: method.name,
+                    position: asmodule.getPosition(range_start),
+                }
+            });
+
+            foundOverrides.add(method.name);
+        }
+
+        if (!checktype.supertype)
+            break;
+        checktype = typedb.GetType(checktype.supertype);
+    }
+}
+
+function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
+{
+    let insideType = typedb.GetType(data.inside);
+    if (!insideType)
+        return;
+
+    let method = insideType.getMethod(data.name);
+    if (!method)
+        return;
+
+    let [insertPosition, indent, prefix, suffix] = FindInsertPositionForGeneratedMethod(asmodule, data.position);
+    let snippet = "";
+    snippet += prefix;
+
+    if (method.isEvent)
+        snippet += indent+"UFUNCTION(BlueprintOverride)\n";
+
+    snippet += GenerateMethodHeaderString("", indent, data.name, method.returnType, method.args);
+    if (method.isConst)
+        snippet += " const"
+    if (!method.isEvent)
+        snippet += " override";
+    if (!method.isEvent && method.isProperty && method.declaredModule)
+        snippet += " property";
+
+    snippet += "\n";
+    snippet += indent+"{\n";
+    snippet += indent+"}\n";
+    snippet += suffix;
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(insertPosition, snippet)
+    ];
+}
+
+function AddCastHelpers(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+{
+    let scope = asmodule.getScopeAt(range_start);
+    if (!scope)
+        return;
+    let statement = asmodule.getStatementAt(range_start);
+    if (!statement)
+        return;
+    if (!statement.ast)
+        return;
+
+
+    let leftType : typedb.DBType = null;
+    let rightType : typedb.DBType = null;
+
+    if (statement.ast.type == scriptfiles.node_types.Assignment)
+    {
+        let leftNode = statement.ast.children[0];
+        let rightNode = statement.ast.children[1];
+        if (!leftNode || !rightNode)
+            return;
+
+        leftType = scriptfiles.ResolveTypeFromExpression(scope, leftNode);
+        rightType = scriptfiles.ResolveTypeFromExpression(scope, rightNode);
+    }
+    else if (statement.ast.type == scriptfiles.node_types.VariableDecl)
+    {
+        if (statement.ast.typename)
+            leftType = typedb.GetType(statement.ast.typename.value);
+
+        if (statement.ast.expression)
+            rightType = scriptfiles.ResolveTypeFromExpression(scope, statement.ast.expression);
+    }
+
+    if (!leftType || !rightType)
+        return;
+
+    // Don't care about primitives
+    if (leftType.isPrimitive || rightType.isPrimitive)
+        return;
+
+    // Don't care about structs
+    if (leftType.isStruct || rightType.isStruct)
+        return;
+
+    // Maybe we can implicitly convert
+    if (rightType.inheritsFrom(leftType.typename))
+        return;
+    
+    // Cast needs to make sense
+    if (!leftType.inheritsFrom(rightType.typename))
+        return;
+
+    actions.push(<CodeAction> {
+        kind: CodeActionKind.QuickFix,
+        title: "Cast to "+leftType.typename,
+        source: "angelscript",
+        data: {
+            uri: asmodule.uri,
+            type: "addCast",
+            castTo: leftType.typename,
+            position: asmodule.getPosition(range_start),
+        }
+    });
+}
+
+function ResolveCastHelper(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
+{
+    let offset = asmodule.getOffset(data.position);
+    let scope = asmodule.getScopeAt(offset);
+    if (!scope)
+        return;
+    let statement = asmodule.getStatementAt(offset);
+    if (!statement)
+        return;
+    if (!statement.ast)
+        return;
+
+    let rightNode : any = null;
+    if (statement.ast.type == scriptfiles.node_types.Assignment)
+    {
+        rightNode = statement.ast.children[1];
+    }
+    else if (statement.ast.type == scriptfiles.node_types.VariableDecl)
+    {
+        rightNode = statement.ast.expression;
+    }
+
+    if (!rightNode)
+        return;
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(
+            asmodule.getPosition(statement.start_offset + rightNode.start),
+            "Cast<"+data.castTo+">("),
+        TextEdit.insert(
+            asmodule.getPosition(statement.start_offset + rightNode.end),
+            ")"),
+    ];
 }
