@@ -475,7 +475,7 @@ let ASKeywords = [
     "for", "if", "enum", "return", "continue", "break", "import", "class", "struct", "default",
     "void", "const", "delegate", "event", "else", "while", "case", "Cast", "namespace",
     "UFUNCTION", "UPROPERTY", "UCLASS", "USTRUCT", "nullptr", "true", "false", "this", "auto",
-    "final", "property", "override",
+    "final", "property", "override", "mixin",
 ];
 export let ModuleDatabase = new Map<string, ASModule>();
 let ModulesByUri = new Map<string, ASModule>();
@@ -1360,7 +1360,7 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
             MakeMacroSpecifiers(vardecl.macro, dbprop.macroSpecifiers, dbprop.macroMeta);
 
             // Check if we have keywords
-            let keywords = dbprop.macroMeta.get("keywords");
+            let keywords = dbprop.macroMeta.get("scriptkeywords");
             if (keywords)
                 dbprop.keywords = keywords.split(" ");
         }
@@ -1404,7 +1404,7 @@ function GenerateTypeInformation(scope : ASScope)
                 MakeMacroSpecifiers(classdef.macro, dbtype.macroSpecifiers, dbtype.macroMeta);
 
                 // Check if we have keywords
-                let keywords = dbtype.macroMeta.get("keywords");
+                let keywords = dbtype.macroMeta.get("scriptkeywords");
                 if (keywords)
                     dbtype.keywords = keywords.split(" ");
             }
@@ -1434,7 +1434,7 @@ function GenerateTypeInformation(scope : ASScope)
                 MakeMacroSpecifiers(structdef.macro, dbtype.macroSpecifiers, dbtype.macroMeta);
 
                 // Check if we have keywords
-                let keywords = dbtype.macroMeta.get("keywords");
+                let keywords = dbtype.macroMeta.get("scriptkeywords");
                 if (keywords)
                     dbtype.keywords = keywords.split(" ");
             }
@@ -1505,7 +1505,7 @@ function GenerateTypeInformation(scope : ASScope)
                     dbfunc.isEvent = true;
 
                 // Check if we have keywords
-                let keywords = dbfunc.macroMeta.get("keywords");
+                let keywords = dbfunc.macroMeta.get("scriptkeywords");
                 if (keywords)
                     dbfunc.keywords = keywords.split(" ");
             }
@@ -1526,6 +1526,8 @@ function GenerateTypeInformation(scope : ASScope)
                         dbfunc.isProperty = true;
                     else if (qual == "const")
                         dbfunc.isConst = true;
+                    else if (qual == "mixin")
+                        dbfunc.isMixin = true;
                 }
             }
 
@@ -2315,12 +2317,12 @@ function ResolvePropertyType(dbtype : typedb.DBType, name : string) : typedb.DBT
         return null;
 
     // Find property with this name
-    let usedSymbol = dbtype.findFirstSymbol(name);
+    let usedSymbol = dbtype.findFirstSymbol(name, typedb.DBAllowSymbol.FunctionOnly);
     if (usedSymbol && usedSymbol instanceof typedb.DBProperty)
         return typedb.GetType(usedSymbol.typename);
 
     // Find get accessor
-    let getAccessor = dbtype.findFirstSymbol("Get"+name);
+    let getAccessor = dbtype.findFirstSymbol("Get"+name, typedb.DBAllowSymbol.FunctionOnly);
     if (getAccessor && getAccessor instanceof typedb.DBMethod)
     {
         if (getAccessor.isProperty)
@@ -2328,7 +2330,7 @@ function ResolvePropertyType(dbtype : typedb.DBType, name : string) : typedb.DBT
     }
 
     // Find set accessor
-    let setAccessor = dbtype.findFirstSymbol("Set"+name);
+    let setAccessor = dbtype.findFirstSymbol("Set"+name, typedb.DBAllowSymbol.FunctionOnly);
     if (setAccessor && setAccessor instanceof typedb.DBMethod)
     {
         if (setAccessor.isProperty && setAccessor.args.length != 0)
@@ -2384,7 +2386,7 @@ function ResolveTypeFromIdentifier(scope : ASScope, identifier : string) : typed
     {
         for (let sym of getSymbols)
         {
-            if (sym instanceof typedb.DBMethod && sym.isProperty && sym.returnType)
+            if (sym instanceof typedb.DBMethod && sym.isProperty && sym.returnType && !sym.isMixin)
                 return typedb.GetType(sym.returnType);
         }
     }
@@ -2395,7 +2397,7 @@ function ResolveTypeFromIdentifier(scope : ASScope, identifier : string) : typed
     {
         for (let sym of setSymbols)
         {
-            if (sym instanceof typedb.DBMethod && sym.isProperty && sym.args.length > 0)
+            if (sym instanceof typedb.DBMethod && sym.isProperty && sym.args.length > 0 && !sym.isMixin)
                 return typedb.GetType(sym.args[0].typename);
         }
     }
@@ -2494,26 +2496,28 @@ export function ResolveFunctionFromExpression(scope : ASScope, node : any) : typ
     return null;
 }
 
-function ResolveFunctionFromType(scope : ASScope, dbtype : typedb.DBType, name : string, allowUCS = false) : typedb.DBMethod
+function ResolveFunctionFromType(scope : ASScope, dbtype : typedb.DBType, name : string, allowMixin = false) : typedb.DBMethod
 {
     if (!dbtype || !name)
         return null;
 
-    // Find property with this name
-    let usedSymbol = dbtype.findFirstSymbol(name);
+    // Find function with this name
+    let usedSymbol = dbtype.findFirstSymbol(name, typedb.DBAllowSymbol.FunctionOnly);
     if (usedSymbol && usedSymbol instanceof typedb.DBMethod)
         return usedSymbol;
 
-    if (allowUCS)
+    if (allowMixin)
     {
         // Find a symbol in global scope
-        let ucsFunctions = typedb.FindScriptGlobalSymbols(name);
-        if (ucsFunctions)
+        let globalSymbols = typedb.FindScriptGlobalSymbols(name);
+        if (globalSymbols)
         {
-            for (let usedSymbol of ucsFunctions)
+            for (let usedSymbol of globalSymbols)
             {
                 if(usedSymbol instanceof typedb.DBMethod)
                 {
+                    if (!usedSymbol.isMixin)
+                        continue;
                     if (usedSymbol.args.length != 0 && dbtype.inheritsFrom(usedSymbol.args[0].typename))
                         return usedSymbol;
                 }
@@ -2550,7 +2554,11 @@ function ResolveFunctionFromIdentifier(scope : ASScope, identifier : string) : t
         for (let sym of globalSyms)
         {
             if (sym instanceof typedb.DBMethod)
+            {
+                if (sym.isMixin)
+                    continue;
                 return sym;
+            }
         }
     }
 
@@ -2605,12 +2613,12 @@ export function ResolveFunctionOverloadsFromExpression(scope : ASScope, node : a
     }
 }
 
-function ResolveFunctionOverloadsFromType(scope : ASScope, dbtype : typedb.DBType, name : string, allowUCS = false, functions : Array<typedb.DBMethod>)
+function ResolveFunctionOverloadsFromType(scope : ASScope, dbtype : typedb.DBType, name : string, allowMixin = false, functions : Array<typedb.DBMethod>)
 {
     if (!dbtype || !name)
         return;
 
-    // Find property with this name
+    // Find function with this name
     {
         let usedSymbols = dbtype.findSymbols(name);
         if (usedSymbols)
@@ -2618,21 +2626,27 @@ function ResolveFunctionOverloadsFromType(scope : ASScope, dbtype : typedb.DBTyp
             for (let symbol of usedSymbols)
             {
                 if (symbol instanceof typedb.DBMethod)
+                {
+                    if (symbol.isMixin)
+                        continue;
                     functions.push(symbol);
+                }
             }
         }
     }
 
-    if (allowUCS)
+    if (allowMixin)
     {
-        // Check if this is a UCS call in a global scope
-        let ucsFunctions = typedb.FindScriptGlobalSymbols(name);
-        if (ucsFunctions)
+        // Check if this is a mixin call in a global scope
+        let globalSymbols = typedb.FindScriptGlobalSymbols(name);
+        if (globalSymbols)
         {
-            for (let symbol of ucsFunctions)
+            for (let symbol of globalSymbols)
             {
                 if (symbol instanceof typedb.DBMethod)
                 {
+                    if (!symbol.isMixin)
+                        continue;
                     if (symbol.args.length != 0 && dbtype.inheritsFrom(symbol.args[0].typename))
                         functions.push(symbol);
                 }
@@ -2641,12 +2655,12 @@ function ResolveFunctionOverloadsFromType(scope : ASScope, dbtype : typedb.DBTyp
     }
 }
 
-function ResolveFunctionOverloadsFromIdentifier(scope : ASScope, identifier : string, functions : Array<typedb.DBMethod>, allowUCS = false)
+function ResolveFunctionOverloadsFromIdentifier(scope : ASScope, identifier : string, functions : Array<typedb.DBMethod>, allowMixin = false)
 {
     // Find a symbol in the class we're in
     let insideType = scope.getParentType();
     if (insideType)
-        ResolveFunctionOverloadsFromType(scope, insideType, identifier, allowUCS, functions);
+        ResolveFunctionOverloadsFromType(scope, insideType, identifier, allowMixin, functions);
 
     // Find a symbol in global scope
     for (let globalType of scope.getAvailableGlobalTypes())
@@ -2659,7 +2673,11 @@ function ResolveFunctionOverloadsFromIdentifier(scope : ASScope, identifier : st
         for (let sym of globalSyms)
         {
             if (sym instanceof typedb.DBMethod)
+            {
+                if (sym.isMixin)
+                    continue;
                 functions.push(sym);
+            }
         }
     }
 }
@@ -2674,7 +2692,7 @@ function DetectScopeSymbols(scope : ASScope)
         if (element instanceof ASStatement)
         {
             if (element.ast)
-                DetectNodeSymbols(scope, element, element.ast, parseContext, typedb.DBAllowSymbol.Any);
+                DetectNodeSymbols(scope, element, element.ast, parseContext, typedb.DBAllowSymbol.PropertiesAndFunctions);
         }
         else if (element instanceof ASScope)
         {
@@ -3087,13 +3105,13 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     }
                     else
                     {
-                        let namespacedSymbol = DetectSymbolFromNamespacedIdentifier(scope, statement, node.typename, true, typedb.DBAllowSymbol.Any);
+                        let namespacedSymbol = DetectSymbolFromNamespacedIdentifier(scope, statement, node.typename, true, typedb.DBAllowSymbol.PropertiesAndFunctions);
                         if (!namespacedSymbol)
                         {
                             let prevErrors = parseContext.allow_errors;
                             parseContext.allow_errors = false;
                             parseContext.isWriteAccess = outerWriteAccess;
-                            let identifierSymbol = DetectIdentifierSymbols(scope, statement, node.typename, parseContext, typedb.DBAllowSymbol.Any);
+                            let identifierSymbol = DetectIdentifierSymbols(scope, statement, node.typename, parseContext, typedb.DBAllowSymbol.PropertiesAndFunctions);
                             parseContext.allow_errors = prevErrors;
 
                             if (identifierSymbol)
@@ -3103,7 +3121,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                             else
                             {
                                 // There was no valid identifier, but it's possible we're typing an incomplete one
-                                let hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, parseContext, node.typename.value, typedb.DBAllowSymbol.Any);
+                                let hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, parseContext, node.typename.value, typedb.DBAllowSymbol.PropertiesAndFunctions);
                                 if (!hasPotentialCompletions)
                                 {
                                     // Now we can add it as a typename symbol, because we know it cannot possibly be an identifier symbol
@@ -3364,6 +3382,8 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         {
             if (usedSymbol instanceof typedb.DBMethod && typedb.AllowsFunctions(symbol_type))
             {
+                if (usedSymbol.isMixin)
+                    continue;
                 let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
                 addedSym.isUnimported = true;
                 return usedSymbol;
@@ -3385,7 +3405,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         {
             for (let usedSymbol of globalGetAccessors)
             {
-                if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isProperty)
+                if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isProperty && !usedSymbol.isMixin)
                 {
                     let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
                     addedSym.isUnimported = true;
@@ -3399,7 +3419,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         {
             for (let usedSymbol of globalGetAccessors)
             {
-                if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isProperty && usedSymbol.args.length != 0)
+                if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isProperty && usedSymbol.args.length != 0 && !usedSymbol.isMixin)
                 {
                     let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
                     addedSym.isUnimported = true;
@@ -3453,7 +3473,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         if (scope.module.isEditingNode(statement, node))
         {
             // Check if the symbol that we're editing can still complete to something valid later
-            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, parseContext, node.value, typedb.DBAllowSymbol.Any);
+            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbol(scope, statement, parseContext, node.value, typedb.DBAllowSymbol.PropertiesAndFunctions);
         }
 
         AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
@@ -3529,7 +3549,7 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
         if (scope.module.isEditingNode(statement, identifier))
         {
             // Check if the symbol that we're editing can still complete to something valid later
-            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInType(scope, statement, dbtype, findName, typedb.DBAllowSymbol.Any);
+            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInType(scope, statement, dbtype, findName, typedb.DBAllowSymbol.PropertiesAndFunctions);
         }
 
         AddUnknownSymbol(scope, statement, identifierNode, hasPotentialCompletions);
@@ -3632,7 +3652,7 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
         {
             for (let func of prefixed)
             {
-                if (func instanceof typedb.DBMethod && typedb.AllowsFunctions(symbol_type))
+                if (func instanceof typedb.DBMethod && typedb.AllowsFunctions(symbol_type) && !func.isMixin)
                     return true;
                 if (func instanceof typedb.DBProperty && typedb.AllowsProperties(symbol_type))
                     return true;
@@ -3648,7 +3668,7 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
         {
             for (let func of getAccessors)
             {
-                if (func instanceof typedb.DBMethod && func.isProperty)
+                if (func instanceof typedb.DBMethod && func.isProperty && !func.isMixin)
                     return true;
             }
         }
@@ -3658,7 +3678,7 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
         {
             for (let func of setAccessors)
             {
-                if (func instanceof typedb.DBMethod && func.isProperty)
+                if (func instanceof typedb.DBMethod && func.isProperty && !func.isMixin)
                     return true;
             }
         }
@@ -3720,12 +3740,14 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
 
     if (typedb.AllowsFunctions(symbol_type))
     {
-        // Check if this is an imported UCS call
+        // Check if this is an imported mixin call
         for (let globalType of scope.getAvailableGlobalTypes())
         {
-            let usedType = globalType.findFirstSymbol(node.value, typedb.DBAllowSymbol.FunctionOnly);
+            let usedType = globalType.findFirstSymbol(node.value, typedb.DBAllowSymbol.FunctionsAndMixins);
             if (usedType instanceof typedb.DBMethod)
             {
+                if (!usedType.isMixin)
+                    continue;
                 if (usedType.args.length != 0 && dbtype.inheritsFrom(usedType.args[0].typename))
                 {
                     AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, usedType.containingType, usedType.name);
@@ -3734,14 +3756,16 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
             }
         }
 
-        // Check if this is a UCS call in an unimported global scope
-        let ucsFunctions = typedb.FindScriptGlobalSymbols(node.value);
-        if (ucsFunctions)
+        // Check if this is a mixin call in an unimported global scope
+        let mixinFunctions = typedb.FindScriptGlobalSymbols(node.value);
+        if (mixinFunctions)
         {
-            for (let symbol of ucsFunctions)
+            for (let symbol of mixinFunctions)
             {
                 if (symbol instanceof typedb.DBMethod)
                 {
+                    if (!symbol.isMixin)
+                        continue;
                     if (symbol.args.length != 0 && dbtype.inheritsFrom(symbol.args[0].typename))
                     {
                         let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, symbol.containingType, symbol.name);
@@ -3760,7 +3784,7 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
         if (scope.module.isEditingNode(statement, node))
         {
             // Check if the symbol that we're editing can still complete to something valid later
-            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInType(scope, statement, dbtype, node.value, typedb.DBAllowSymbol.Any);
+            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInType(scope, statement, dbtype, node.value, typedb.DBAllowSymbol.PropertiesAndFunctions);
         }
 
         AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
@@ -3793,14 +3817,16 @@ function CheckIdentifierIsPrefixForValidSymbolInType(scope : ASScope, statement 
 
     if (typedb.AllowsFunctions(symbol_type))
     {
-        // Could be a UCS function in global scope
-        let ucsFunctions = typedb.FindScriptGlobalSymbolsWithPrefix(identifierPrefix);
-        if (ucsFunctions)
+        // Could be a mixin function in global scope
+        let mixinFunctions = typedb.FindScriptGlobalSymbolsWithPrefix(identifierPrefix);
+        if (mixinFunctions)
         {
-            for (let usedSymbol of ucsFunctions)
+            for (let usedSymbol of mixinFunctions)
             {
                 if (usedSymbol instanceof typedb.DBMethod)
                 {
+                    if (!usedSymbol.isMixin)
+                        continue;
                     if (usedSymbol.args.length != 0 && dbtype.inheritsFrom(usedSymbol.args[0].typename))
                     {
                         return true;

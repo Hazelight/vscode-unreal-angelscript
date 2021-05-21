@@ -107,9 +107,9 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
     if (!context.isInsideType)
         AddUnimportedCompletions(context, completions);
     
-    // Add completions for UCS calls to global functions
+    // Add completions for mixin calls to global functions
     if (context.priorType)
-        AddUCSCompletions(context, completions);
+        AddMixinCompletions(context, completions);
 
     // Complete typenames if we're in a context where that is possible
     if (!context.isInsideType && !context.isIncompleteNamespace)
@@ -156,17 +156,14 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
 
     for (let func of context.subOuterFunctions)
     {
-        let skipUCSType = false;
-        if (func.containingType && func.containingType.isNamespaceOrGlobalScope())
-        {
-            if (context.subOuterStatement.ast && context.subOuterStatement.ast.type == scriptfiles.node_types.MemberAccess)
-                skipUCSType = true;
-        }
+        let skipFirstArg = false;
+        if (func.containingType && func.containingType.isNamespaceOrGlobalScope() && func.isMixin)
+            skipFirstArg = true;
 
         let params = new Array<ParameterInformation>();
         if (func.args)
         {
-            for (let a = skipUCSType ? 1 : 0; a < func.args.length; ++a)
+            for (let a = skipFirstArg ? 1 : 0; a < func.args.length; ++a)
             {
                 params.push(<ParameterInformation>
                 {
@@ -176,7 +173,7 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
         }
 
         let sig = <SignatureInformation> {
-            label: func.format(null, skipUCSType),
+            label: func.format(null, skipFirstArg),
             parameters: params,
         };
 
@@ -371,6 +368,22 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
             }
         }
     }
+    else if(context.scope && context.scope.scopetype == scriptfiles.ASScopeType.Global || context.scope.scopetype == scriptfiles.ASScopeType.Namespace)
+    {
+        if (!context.isRightExpression && !context.isSubExpression)
+        {
+            AddCompletionsFromKeywordList(context, [
+                "mixin", "UFUNCTION",
+            ], completions)
+        }
+
+        if (context.isSubExpression && /^\s*UFUNCTION\s*$/.test(context.subOuterStatement.content))
+        {
+            AddCompletionsFromKeywordList(context, [
+                "BlueprintCallable","NotBlueprintCallable","BlueprintPure","Category","Meta",
+            ], completions);
+        }
+    }
 }
 
 function GetTypenameCommitChars(context : CompletionContext, typename : string, commitChars : Array<string>)
@@ -531,6 +544,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
     let setterStr = "Set"+context.completingSymbol;
     for (let func of curtype.allMethods())
     {
+        if (func.isMixin)
+            continue;
         if (!CanCompleteSymbol(context, func))
             continue;
         if (!isFunctionAccessibleFromScope(curtype, func, context.scope))
@@ -630,6 +645,8 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
             }
             else if (sym instanceof typedb.DBMethod)
             {
+                if (sym.isMixin)
+                    continue;
                 if (context.scope.module.isModuleImported(sym.declaredModule))
                     continue;
                 if (!CanCompleteSymbol(context, sym))
@@ -648,12 +665,12 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
     }
 }
 
-export function AddUCSCompletions(context : CompletionContext, completions : Array<CompletionItem>)
+export function AddMixinCompletions(context : CompletionContext, completions : Array<CompletionItem>)
 {
     if (!context.scope)
         return;
 
-    // Not yet imported UCS functions
+    // Not yet imported mixin functions
     for (let [name, globalSymbols] of typedb.ScriptGlobals)
     {
         for (let sym of globalSymbols)
@@ -662,6 +679,8 @@ export function AddUCSCompletions(context : CompletionContext, completions : Arr
                 continue;
             if (sym instanceof typedb.DBMethod)
             {
+                if (!sym.isMixin)
+                    continue;
                 if (!CanCompleteSymbol(context, sym))
                     continue;
                 if (sym.args && sym.args.length != 0 && context.priorType.inheritsFrom(sym.args[0].typename))
@@ -669,7 +688,7 @@ export function AddUCSCompletions(context : CompletionContext, completions : Arr
                     let compl = <CompletionItem>{
                         label: sym.name,
                         kind: sym.isEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
-                        data: ["func_ucs", sym.containingType.typename, sym.name, sym.id],
+                        data: ["func_mixin", sym.containingType.typename, sym.name, sym.id],
                         commitCharacters: ["("],
                         filterText: GetSymbolFilterText(context, sym),
                     };
@@ -1824,13 +1843,13 @@ export function Resolve(item : CompletionItem) : CompletionItem
             value: docStr,
         };
     }
-    else if (kind == "func" || kind == "func_ucs")
+    else if (kind == "func" || kind == "func_mixin")
     {
         let func = type.getMethodWithIdHint(item.data[2], item.data[3]);
         if (func)
         {
-            let isUCS = (kind == "func_ucs");
-            let complStr = NoBreakingSpaces(NicifyDefinition(func, func.format(null, isUCS)));
+            let isMixin = (kind == "func_mixin");
+            let complStr = NoBreakingSpaces(NicifyDefinition(func, func.format(null, isMixin)));
             item.documentation = <MarkupContent> {
                 kind: MarkupKind.Markdown,
                 value: "```angelscript_snippet\n"+complStr+"\n```\n\n",

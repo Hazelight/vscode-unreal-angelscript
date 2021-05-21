@@ -85,16 +85,26 @@ function ResolveImportAction(asmodule : scriptfiles.ASModule, action : CodeActio
     // Find if the module is already imported, or the position to append the new import
     let lineCount = asmodule.textDocument.lineCount;
     let hasEmptyLine = false;
+    let alreadyImported = false;
+    let importRegex = /\s*import\s+([A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*);/;
+
     for(let i = 0; i < lineCount; ++i)
     {
         let line = asmodule.textDocument.getText(
             Range.create(Position.create(i, 0), Position.create(i, 10000))
         );
-        if (line.includes("import"))					
+
+        let match = importRegex.exec(line);
+        if (match)
         {
+            if (match[1] == moduleName)
+            {
+                alreadyImported = true;
+                break;
+            }
+
             lastImportLine = i + 1;
             hasEmptyLine = false;
-            continue;
         }
         else if (line.trim().length != 0)
         {
@@ -107,12 +117,15 @@ function ResolveImportAction(asmodule : scriptfiles.ASModule, action : CodeActio
         }
     }
 
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+    if (alreadyImported)
+        return;
+
     let insertString = "import "+moduleName+";\n";
     if (!hasEmptyLine)
         insertString += "\n";
 
-    action.edit = <WorkspaceEdit> {};
-    action.edit.changes = {};
     action.edit.changes[asmodule.displayUri] = [
         TextEdit.insert(Position.create(lastImportLine, 0), insertString)
     ];

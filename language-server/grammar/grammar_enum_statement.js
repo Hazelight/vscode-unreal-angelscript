@@ -8,9 +8,9 @@ const moo = require("moo");
 const n = require("./node_types");
 
 const lexer = moo.compile({
-    line_comment: { match: /\/\/.*$/ },
-    preprocessor_statement: { match: /#.*$/ },
-    block_comment: { match: /\/\*[^]*\*\//, lineBreaks: true },
+    line_comment: { match: /\/\/.*?$/ },
+    preprocessor_statement: { match: /#.*?$/ },
+    block_comment: { match: /\/\*[^]*?\*\//, lineBreaks: true },
     WS:      { match: /[ \t\r\n]+/, lineBreaks: true },
     lparen:  '(',
     rparen:  ')',
@@ -51,6 +51,7 @@ const lexer = moo.compile({
             override_token: "override",
             delegate_token: "delegate",
             property_token: "property",
+            mixin_token: "mixin",
             event_token: "event",
             else_token: "else",
             while_token: "while",
@@ -1066,6 +1067,7 @@ var grammar = {
     {"name": "func_qualifier$subexpression$1", "symbols": [(lexer.has("final_token") ? {type: "final_token"} : final_token)]},
     {"name": "func_qualifier$subexpression$1", "symbols": [(lexer.has("override_token") ? {type: "override_token"} : override_token)]},
     {"name": "func_qualifier$subexpression$1", "symbols": [(lexer.has("property_token") ? {type: "property_token"} : property_token)]},
+    {"name": "func_qualifier$subexpression$1", "symbols": [(lexer.has("mixin_token") ? {type: "mixin_token"} : mixin_token)]},
     {"name": "func_qualifier", "symbols": ["func_qualifier$subexpression$1"], "postprocess":  
         function (d) { return d[0][0]; }
         },
@@ -1188,21 +1190,22 @@ var grammar = {
             if (d[1])
             {
                 let comment = null;
-                for (let part of d[1])
+                for (let i = d[1].length-1; i >= 0; --i)
                 {
-                    if (part[0].type == 'block_comment')
+                    let part = d[1][i][0];
+                    if (part && part.value)
                     {
-                        if (!comment) comment = "";
-                        comment += part[0].value.substring(2, part[0].value.length - 2);
+                        if (part.type == 'line_comment')
+                        {
+                            comment = part.value.substring(2);
+                            break;
+                        }
+                        else if (part.type == 'block_comment')
+                        {
+                            comment = part.value.substring(2, part.value.length-2);
+                            break;
+                        }
                     }
-                    else if (part[0].type == 'line_comment')
-                    {
-                        if (!comment) comment = "";
-                        comment += part[0].value.substring(2, part[0].value.length);
-                    }
-        
-                    if (comment && comment.length > 0)
-                        comment += "\n";
                 }
                 return comment;
             }

@@ -285,7 +285,7 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
             if (!insideType)
                 return null;
             
-            let sym = insideType.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.FunctionOnly);
+            let sym = insideType.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.FunctionsAndMixins);
             if (sym instanceof typedb.DBMethod)
             {
                 return GetHoverForFunction(insideType, sym, false);
@@ -447,14 +447,22 @@ function GetHoverForProperty(type : typedb.DBType, prop : typedb.DBProperty) : H
 
 function GetHoverForFunction(type : typedb.DBType, func : typedb.DBMethod, isAccessor : boolean) : Hover
 {
-    let prefix = null;
-    if(type.typename.startsWith("__"))
+    let prefix = "";
+    let suffix = "";
+    if (func.isMixin && func.args && func.args.length != 0)
     {
-        if(type.typename != "__")
+        prefix = func.args[0].typename+".";
+        suffix = " mixin";
+    }
+    else if (type.typename.startsWith("__"))
+    {
+        if (type.typename != "__")
             prefix = type.typename.substring(2)+"::";
     }
-    else if(!type.typename.startsWith("//"))
+    else if (!type.typename.startsWith("//"))
+    {
         prefix = type.typename+".";
+    }
 
     let hover = "";
 
@@ -471,7 +479,7 @@ function GetHoverForFunction(type : typedb.DBType, func : typedb.DBMethod, isAcc
     }
     else
     {
-        hover += "```angelscript_snippet\n"+func.format(prefix)+"\n```";
+        hover += "```angelscript_snippet\n"+func.format(prefix, func.isMixin)+suffix+"\n```";
     }
 
     return <Hover> {contents: <MarkupContent> {

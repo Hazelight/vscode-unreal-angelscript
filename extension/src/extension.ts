@@ -108,22 +108,23 @@ export function activate(context: ExtensionContext) {
 				let lines : string[] = editor.document.getText().split("\n");
 				let lastImportLine = 0;
 				let hasEmptyLine = false;
+				let importRegex = /\s*import\s+([A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*);/;
 
 				// Find if the module is already imported, or the position to append the new import
 				for(let i = 0; i < lines.length; ++i)
 				{
-					if (lines[i].includes("import "+result+";"))
+					let match = importRegex.exec(lines[i]);
+					if (match)
 					{
-						console.log(`${result} is already included`);
-						vscode.window.showInformationMessage(`'${result}' is already imported`);
-						return;
-					}
-					
-					if (lines[i].includes("import"))					
-					{
+						if (match[1] == result)
+						{
+							console.log(`${result} is already included`);
+							vscode.window.showInformationMessage(`'${result}' is already imported`);
+							return;
+						}
+
 						lastImportLine = i + 1;
 						hasEmptyLine = false;
-						continue;
 					}
 					else if (lines[i].trim().length != 0)
 					{
