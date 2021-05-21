@@ -306,6 +306,7 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
             let method = AddMethod(nsType, "Set"+setName);
             method.returnType = null;
             method.documentation = "Apply a transient override for this composable settings property.";
+            method.moduleOffset = dbprop.moduleOffset;
             method.args = [
                 new typedb.DBArg().init("AHazeActor", "Actor"),
                 new typedb.DBArg().init(dbtype.typename, "NewValue"),
@@ -318,6 +319,7 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
             let method = AddMethod(nsType, "Clear"+setName);
             method.returnType = null;
             method.documentation = "Clear a previously applied transient override.";
+            method.moduleOffset = dbprop.moduleOffset;
             method.args = [
                 new typedb.DBArg().init("AHazeActor", "Actor"),
                 new typedb.DBArg().init("UObject", "Instigator"),
