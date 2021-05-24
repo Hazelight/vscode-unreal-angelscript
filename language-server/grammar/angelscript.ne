@@ -871,7 +871,7 @@ argumentlist -> _ (argument _ "," _ ):* argument (_ %comma):? {%
         if (d[1])
         {
             for (let part of d[1])
-                args.push(part[1]);
+                args.push(part[0]);
         }
         args.push(d[2]);
         return Compound(d, n.ArgumentList, args);
