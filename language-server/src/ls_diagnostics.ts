@@ -386,10 +386,14 @@ function AddSymbolDiagnostics(asmodule : scriptfiles.ASModule, diagnostics : Arr
         if (!symbol.isUnimported)
             continue;
 
+        let displayName = symbol.symbol_name;
+        if (displayName.startsWith("__"))
+            displayName = displayName.substr(2);
+
         diagnostics.push(<Diagnostic> {
             severity: DiagnosticSeverity.Information,
             range: asmodule.getRange(symbol.start, symbol.end),
-            message: symbol.symbol_name+" must be imported.",
+            message: displayName+" must be imported.",
             source: "angelscript",
             data: {
                 type: "import",
