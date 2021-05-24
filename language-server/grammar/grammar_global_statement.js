@@ -94,6 +94,8 @@ function Compound(d, node_type, children)
 // Extend the range of the compound to the new item
 function ExtendedCompound(d, node)
 {
+    node.start = -1;
+    node.end = -1;
     ComputeStartAndEnd(node, d);
     return node;
 }
@@ -171,7 +173,7 @@ function MergeValue(node, d)
             node.end = part.offset + part.text.length;
             node.value += part.value;
         }
-        else if (part.start)
+        else if (part.hasOwnProperty("start"))
         {
             // This is a node
             if (node.start == -1)
@@ -200,7 +202,7 @@ function ComputeStartAndEnd(node, d)
                 node.start = part.offset;
             node.end = part.offset + part.text.length;
         }
-        else if (part.start)
+        else if (part.hasOwnProperty("start"))
         {
             // This is a node
             if (node.start == -1)
@@ -807,7 +809,7 @@ var grammar = {
         function (d) { return d[2]; }
         },
     {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
-        function (d) { return Compound(d, n.FunctionCall, [d[0], d[4]]); }
+        function (d) { return Compound(d, n.FunctionCall, [d[0], d[3]]); }
         },
     {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("lsqbracket") ? {type: "lsqbracket"} : lsqbracket), "optional_expression", "_", (lexer.has("rsqbracket") ? {type: "rsqbracket"} : rsqbracket)], "postprocess": 
         function (d) { return Compound(d, n.IndexOperator, [d[0], d[3]]); }

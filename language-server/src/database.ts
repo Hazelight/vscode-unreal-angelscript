@@ -176,6 +176,9 @@ export class DBMethod implements DBSymbol
     macroSpecifiers : Map<string, string> = null;
     macroMeta : Map<string, string> = null;
 
+    hasSuperCall : boolean = false;
+    isEmpty : boolean = false;
+
     declaredModule : string;
     moduleOffset : number;
     moduleScopeStart : number = -1;
@@ -309,13 +312,11 @@ export class DBMethod implements DBSymbol
         // Use the parent function's documentation
         if (this.containingType && includeParent)
         {
-            let supertype = GetType(this.containingType.supertype);
-            while (supertype)
+            for (let checktype of this.containingType.getInheritanceTypes())
             {
-                let parentFunc = supertype.findFirstSymbol(this.name, DBAllowSymbol.FunctionOnly);
+                let parentFunc = checktype.findFirstSymbol(this.name, DBAllowSymbol.FunctionOnly);
                 if (parentFunc && parentFunc instanceof DBMethod && parentFunc.documentation)
                     return parentFunc.documentation;
-                supertype = GetType(supertype.supertype);
             }
         }
         // Use the type's documentation for constructors
@@ -326,6 +327,13 @@ export class DBMethod implements DBSymbol
                 return dbReturn.documentation;
         }
         return null;
+    }
+
+    hasMetaData(meta : string) : boolean
+    {
+        if (!this.macroMeta)
+            return false;
+        return this.macroMeta.has(meta.toLowerCase());
     }
 };
 
@@ -783,7 +791,8 @@ export class DBType
         let dbCheck : DBType = GetType(checktype);
         if(!dbCheck)
             return false;
-        while(it)
+        let depth = 0;
+        while(it && depth < 100)
         {
             if (it == dbCheck)
                 return true;
@@ -791,11 +800,13 @@ export class DBType
             if (it.supertype)
             {
                 it = GetType(it.supertype);
+                depth += 1;
                 continue;
             }
             else if (it.unrealsuper)
             {
                 it = GetType(it.unrealsuper);
+                depth += 1;
                 continue;
             }
             else
@@ -806,11 +817,24 @@ export class DBType
         return false;
     }
 
+    getInheritanceTypes() : Array<DBType>
+    {
+        let typeList = new Array<DBType>();
+        let check : DBType = this;
+        while (check && typeList.indexOf(check) == -1)
+        {
+            typeList.push(check);
+            check = GetType(check.supertype);
+        }
+        return typeList;
+    }
+
     canOverrideFromParent(methodname : string) : boolean
     {
         // Check script parents
         let checktype = this.supertype;
-        while (checktype)
+        let depth = 0;
+        while (checktype && depth < 100)
         {
             let dbsuper = GetType(checktype);
             if (!dbsuper)
@@ -822,6 +846,7 @@ export class DBType
                     return true;
             }
             checktype = dbsuper.supertype;
+            depth += 1;
         }
 
         return false;

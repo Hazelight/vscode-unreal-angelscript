@@ -139,6 +139,9 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
         AddMethodOverrideSnippets(context, completions, position);
     }
 
+    // Add snippet completion for super call if we can
+    AddSuperCallSnippet(context, completions);
+
     return completions;
 }
 
@@ -979,6 +982,13 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         // Try to parse as a proper statement in the scope
         scriptfiles.ParseStatement(context.scope.scopetype, context.statement);
 
+        // We might want to try to parse this as a global statement if we're in a declaration
+        if (!context.statement.ast)
+        {
+            if (context.baseStatement && context.scope.declaration == context.baseStatement)
+                scriptfiles.ParseStatement(context.scope.parentscope.scopetype, context.statement);
+        }
+
         // Try to parse as an expression snippet instead
         if (!context.statement.ast)
             scriptfiles.ParseStatement(scriptfiles.ASScopeType.Code, context.statement);
@@ -1208,6 +1218,43 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                 context.completingSymbol = "";
             context.completingNode = node.name;
             context.priorType = null;
+            return true;
+        }
+        break;
+        case scriptfiles.node_types.ClassDefinition:
+        {
+            context.priorExpression = null;
+            context.priorType = null;
+            if (node.superclass)
+            {
+                context.maybeTypename = true;
+                context.completingNode = node.superclass;
+                context.completingSymbol = node.superclass.value;
+            }
+            else
+            {
+                context.isNamingVariable = true;
+                context.completingNode = node.name;
+                if (node.name)
+                    context.completingSymbol = node.name.value;
+                else
+                    context.completingSymbol = "";
+            }
+            return true;
+        }
+        break;
+        case scriptfiles.node_types.StructDefinition:
+        case scriptfiles.node_types.EnumDefinition:
+        case scriptfiles.node_types.NamespaceDefinition:
+        {
+            context.priorExpression = null;
+            context.priorType = null;
+            context.isNamingVariable = true;
+            context.completingNode = node.name;
+            if (node.name)
+                context.completingSymbol = node.name.value;
+            else
+                context.completingSymbol = "";
             return true;
         }
         break;
@@ -1977,10 +2024,11 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
         ))
     }
 
-    let checktype = typedb.GetType(typeOfScope.supertype);
     let foundOverrides = new Set<string>();
-    while (checktype)
+    for (let checktype of typeOfScope.getInheritanceTypes())
     {
+        if (checktype == typeOfScope)
+            continue;
         for (let method of checktype.methods)
         {
             let includeReturnType = false;
@@ -2057,10 +2105,6 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
 
             foundOverrides.add(method.name);
         }
-
-        if (!checktype.supertype)
-            break;
-        checktype = typedb.GetType(checktype.supertype);
     }
 }
 
@@ -2200,4 +2244,54 @@ export function Resolve(item : CompletionItem) : CompletionItem
     }
 
     return item;
+}
+
+function AddSuperCallSnippet(context : CompletionContext, completions : Array<CompletionItem>)
+{
+    // Make sure we're in the right context for this snippet
+    if (!context.statement || !context.statement.ast)
+        return;
+
+    let nsNode = context.statement.ast;
+    if (nsNode.type != scriptfiles.node_types.NamespaceAccess)
+        return;
+    if (!nsNode.children[0] || nsNode.children[0].value != 'Super')
+        return;
+
+    let scopeFunction = context.scope.getParentFunction();
+    let scopeType = context.scope.getParentType();
+    if (!scopeType || !scopeFunction)
+        return;
+
+    let superType = typedb.GetType(scopeType.supertype);
+    if (!superType)
+        return;
+
+    let superFunction = superType.findFirstSymbol(scopeFunction.name, typedb.DBAllowSymbol.FunctionOnly);
+    if (!(superFunction instanceof typedb.DBMethod))
+        return;
+
+    let insertText = "";
+    if (context.isIncompleteNamespace)
+        insertText += ":";
+    insertText += superFunction.name;
+    insertText += "(";
+    if (scopeFunction.args)
+    {
+        for (let i = 0; i < scopeFunction.args.length; ++i)
+        {
+            if (i != 0)
+                insertText += ", ";
+            insertText += scopeFunction.args[i].name;
+        }
+    }
+    insertText += ");";
+
+    completions.push({
+        label: "Super::"+scopeFunction.name+"(...)",
+        filterText: scopeFunction.name+"(...)",
+        insertText: insertText,
+        kind: CompletionItemKind.Snippet,
+        preselect: true,
+    });
 }

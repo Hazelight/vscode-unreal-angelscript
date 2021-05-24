@@ -18,8 +18,11 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
     // Actions for method override snippets
     AddMethodOverrideSnippets(asmodule, range_start, range_end, actions, diagnostics);
 
-    // Actionts for adding casts
+    // Actions for adding casts
     AddCastHelpers(asmodule, range_start, range_end, actions, diagnostics);
+
+    // Actions for adding super calls
+    AddSuperCallHelper(asmodule, range_start, range_end, actions, diagnostics);
 
     return actions;
 }
@@ -34,6 +37,8 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
         ResolveMethodOverrideSnippet(asmodule, action, data);
     else if (data.type == "addCast")
         ResolveCastHelper(asmodule, action, data);
+    else if (data.type == "superCall")
+        ResolveSuperCallHelper(asmodule, action, data);
     return action;
 }
 
@@ -367,9 +372,8 @@ function AddMethodOverrideSnippets(asmodule : scriptfiles.ASModule, range_start 
     if (!validScope)
         return;
 
-    let checktype = typedb.GetType(typeOfScope.supertype);
     let foundOverrides = new Set<string>();
-    while (checktype)
+    for (let checktype of typeOfScope.getInheritanceTypes())
     {
         for (let method of checktype.methods)
         {
@@ -404,10 +408,6 @@ function AddMethodOverrideSnippets(asmodule : scriptfiles.ASModule, range_start 
 
             foundOverrides.add(method.name);
         }
-
-        if (!checktype.supertype)
-            break;
-        checktype = typedb.GetType(checktype.supertype);
     }
 }
 
@@ -420,6 +420,10 @@ function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : 
     let method = insideType.getMethod(data.name);
     if (!method)
         return;
+
+    let offset = asmodule.getOffset(data.position);
+    let scope = asmodule.getScopeAt(offset);
+    let scopeType = scope ? scope.getParentType() : null;
 
     let [insertPosition, indent, prefix, suffix] = FindInsertPositionForGeneratedMethod(asmodule, data.position);
     let snippet = "";
@@ -438,6 +442,30 @@ function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : 
 
     snippet += "\n";
     snippet += indent+"{\n";
+
+    if (scopeType)
+    {
+        let parentType = typedb.GetType(scopeType.supertype);
+        if (parentType)
+        {
+            let parentMethod = parentType.findFirstSymbol(method.name, typedb.DBAllowSymbol.FunctionOnly);
+            if (parentMethod instanceof typedb.DBMethod && parentMethod.declaredModule && !parentMethod.isEmpty)
+            {
+                if (!method.returnType || method.returnType == "void")
+                {
+                    snippet += indent+indent+"Super::"+method.name+"(";
+                    for (let i = 0; i < method.args.length; ++i)
+                    {
+                        if (i != 0)
+                            snippet += ", ";
+                        snippet += method.args[i].name;
+                    }
+                    snippet += ");\n";
+                }
+            }
+        }
+    }
+
     snippet += indent+"}\n";
     snippet += suffix;
 
@@ -549,4 +577,129 @@ function ResolveCastHelper(asmodule : scriptfiles.ASModule, action : CodeAction,
             asmodule.getPosition(statement.start_offset + rightNode.end),
             ")"),
     ];
+}
+
+function AddSuperCallHelper(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+{
+    for (let diag of diagnostics)
+    {
+        let data = diag.data as any;
+        if (data && data.type == "superCall")
+        {
+            actions.push(<CodeAction> {
+                kind: CodeActionKind.QuickFix,
+                title: "Add call to Super::"+data.name+"(...)",
+                source: "angelscript",
+                diagnostics: [diag],
+                isPreferred: true,
+                data: {
+                    uri: asmodule.uri,
+                    type: "superCall",
+                    name: data.name,
+                    inType: data.inType,
+                    position: asmodule.getPosition(range_end),
+                }
+            });
+        }
+    }
+}
+
+function ResolveSuperCallHelper(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
+{
+    let offset = asmodule.getOffset(data.position);
+    let scope = asmodule.getScopeAt(offset)
+    if (!scope)
+        return;
+
+    let scopeFunc = scope.getParentFunction();
+    if (!scopeFunc)
+        return;
+
+    let superType = typedb.GetType(data.inType);
+    if (!superType)
+        return;
+    let superMethod = superType.findFirstSymbol(data.name, typedb.DBAllowSymbol.FunctionOnly);
+    if (!superMethod)
+        return;
+    if (!(superMethod instanceof typedb.DBMethod))
+        return;
+
+    let [insertPosition, indent, prefix, suffix] = FindInsertPositionFunctionStart(scope);
+
+    let callString = prefix+indent+"Super::"+superMethod.name+"(";
+    if (scopeFunc.args)
+    {
+        for (let i = 0; i < scopeFunc.args.length; ++i)
+        {
+            if (i != 0)
+                callString += ", ";
+            callString += scopeFunc.args[i].name;
+        }
+    }
+
+    callString += ");"+suffix;
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(insertPosition, callString)
+    ];
+}
+
+function FindInsertPositionFunctionStart(scope : scriptfiles.ASScope) : [Position, string, string, string]
+{
+    let indent : string = null;
+    let prefix : string = "";
+    let suffix : string = "";
+
+    // Find the first line in the class that has content, and base indentation on that
+    let endLine = scope.module.getPosition(scope.end_offset).line;
+    let curLine = scope.module.getPosition(scope.declaration.end_offset).line + 1;
+    while (curLine < endLine)
+    {
+        let lineText = scope.module.getLineText(curLine);
+        if (!/^[\r\n]*$/.test(lineText))
+        {
+            indent = "";
+            for (let i = 0; i < lineText.length; ++i)
+            {
+                let curchar = lineText[i];
+                if (curchar == ' ' || curchar == '\t')
+                {
+                    indent += curchar;
+                }
+                else if (curchar == '\n' || curchar == '\r')
+                {
+                    continue;
+                }
+                else if (curchar == '#')
+                {
+                    indent = null;
+                    break;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            if (indent != null)
+                break;
+        }
+    }
+
+    if(indent == null)
+    {
+        // Double the class indent
+        let [subPos, subIndent, subPrefix, subSuffix] = FindInsertPositionForGeneratedMethod(
+            scope.module,
+            scope.module.getPosition(scope.declaration.end_offset));
+        indent = subIndent + subIndent;
+    }
+
+    if (indent == null)
+        indent = "\t\t";
+
+    let headPos = scope.module.getPosition(scope.declaration.end_offset);
+    prefix += "\n";
+    return [Position.create(headPos.line, 100000), indent, prefix, suffix];
 }

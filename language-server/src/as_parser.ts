@@ -45,6 +45,7 @@ export class ASModule
     content : string = null;
     lastEditStart : number = -1;
     lastEditEnd : number = -1;
+    isOpened : boolean = false;
 
     loaded: boolean = false;
     textDocument : TextDocument = null;
@@ -280,6 +281,7 @@ export class ASScope extends ASElement
     statements : Array<ASStatement> = [];
     scopes : Array<ASScope> = [];
 
+    declaration : ASStatement = null;
     element_head : ASElement = null;
 
     scopetype : ASScopeType = null;
@@ -354,6 +356,20 @@ export class ASScope extends ASElement
             let dbFunc = checkscope.getDatabaseFunction();
             if (dbFunc)
                 return checkscope;
+            checkscope = checkscope.parentscope;
+        }
+        return null;
+    }
+
+    getParentFunction() : typedb.DBMethod
+    {
+        let checkscope : ASScope = this;
+        while (checkscope != null)
+        {
+            if (checkscope.scopetype != ASScopeType.Function && checkscope.scopetype != ASScopeType.Code)
+                break;
+            if (checkscope.dbfunc)
+                return checkscope.dbfunc;
             checkscope = checkscope.parentscope;
         }
         return null;
@@ -1424,6 +1440,8 @@ function GenerateTypeInformation(scope : ASScope)
         // Class definition in global scope
         if (scope.previous.ast.type == node_types.ClassDefinition)
         {
+            scope.declaration = scope.previous;
+
             let classdef = scope.previous.ast;
             let dbtype = AddDBType(scope, classdef.name.value);
             dbtype.supertype = classdef.superclass ? classdef.superclass.value : "UObject";
@@ -1455,6 +1473,8 @@ function GenerateTypeInformation(scope : ASScope)
         // Struct definition in global scope
         else if (scope.previous.ast.type == node_types.StructDefinition)
         {
+            scope.declaration = scope.previous;
+
             let structdef = scope.previous.ast;
             let dbtype = AddDBType(scope, structdef.name.value);
             if (structdef.documentation)
@@ -1485,6 +1505,8 @@ function GenerateTypeInformation(scope : ASScope)
         // Namespace definition in global scope
         else if (scope.previous.ast.type == node_types.NamespaceDefinition)
         {
+            scope.declaration = scope.previous;
+
             let nsdef = scope.previous.ast;
             let dbtype = AddDBType(scope, "__"+nsdef.name.value, false);
             if (nsdef.documentation)
@@ -1501,6 +1523,8 @@ function GenerateTypeInformation(scope : ASScope)
         // Enum definition in global scope
         else if (scope.previous.ast.type == node_types.EnumDefinition)
         {
+            scope.declaration = scope.previous;
+            
             let enumdef = scope.previous.ast;
             let dbtype = AddDBType(scope, "__"+enumdef.name.value);
             dbtype.isEnum = true;
@@ -1518,6 +1542,8 @@ function GenerateTypeInformation(scope : ASScope)
         // Function declaration, either in a class or global
         else if (scope.previous.ast.type == node_types.FunctionDecl)
         {
+            scope.declaration = scope.previous;
+
             let funcdef = scope.previous.ast;
             let dbfunc = AddDBMethod(scope, funcdef.name.value);
             if (funcdef.documentation)
@@ -1571,6 +1597,24 @@ function GenerateTypeInformation(scope : ASScope)
             if (funcdef.mixin)
                 dbfunc.isMixin = true;
 
+            // Figure out whether there is any code in this function
+            if (scope.scopes.length != 0)
+            {
+                dbfunc.isEmpty = false;
+            }
+            else
+            {
+                dbfunc.isEmpty = true;
+                for (let statement of scope.statements)
+                {
+                    if (statement.ast)
+                    {
+                        dbfunc.isEmpty = false;
+                        break;
+                    }
+                }
+            }
+
             scope.dbfunc = dbfunc;
             if (scope.parentscope && scope.parentscope.dbtype)
             {
@@ -1591,6 +1635,8 @@ function GenerateTypeInformation(scope : ASScope)
         // Constructor declaration placed inside a class
         else if (scope.previous.ast.type == node_types.ConstructorDecl)
         {
+            scope.declaration = scope.previous;
+
             let constrdef = scope.previous.ast;
             let dbfunc = AddDBMethod(scope, constrdef.name.value);
             AddParametersToFunction(scope, scope.previous, dbfunc, constrdef.parameters);
@@ -1612,6 +1658,8 @@ function GenerateTypeInformation(scope : ASScope)
         // Destructor declaration placed inside a class
         else if (scope.previous.ast.type == node_types.DestructorDecl)
         {
+            scope.declaration = scope.previous;
+
             let destrdef = scope.previous.ast;
             let dbfunc = AddDBMethod(scope, destrdef.name.value);
             dbfunc.moduleOffset = scope.previous.start_offset + destrdef.name.start;
@@ -2870,7 +2918,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             {
                 if (node.children[0].value == "Super")
                 {
-                    nsType = typedb.GetType(scope.getParentType().supertype);
+                    parentType = typedb.GetType(scope.getParentType().supertype);
                 }
                 else
                 {
@@ -2923,7 +2971,12 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     parseContext.allow_errors = prevErrors;
 
                     if (parentSymbol)
+                    {
+                        let scopeFunc = scope.getParentFunction();
+                        if (scopeFunc && parentSymbol instanceof typedb.DBMethod && parentSymbol.name == scopeFunc.name)
+                            scopeFunc.hasSuperCall = true;
                         return parentSymbol;
+                    }
                 }
 
                 if (nsType)
@@ -3379,7 +3432,23 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
 
             // If we specified a super type, add the symbol for that too
             if (node.superclass)
-                AddIdentifierSymbol(scope, statement, node.superclass, ASSymbolType.Typename, null, node.superclass.value);
+            {
+                let superType = typedb.GetType(node.superclass.value);
+                if (superType)
+                {
+                    let superSymbol = AddIdentifierSymbol(scope, statement, node.superclass, ASSymbolType.Typename, null, node.superclass.value);
+                    if (superType.declaredModule && !scope.module.isModuleImported(superType.declaredModule))
+                        superSymbol.isUnimported = true;
+                }
+                else
+                {
+                    let hasPotentialCompletions = false;
+                    if (scope.module.isEditingNode(statement, node.superclass))
+                        hasPotentialCompletions = typedb.HasTypeWithPrefix(node.superclass.value);
+                    AddUnknownSymbol(scope, statement, node.superclass, hasPotentialCompletions);
+                    return null;
+                }
+            }
         }
         break;
         case node_types.StructDefinition:

@@ -53,7 +53,7 @@ export function OnDiagnosticsChanged(bindFunction : any)
     NotifyFunctions.push(bindFunction);
 }
 
-export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule)
+export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule, initialResolve = false)
 {
     let diagnostics = new Array<Diagnostic>();
 
@@ -69,6 +69,10 @@ export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule)
     // Update stored diagnostics
     let oldDiagnostics = ParseDiagnostics.get(asmodule.uri);
     ParseDiagnostics.set(asmodule.uri, diagnostics);
+
+    // If this is the initial resolve and we have nothing, don't send it
+    if (initialResolve && diagnostics.length == 0)
+        return;
 
     // If no diagnostics have changed, and we don't have any compiletime ones, don't send
     if (oldDiagnostics && AreDiagnosticsEqual(oldDiagnostics, diagnostics))
@@ -88,7 +92,8 @@ export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule)
 function AddScopeDiagnostics(scope : scriptfiles.ASScope, diagnostics : Array<Diagnostic>)
 {
     // Function code scopes can emit diagnostics for unused parameters and local variables
-    if (scope.isInFunctionBody())
+    // We only send these diagnostics if the file is open
+    if (scope.isInFunctionBody() && scope.module.isOpened)
     {
         for (let asvar of scope.variables)
         {
@@ -104,6 +109,10 @@ function AddScopeDiagnostics(scope : scriptfiles.ASScope, diagnostics : Array<Di
             });
         }
     }
+
+    // If this is a function scope allow diagnostics for that
+    if (scope.dbfunc)
+        AddFunctionDiagnostics(scope, scope.dbfunc, diagnostics);
 
     // Allow subscopes to emit diagnostics
     for (let subscope of scope.scopes)
@@ -368,6 +377,10 @@ function AreDiagnosticsEqual(oldList : Array<Diagnostic>, newList : Array<Diagno
 
 function AddSymbolDiagnostics(asmodule : scriptfiles.ASModule, diagnostics : Array<Diagnostic>)
 {
+    // No symbol diagnostics if the file isn't open at the moment
+    if (!asmodule.isOpened)
+        return;
+
     for (let symbol of asmodule.symbols)
     {
         if (!symbol.isUnimported)
@@ -383,5 +396,38 @@ function AddSymbolDiagnostics(asmodule : scriptfiles.ASModule, diagnostics : Arr
                 symbol: [symbol.type, symbol.container_type, symbol.symbol_name],
             }
         });
+    }
+}
+
+function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBMethod, diagnostics : Array<Diagnostic>)
+{
+    // Add a diagnostic if we aren't calling the super function
+    if (!dbfunc.hasSuperCall && dbfunc.isEvent && dbfunc.containingType
+        && (!dbfunc.returnType || dbfunc.returnType == "void"))
+    {
+        let parentType = typedb.GetType(dbfunc.containingType.supertype);
+        if (parentType)
+        {
+            let parentMethod = parentType.findFirstSymbol(dbfunc.name, typedb.DBAllowSymbol.FunctionOnly);
+            if (parentMethod && parentMethod instanceof typedb.DBMethod && parentMethod.declaredModule)
+            {
+                if (!parentMethod.isEmpty && !parentMethod.hasMetaData("NoSuperCall") && !dbfunc.hasMetaData("NoSuperCall"))
+                {
+                    diagnostics.push(<Diagnostic> {
+                        severity: DiagnosticSeverity.Warning,
+                        range: scope.module.getRange(
+                            scope.declaration.start_offset + scope.declaration.ast.start,
+                            scope.declaration.start_offset + scope.declaration.ast.end),
+                        message: "Overriding "+parentMethod.name+" BlueprintEvent from parent without calling Super::"+parentMethod.name+"(...)\n(Add 'NoSuperCall' meta to suppress warning)",
+                        source: "angelscript",
+                        data: {
+                            type: "superCall",
+                            inType: parentMethod.containingType.typename,
+                            name: parentMethod.name,
+                        },
+                    });
+                }
+            }
+        }
     }
 }

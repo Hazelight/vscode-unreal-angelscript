@@ -11,7 +11,8 @@ import {
 	RenameParams, WorkspaceEdit, ResponseError, PrepareRenameParams, Range, Position, Command, SemanticTokensDeltaParams,
 	SemanticTokensDelta,
 	CodeActionParams,
-	CodeAction
+	CodeAction,
+	DidCloseTextDocumentParams
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -342,7 +343,10 @@ function TickQueues()
 			for (let n = 0; n < 1 && ResolveQueueIndex < ResolveQueue.length; ++n, ++ResolveQueueIndex)
 			{
 				if (!ResolveQueue[ResolveQueueIndex].resolved)
+				{
 					scriptfiles.ResolveModule(ResolveQueue[ResolveQueueIndex]);
+					scriptdiagnostics.UpdateScriptModuleDiagnostics(ResolveQueue[ResolveQueueIndex], true);
+				}
 			}
 		}
 	}
@@ -786,6 +790,7 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	let modulename = getModuleName(uri);
 
 	let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
+	asmodule.isOpened = true;
 	scriptfiles.ParseModuleAndDependencies(asmodule);
 	if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
 	{
@@ -793,6 +798,13 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 		scriptfiles.ResolveModule(asmodule);
 		scriptdiagnostics.UpdateScriptModuleDiagnostics(asmodule);
 	}
+ });
+
+ connection.onDidCloseTextDocument(function (params : DidCloseTextDocumentParams)
+ {
+	let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
+	if (asmodule)
+		asmodule.isOpened = false;
  });
 
 // Listen on the connection
