@@ -569,7 +569,7 @@ export function GetOrCreateModule(modulename : string, filename : string, uri : 
     {
         module.modulename = modulename;
         module.uri = NormalizeUri(uri);
-        module.displayUri = uri.replace("%3A", ":");
+        module.displayUri = decodeURIComponent(uri);
         module.filename = filename;
         module.created = true;
         ModulesByUri.set(module.uri, module);
@@ -580,7 +580,8 @@ export function GetOrCreateModule(modulename : string, filename : string, uri : 
 
 export function NormalizeUri(uri : string) : string
 {
-    return uri.replace("%3A", ":").toLowerCase();
+    let result = decodeURIComponent(uri).toLowerCase();
+    return result;
 }
 
 // Ensure the module is parsed into an abstract syntax tree if it is not already parsed
@@ -2898,9 +2899,17 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 return null;
             }
 
-            let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, nsType.typename);
-            if (nsType.declaredModule && !scope.module.isModuleImported(nsType.declaredModule))
-                addedSymbol.isUnimported = true;
+            let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, null);
+            if (nsType)
+            {
+                addedSymbol.symbol_name = nsType.typename;
+                if (nsType.declaredModule && !scope.module.isModuleImported(nsType.declaredModule))
+                    addedSymbol.isUnimported = true;
+            }
+            else if (parentType)
+            {
+                addedSymbol.symbol_name = parentType.typename;
+            }
 
             if (node.children[1])
             {
@@ -2917,8 +2926,11 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         return parentSymbol;
                 }
 
-                parseContext.isWriteAccess = outerWriteAccess;
-                return DetectSymbolsInType(scope, statement, nsType, node.children[1], parseContext, symbol_type);
+                if (nsType)
+                {
+                    parseContext.isWriteAccess = outerWriteAccess;
+                    return DetectSymbolsInType(scope, statement, nsType, node.children[1], parseContext, symbol_type);
+                }
             }
 
             return null;

@@ -10,15 +10,34 @@ import * as typedb from './database';
 
 export function GetDefinition(asmodule : scriptfiles.ASModule, position : Position) : Array<Location>
 {
-    let offset = asmodule.getOffset(position);
-    let findSymbol = asmodule.getSymbolAt(offset);
-    if (!findSymbol)
-        return null;
-
-    let defs = GetSymbolDefinition(asmodule, findSymbol);
     let locations = new Array<Location>();
-    for (let def of defs)
-        locations.push(def.location);
+    let offset = asmodule.getOffset(position);
+
+    // If there is a symbol beneath the cursor, go to that symbol/
+    let findSymbol = asmodule.getSymbolAt(offset);
+    if (findSymbol)
+    {
+        let defs = GetSymbolDefinition(asmodule, findSymbol);
+        for (let def of defs)
+            locations.push(def.location);
+        return locations;
+    }
+
+    // If the cursor is on an import statement, use that as the definition
+    let statement = asmodule.getStatementAt(offset);
+    if (statement && statement.ast && statement.ast.type == scriptfiles.node_types.ImportStatement)
+    {
+        if (statement.ast.children[0].value)
+        {
+            let importedModule = scriptfiles.GetModule(statement.ast.children[0].value);
+            if (importedModule)
+            {
+                locations.push(importedModule.getLocation(0));
+                return locations;
+            }
+        }
+    }
+
     return locations;
 }
 

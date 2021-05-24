@@ -277,7 +277,7 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
             parameters: params,
         };
 
-        let doc = func.findAvailableDocumentation();
+        let doc = func.findAvailableDocumentation(true, false);
         if (doc)
             sig.documentation = doc;
 
@@ -554,6 +554,10 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
 {
     for (let [typename, dbtype] of typedb.GetAllTypes())
     {
+        // Ignore template instantations for completion
+        if (dbtype.isTemplateInstantiation)
+            continue;
+
         let kind : CompletionItemKind = CompletionItemKind.Class;
         if (dbtype.isNamespace())
         {
@@ -704,46 +708,59 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
         if (!isFunctionAccessibleFromScope(curtype, func, context.scope))
             continue;
 
-        if (func.isProperty && func.name.startsWith("Get"))
-        {
-            let propname = func.name.substr(3);
-            if(!props.has(propname) && func.args.length == 0)
-            {
-                let compl = <CompletionItem>{
-                        label: propname,
-                        kind: CompletionItemKind.Field,
-                        detail: func.returnType,
-                        data: ["accessor", curtype.typename, propname],
-                        commitCharacters: [".", ";", ","],
-                        filterText: GetSymbolFilterText(context, func),
-                };
+        // Don't show constructors if we're probably completing the name of a type
+        if (func.isConstructor && context.maybeTypename)
+            continue;
 
-                if (context.isIncompleteNamespace)
-                    compl.insertText = ":"+compl.label;
-                completions.push(compl);
-                props.add(propname);
-            }
-        }
-        
-        if (func.isProperty && func.name.startsWith("Set"))
+        if (func.isProperty)
         {
-            let propname = func.name.substr(3);
-            if(!props.has(propname) && func.args.length == 1 && func.returnType == "void")
+            if (func.name.startsWith("Get"))
             {
-                let compl = <CompletionItem>{
-                        label: propname,
-                        kind: CompletionItemKind.Field,
-                        detail: func.args[0].typename,
-                        data: ["accessor", curtype.typename, propname],
-                        commitCharacters: [".", ";", ","],
-                        filterText: GetSymbolFilterText(context, func),
-                };
+                let propname = func.name.substr(3);
+                if(!props.has(propname) && func.args.length == 0)
+                {
+                    let compl = <CompletionItem>{
+                            label: propname,
+                            kind: CompletionItemKind.Field,
+                            detail: func.returnType,
+                            data: ["accessor", curtype.typename, propname],
+                            commitCharacters: [".", ";", ","],
+                            filterText: GetSymbolFilterText(context, func),
+                    };
 
-                if (context.isIncompleteNamespace)
-                    compl.insertText = ":"+compl.label;
-                completions.push(compl);
-                props.add(propname);
+                    if (context.isIncompleteNamespace)
+                        compl.insertText = ":"+compl.label;
+                    completions.push(compl);
+                    props.add(propname);
+                }
             }
+            
+            if (func.name.startsWith("Set"))
+            {
+                let propname = func.name.substr(3);
+                if(!props.has(propname) && func.args.length == 1 && func.returnType == "void")
+                {
+                    let compl = <CompletionItem>{
+                            label: propname,
+                            kind: CompletionItemKind.Field,
+                            detail: func.args[0].typename,
+                            data: ["accessor", curtype.typename, propname],
+                            commitCharacters: [".", ";", ","],
+                            filterText: GetSymbolFilterText(context, func),
+                    };
+
+                    if (context.isIncompleteNamespace)
+                        compl.insertText = ":"+compl.label;
+                    completions.push(compl);
+                    props.add(propname);
+                }
+            }
+
+            // If it's explicitly declared with 'property' in script we don't complete
+            // to the function call version. We still do for C++ ones because property
+            // is implicit there.
+            //if (func.declaredModule)
+                //continue;
         }
 
         if(!func.name.startsWith("op") && (!func.isEvent || showEvents))

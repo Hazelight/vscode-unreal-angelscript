@@ -59,10 +59,9 @@ The 'Quick Open Import' (default shortcut: Ctrl+E or Ctrl+P) command from the
 right click menu will try to open the quick open navigation with the import
 statement.
 
-## Known Issues
-* There is a rare bug causing the language server to crash, breaking
-  code completion until visual studio code is reloaded. If you have
-  reproduction steps for this, please open an Issue on the github.
-* While the extension is quite functional as a whole, I wrote it over a 
-  short span of time with zero prior knowledge of typescript, visual studio code,
-  or any of the Node.js ecosystem. A lot of the code is ugly and due for a refactor.
+### More Language Features
+This extension acts as a full language server for angelscript code. This includes
+semantic highlighting, signature help, reference search, rename symbol and a number
+of helpful code actions and quickfixes.
+
+Some of these features require an active connection to the unreal editor.

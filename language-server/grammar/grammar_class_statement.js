@@ -505,7 +505,7 @@ var grammar = {
             inline_assignment: d[5] ? true : false,
         }; }
         },
-    {"name": "var_decl", "symbols": ["typename", "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
+    {"name": "var_decl", "symbols": ["typename", "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return {
             ...Compound(d, n.VariableDecl, null),
             name: Identifier(d[2]),
@@ -806,17 +806,17 @@ var grammar = {
     {"name": "lvalue", "symbols": [(lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return d[2]; }
         },
-    {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
+    {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.FunctionCall, [d[0], d[4]]); }
         },
     {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("lsqbracket") ? {type: "lsqbracket"} : lsqbracket), "optional_expression", "_", (lexer.has("rsqbracket") ? {type: "rsqbracket"} : rsqbracket)], "postprocess": 
         function (d) { return Compound(d, n.IndexOperator, [d[0], d[3]]); }
         },
-    {"name": "lvalue", "symbols": ["template_typename", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
+    {"name": "lvalue", "symbols": ["template_typename", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
         },
-    {"name": "lvalue", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", {"literal":"<"}, "_", "typename", "_", {"literal":">"}, "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "optional_expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
-        function (d) { return Compound(d, n.CastOperation, [d[4], d[10]]); }
+    {"name": "lvalue", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", {"literal":"<"}, "_", "typename", "_", {"literal":">"}, "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "optional_expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
+        function (d) { return Compound(d, n.CastOperation, [d[4], d[9]]); }
         },
     {"name": "expression$ebnf$1$subexpression$1", "symbols": ["_", {"literal":"<"}]},
     {"name": "expression$ebnf$1", "symbols": ["expression$ebnf$1$subexpression$1"], "postprocess": id},
@@ -877,7 +877,7 @@ var grammar = {
     {"name": "argumentlist", "symbols": [], "postprocess": 
         function(d) { return null; }
         },
-    {"name": "argumentlist", "symbols": [(lexer.has("comma") ? {type: "comma"} : comma)], "postprocess": 
+    {"name": "argumentlist", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)], "postprocess": 
         function(d) { return null; }
         },
     {"name": "argumentlist$ebnf$1", "symbols": []},
@@ -886,15 +886,15 @@ var grammar = {
     {"name": "argumentlist$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
     {"name": "argumentlist$ebnf$2", "symbols": ["argumentlist$ebnf$2$subexpression$1"], "postprocess": id},
     {"name": "argumentlist$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "argumentlist", "symbols": ["argumentlist$ebnf$1", "argument", "argumentlist$ebnf$2"], "postprocess": 
+    {"name": "argumentlist", "symbols": ["_", "argumentlist$ebnf$1", "argument", "argumentlist$ebnf$2"], "postprocess": 
         function(d) { 
             let args = [];
-            if (d[0])
+            if (d[1])
             {
-                for (let part of d[0])
-                    args.push(part[0]);
+                for (let part of d[1])
+                    args.push(part[1]);
             }
-            args.push(d[1]);
+            args.push(d[2]);
             return Compound(d, n.ArgumentList, args);
         }
         },

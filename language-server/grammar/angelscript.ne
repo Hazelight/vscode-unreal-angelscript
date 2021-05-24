@@ -487,7 +487,7 @@ var_decl -> typename _ %identifier _ "=" (_ expression):? {%
         inline_assignment: d[5] ? true : false,
     }; }
 %}
-var_decl -> typename _ %identifier _ %lparen _ argumentlist _ %rparen {%
+var_decl -> typename _ %identifier _ %lparen argumentlist _ %rparen {%
     function (d) { return {
         ...Compound(d, n.VariableDecl, null),
         name: Identifier(d[2]),
@@ -790,18 +790,18 @@ lvalue -> lvalue _ %dot _ %identifier {%
 lvalue -> %lparen _ expression _ %rparen {%
     function (d) { return d[2]; }
 %}
-lvalue -> lvalue _ %lparen _ argumentlist _ %rparen {%
+lvalue -> lvalue _ %lparen argumentlist _ %rparen {%
     function (d) { return Compound(d, n.FunctionCall, [d[0], d[4]]); }
 %}
 lvalue -> lvalue _ %lsqbracket optional_expression _ %rsqbracket {%
     function (d) { return Compound(d, n.IndexOperator, [d[0], d[3]]); }
 %}
-lvalue -> template_typename _ %lparen _ argumentlist _ %rparen {%
+lvalue -> template_typename _ %lparen argumentlist _ %rparen {%
     function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
 %}
 
-lvalue -> %cast_token _ "<" _ typename _ ">" _ %lparen _ optional_expression _ %rparen {%
-    function (d) { return Compound(d, n.CastOperation, [d[4], d[10]]); }
+lvalue -> %cast_token _ "<" _ typename _ ">" _ %lparen optional_expression _ %rparen {%
+    function (d) { return Compound(d, n.CastOperation, [d[4], d[9]]); }
 %}
 # INCOMPLETE: Attempts to parse an incomplete cast while the user is typing
 expression -> %cast_token (_ "<"):? {%
@@ -860,18 +860,18 @@ assignment -> lvalue _ %compound_assignment {%
 argumentlist -> null {%
     function(d) { return null; }
 %}
-argumentlist -> %comma {%
+argumentlist -> _ %comma {%
     function(d) { return null; }
 %}
-argumentlist -> (argument _ "," _ ):* argument (_ %comma):? {%
+argumentlist -> _ (argument _ "," _ ):* argument (_ %comma):? {%
     function(d) { 
         let args = [];
-        if (d[0])
+        if (d[1])
         {
-            for (let part of d[0])
-                args.push(part[0]);
+            for (let part of d[1])
+                args.push(part[1]);
         }
-        args.push(d[1]);
+        args.push(d[2]);
         return Compound(d, n.ArgumentList, args);
     }
 %}

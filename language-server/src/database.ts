@@ -302,11 +302,12 @@ export class DBMethod implements DBSymbol
 
     // Get documentation either from this function or from the
     // first parent function we're overriding
-    findAvailableDocumentation() : string
+    findAvailableDocumentation(includeParent = true, includeType = true) : string
     {
         if (this.documentation)
             return this.documentation;
-        if (this.containingType)
+        // Use the parent function's documentation
+        if (this.containingType && includeParent)
         {
             let supertype = GetType(this.containingType.supertype);
             while (supertype)
@@ -316,6 +317,13 @@ export class DBMethod implements DBSymbol
                     return parentFunc.documentation;
                 supertype = GetType(supertype.supertype);
             }
+        }
+        // Use the type's documentation for constructors
+        if (this.isConstructor && includeType)
+        {
+            let dbReturn = GetType(this.returnType);
+            if (dbReturn && dbReturn.documentation)
+                return dbReturn.documentation;
         }
         return null;
     }
@@ -340,6 +348,7 @@ export class DBType
     isEvent : boolean = false;
     isPrimitive : boolean = false;
     isGlobalScope : boolean = false;
+    isTemplateInstantiation : boolean = false;
 
     classification : DBTypeClassification = DBTypeClassification.Unknown;
 
@@ -376,6 +385,7 @@ export class DBType
         inst.shadowedNamespace = this.shadowedNamespace;
         inst.declaredModule = this.declaredModule;
         inst.moduleOffset = this.moduleOffset;
+        inst.isTemplateInstantiation = true;
         if(this.siblingTypes)
             inst.siblingTypes = this.siblingTypes.slice();
         inst.subTypes = null;
