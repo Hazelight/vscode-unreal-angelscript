@@ -33,61 +33,116 @@
 
         {
             "name": "meta.unrealmacro.property.angelsript",
-            "begin": "^\\s*(UPROPERTY)\\(",
+            "begin": "(UPROPERTY)\\(",
             "beginCaptures": {
                 "1": {
                     "name": "variable.other.enummember"
                 }
             },
-            "end": "\\)\\s*$",
+            "end": "\\)",
             "patterns": [
                 {
                     "include": "#strings"
                 },
                 {
+                    "include": "#numbers"
+                },
+                {
+                    "include": "#macro_parens"
+                },
+                {
                     "name": "keyword.specifier.angelscript",
-                    "match": "\\b(EditAnywhere|EditDefaultsOnly|EditInstanceOnly|BlueprintReadWrite|BlueprintReadOnly|NotBlueprintVisible|NotEditable|DefaultComponent|RootComponent|Attach|AttachSocket|Transient|Interp|NoClear|NotVisible|EditConst|BlueprintHidden|ShowOnActor|Config|Replicated|NotReplicated|ReplicationCondition|EditFixedSize|AdvancedDisplay|Meta|Category)\\b\\s*"
+                    "match": "\\b(EditAnywhere|EditDefaultsOnly|EditInstanceOnly|BlueprintReadWrite|BlueprintReadOnly|NotBlueprintVisible|NotEditable|DefaultComponent|RootComponent|Attach|AttachSocket|Transient|Interp|NoClear|NotVisible|EditConst|BlueprintHidden|ShowOnActor|Config|Replicated|NotReplicated|ReplicationCondition|EditFixedSize|AdvancedDisplay|Meta|Category)\\b"
                 }
             ]
         },
         {
             "name": "meta.unrealmacro.function.angelsript",
-            "begin": "^\\s*(UFUNCTION)\\(",
+            "begin": "(UFUNCTION)\\(",
             "beginCaptures": {
                 "1": {
                     "name": "variable.other.enummember"
                 }
             },
-            "end": "\\)\\s*$",
+            "end": "\\)",
             "patterns": [
                 {
                     "include": "#strings"
                 },
                 {
+                    "include": "#numbers"
+                },
+                {
+                    "include": "#macro_parens"
+                },
+                {
                     "name": "keyword.specifier.angelscript",
-                    "match": "\\b(BlueprintOverride|BlueprintEvent|BlueprintCallable|NotBlueprintCallable|BlueprintPure|NetFunction|CrumbFunction|DevFunction|Category|Meta|CallInEditor|Unreliable|NetMulticast|Client|Server|WithValidation|BlueprintAuthorityOnly)\\b\\s*"
+                    "match": "\\b(BlueprintOverride|BlueprintEvent|BlueprintCallable|NotBlueprintCallable|BlueprintPure|NetFunction|CrumbFunction|DevFunction|Category|Meta|CallInEditor|Unreliable|NetMulticast|Client|Server|WithValidation|BlueprintAuthorityOnly)\\b"
                 }
             ]
         },
         {
             "name": "meta.unrealmacro.class.angelsript",
-            "begin": "^\\s*(UCLASS)\\(",
+            "begin": "(UCLASS)\\(",
             "beginCaptures": {
                 "1": {
                     "name": "variable.other.enummember"
                 }
             },
-            "end": "\\)\\s*$",
+            "end": "\\)",
             "patterns": [
                 {
                     "include": "#strings"
                 },
                 {
+                    "include": "#numbers"
+                },
+                {
+                    "include": "#macro_parens"
+                },
+                {
                     "name": "keyword.specifier.angelscript",
-                    "match": "\\b(Abstract|Meta|Deprecated|Blueprintable|NotBlueprintable|NotPlaceable|Config|DefaultConfig|HideCategories|ComponentWrapperClass)\\b\\s*"
+                    "match": "\\b(Abstract|Meta|Deprecated|Blueprintable|NotBlueprintable|NotPlaceable|Config|DefaultConfig|HideCategories|ComponentWrapperClass)\\b"
                 }
             ]
         },
+        {
+            "name": "meta.unrealmacro.struct.angelsript",
+            "begin": "(USTRUCT)\\(",
+            "beginCaptures": {
+                "1": {
+                    "name": "variable.other.enummember"
+                }
+            },
+            "end": "\\)",
+            "patterns": [
+                {
+                    "include": "#strings"
+                },
+                {
+                    "include": "#numbers"
+                },
+                {
+                    "include": "#macro_parens"
+                },
+                {
+                    "name": "keyword.specifier.angelscript",
+                    "match": "\\b(Meta)\\b"
+                }
+            ]
+        },
+
+		{
+			"match": "\\b(asset) ([A-Za-z0-9_]+) (of) ([A-Za-z0-9_]+)\\b",
+			"captures": {
+				"1": {
+					"name": "keyword.statement.angelscript"
+				},
+				"3": {
+					"name": "keyword.statement.angelscript"
+				}
+			}
+		},
 
         {
             "name": "meta.preprocessor.angelsript",
@@ -444,6 +499,18 @@
 					]
 				}
 			]
+		},
+		"macro_parens": {
+			"begin": "\\(",
+            "end": "\\)",
+            "patterns": [
+                {
+                    "include": "#strings"
+                },
+                {
+                    "include": "#numbers"
+                }
+            ]
 		}
     }
 }

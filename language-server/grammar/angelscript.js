@@ -620,14 +620,22 @@ var grammar = {
     {"name": "parameter_list$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "parameter_list", "symbols": ["parameter", "parameter_list$ebnf$1", "parameter_list$ebnf$2"], "postprocess": 
         function(d) {
-            let params = [d[0]];
+            let params = [];
+            if (d[0])
+                params.push(d[0]);
             if (d[1])
             {
                 for (let part of d[1])
-                    params.push(part[3]);
+                {
+                    if (part[3])
+                        params.push(part[3]);
+                }
             }
             return params;
         }
+        },
+    {"name": "parameter", "symbols": [(lexer.has("const_token") ? {type: "const_token"} : const_token)], "postprocess": 
+        function (d) { return null; }
         },
     {"name": "parameter", "symbols": ["typename"], "postprocess": 
         function (d) { return {
@@ -1063,7 +1071,7 @@ var grammar = {
         function (d) { return CompoundLiteral(n.Typename, d, null); }
         },
     {"name": "const_qualifier", "symbols": [(lexer.has("const_token") ? {type: "const_token"} : const_token), "_"], "postprocess": 
-        function (d) { return d[0].value; }
+        function (d) { return Identifier(d[0]); }
         },
     {"name": "ref_qualifiers$ebnf$1$subexpression$1", "symbols": [{"literal":"in"}]},
     {"name": "ref_qualifiers$ebnf$1$subexpression$1", "symbols": [{"literal":"out"}]},

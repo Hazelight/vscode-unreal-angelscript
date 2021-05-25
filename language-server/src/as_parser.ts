@@ -1261,7 +1261,7 @@ function GetQualifiedTypename(typename : any) : string
 {
     let strtype : string;
     if (typename.const_qualifier)
-        strtype = typename.const_qualifier+" "+typename.value;
+        strtype = typename.const_qualifier.value+" "+typename.value;
     else
         strtype = typename.value;
     if (typename.ref_qualifier)
@@ -1274,7 +1274,7 @@ function CopyQualifiersToTypename(qualifiers_from : any, typename : string) : st
 {
     let strtype : string;
     if (qualifiers_from.const_qualifier)
-        strtype = qualifiers_from.const_qualifier+" "+typename;
+        strtype = qualifiers_from.const_qualifier.value+" "+typename;
     else
         strtype = typename;
     if (qualifiers_from.ref_qualifier)
@@ -1787,7 +1787,7 @@ function GenerateTypeInformation(scope : ASScope)
                         {
                             // Add argument to type database
                             let dbarg = new typedb.DBArg();
-                            dbarg.typename = param.typename.value;
+                            dbarg.typename = GetQualifiedTypename(param.typename);
                             dbarg.name = param.name ? param.name.value : "";
                             dbtype.delegateArgs.push(dbarg);
                         }

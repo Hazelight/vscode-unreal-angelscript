@@ -217,16 +217,46 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                     break;
                 }
 
-                if (signatureArg.endsWith("&") != boundArg.endsWith("&"))
-                {
-                    signatureMatches = false;
-                    break;
-
-                }
                 if (signatureArg.endsWith("&out") != boundArg.endsWith("&out"))
                 {
                     signatureMatches = false;
                     break;
+                }
+
+                // Values and constrefs are compatible
+                if (signatureArg.endsWith("&"))
+                {
+                    let isSignatureConstRef = signatureArg.startsWith("const ");
+                    if (isSignatureConstRef)
+                    {
+                        let isBindConstRef = boundArg.endsWith("&") && boundArg.startsWith("const ");
+                        let isBindValue = !boundArg.endsWith("&");
+                        if (!isBindConstRef && !isBindValue)
+                        {
+                            signatureMatches = false;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        let isBindRef = boundArg.endsWith("&");
+                        let isBindConst = boundArg.startsWith("const ");
+                        if (!isBindRef || isBindConst)
+                        {
+                            signatureMatches = false;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    let isBindConstRef = boundArg.endsWith("&") && boundArg.startsWith("const ");
+                    let isBindValue = !boundArg.endsWith("&");
+                    if (!isBindConstRef && ! isBindValue)
+                    {
+                        signatureMatches = false;
+                        break;
+                    }
                 }
             }
         }
@@ -363,12 +393,19 @@ function AreDiagnosticsEqual(oldList : Array<Diagnostic>, newList : Array<Diagno
         if (oldDiag.range.end.character != newDiag.range.end.character)
             return false;
 
-        if (oldDiag.tags.length != newDiag.tags.length)
-            return false;
-        for (let j = 0; j < oldDiag.tags.length; ++j)
+        if (oldDiag.tags && newDiag.tags)
         {
-            if (oldDiag.tags[j] != newDiag.tags[j])
+            if (oldDiag.tags.length != newDiag.tags.length)
                 return false;
+            for (let j = 0; j < oldDiag.tags.length; ++j)
+            {
+                if (oldDiag.tags[j] != newDiag.tags[j])
+                    return false;
+            }
+        }
+        else if (!!oldDiag.tags != !!newDiag.tags)
+        {
+            return false;
         }
     }
 

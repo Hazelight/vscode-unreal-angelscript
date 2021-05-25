@@ -598,14 +598,24 @@ parameter_list -> null {%
 %}
 parameter_list -> parameter (_ %comma _ parameter):* (_ %comma):? {%
     function(d) {
-        let params = [d[0]];
+        let params = [];
+        if (d[0])
+            params.push(d[0]);
         if (d[1])
         {
             for (let part of d[1])
-                params.push(part[3]);
+            {
+                if (part[3])
+                    params.push(part[3]);
+            }
         }
         return params;
     }
+%}
+
+# INCOMPLETE: Typing a const token
+parameter -> %const_token {%
+    function (d) { return null; }
 %}
 
 parameter -> typename {%
@@ -1054,7 +1064,7 @@ typename_identifier -> (%identifier _ %ns _ ):* %identifier {%
 %}
 
 const_qualifier -> %const_token _ {%
-    function (d) { return d[0].value; }
+    function (d) { return Identifier(d[0]); }
 %}
 ref_qualifiers -> _ "&" ("in" | "out" | "inout"):? {%
     function (d) { return d[2] ? d[1].value+d[2][0].value : d[1].value; }

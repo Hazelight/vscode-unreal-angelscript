@@ -467,7 +467,8 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         }
     }
 
-    if (context.scope && context.scope.scopetype == scriptfiles.ASScopeType.Class)
+    if ((context.scope && context.scope.scopetype == scriptfiles.ASScopeType.Class)
+        || (context.baseStatement && context.baseStatement.ast && context.baseStatement.ast.type == scriptfiles.node_types.FunctionDecl && context.scope.getParentType()))
     {
         if (!context.isRightExpression && !context.isSubExpression)
         {
@@ -488,11 +489,11 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         if (context.isSubExpression && /^\s*UPROPERTY\s*$/.test(context.subOuterStatement.content))
         {
             AddCompletionsFromKeywordList(context, [
-                "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","NotReplicated","ReplicationCondition","Interp","NoClear",
+                "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","NotReplicated","ReplicationCondition","Interp","NoClear","Meta"
             ], completions);
         }
 
-        let scopeType = context.scope.getDatabaseType();
+        let scopeType = context.scope.getParentType();
         if (scopeType && !scopeType.isStruct)
         {
             if (!context.isRightExpression && !context.isSubExpression)
@@ -515,12 +516,13 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
             }
         }
     }
-    else if(context.scope && context.scope.scopetype == scriptfiles.ASScopeType.Global || context.scope.scopetype == scriptfiles.ASScopeType.Namespace)
+    else if((context.scope && context.scope.scopetype == scriptfiles.ASScopeType.Global || context.scope.scopetype == scriptfiles.ASScopeType.Namespace)
+        || (context.baseStatement && context.baseStatement.ast && context.baseStatement.ast.type == scriptfiles.node_types.FunctionDecl && !context.scope.getParentType()))
     {
         if (!context.isRightExpression && !context.isSubExpression)
         {
             AddCompletionsFromKeywordList(context, [
-                "mixin",
+                "mixin", "property",
             ], completions)
 
             if (CanCompleteTo(context.completingSymbol, "UFUNCTION"))
@@ -539,6 +541,21 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                 "BlueprintCallable","NotBlueprintCallable","BlueprintPure","Category","Meta",
             ], completions);
         }
+    }
+
+    if (context.isSubExpression && /^\s*UCLASS\s*$/.test(context.subOuterStatement.content))
+    {
+        AddCompletionsFromKeywordList(context, [
+            "Abstract", "Meta", "Deprecated", "Blueprintable", "NotBlueprintable",
+            "NotPlaceable", "Config", "DefaultConfig", "HideCategories",
+        ], completions);
+    }
+
+    if (context.isSubExpression && /^\s*USTRUCT\s*$/.test(context.subOuterStatement.content))
+    {
+        AddCompletionsFromKeywordList(context, [
+            "Meta",
+        ], completions);
     }
 }
 
@@ -1866,6 +1883,37 @@ function GetCodeOffsetIgnoreTable(code : string) : Array<number>
     {
         let char = code[index];
 
+        if (inLineComment)
+        {
+            if (char == '\n')
+            {
+                ignoreTable.push(index);
+                inLineComment = false;
+            }
+            continue;
+        }
+
+        if (inBlockComment)
+        {
+            if (char == '*' && index+1 < code.length && code[index+1] == '/')
+            {
+                ignoreTable.push(index+2);
+                inBlockComment = false;
+                index += 1;
+            }
+            continue;
+        }
+
+        if (inPreproc)
+        {
+            if (char == '\n')
+            {
+                ignoreTable.push(index);
+                inPreproc = false;
+            }
+            continue;
+        }
+
         // Strings
         if (char == '"' && !sq_string)
         {
@@ -1904,37 +1952,6 @@ function GetCodeOffsetIgnoreTable(code : string) : Array<number>
         }
         else if (sq_string)
             continue;
-
-        if (inLineComment)
-        {
-            if (char == '\n')
-            {
-                ignoreTable.push(index);
-                inLineComment = false;
-            }
-            continue;
-        }
-
-        if (inBlockComment)
-        {
-            if (char == '*' && index+1 < code.length && code[index+1] == '/')
-            {
-                ignoreTable.push(index+2);
-                inBlockComment = false;
-                index += 1;
-            }
-            continue;
-        }
-
-        if (inPreproc)
-        {
-            if (char == '\n')
-            {
-                ignoreTable.push(index);
-                inPreproc = false;
-            }
-            continue;
-        }
 
         // Comments
         if (char == '/')
