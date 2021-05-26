@@ -1017,31 +1017,36 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         let haveTerm = ExtractPriorExpressionAndSymbol(context, context.statement.ast);
         if (haveTerm)
             break;
+        else
+            context.statement.ast = null;
     }
 
     // We haven't been able to parse it to a valid term, but try an invalid term as well
-    for (let i = candidates.length-1; i >= 0; --i)
+    if (!context.statement.ast)
     {
-        let candidate = candidates[i];
-        context.statement.content = candidate.code;
-        context.statement.end_offset = offset + 1;
-        context.statement.start_offset = offset + 1 - candidate.code.length;
-        context.isRightExpression = candidate.isRightExpression;
-        context.statement.ast = null;
+        for (let i = candidates.length-1; i >= 0; --i)
+        {
+            let candidate = candidates[i];
+            context.statement.content = candidate.code;
+            context.statement.end_offset = offset + 1;
+            context.statement.start_offset = offset + 1 - candidate.code.length;
+            context.isRightExpression = candidate.isRightExpression;
+            context.statement.ast = null;
 
-        // Try to parse as a proper statement in the scope
-        scriptfiles.ParseStatement(context.scope.scopetype, context.statement);
+            // Try to parse as a proper statement in the scope
+            scriptfiles.ParseStatement(context.scope.scopetype, context.statement);
 
-        // Try to parse as an expression snippet instead
-        if (!context.statement.ast)
-            scriptfiles.ParseStatement(scriptfiles.ASScopeType.Code, context.statement);
+            // Try to parse as an expression snippet instead
+            if (!context.statement.ast)
+                scriptfiles.ParseStatement(scriptfiles.ASScopeType.Code, context.statement);
 
-        if (!context.statement.ast)
-            continue;
+            if (!context.statement.ast)
+                continue;
 
-        // If we managed to parse a statement, extract the prior expression from it
-        ExtractPriorExpressionAndSymbol(context, context.statement.ast);
-        break;
+            // If we managed to parse a statement, extract the prior expression from it
+            ExtractPriorExpressionAndSymbol(context, context.statement.ast);
+            break;
+        }
     }
 
     // Also find the function call we are a subexpression of
@@ -1245,6 +1250,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             if (node.superclass)
             {
                 context.maybeTypename = true;
+                context.isRightExpression = false;
                 context.completingNode = node.superclass;
                 context.completingSymbol = node.superclass.value;
             }
@@ -1997,7 +2003,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
     if (!typeOfScope || !typeOfScope.supertype)
         return;
 
-    let prevLineText = context.scope.module.textDocument.getText(
+    let prevLineText = position.line == 0 ? "" : context.scope.module.textDocument.getText(
         Range.create(
             Position.create(position.line-1, 0),
             Position.create(position.line, 0)

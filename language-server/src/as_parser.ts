@@ -46,6 +46,7 @@ export class ASModule
     lastEditStart : number = -1;
     lastEditEnd : number = -1;
     isOpened : boolean = false;
+    exists : boolean = true;
 
     loaded: boolean = false;
     textDocument : TextDocument = null;
@@ -266,7 +267,7 @@ export class ASSymbol
 
     overlapsRange(range_start : number, range_end : number) : boolean
     {
-        return range_start < this.start && range_end > this.end;
+        return range_start < this.end && range_end > this.start;
     }
 };
 
@@ -854,6 +855,7 @@ export function UpdateModuleFromContent(module : ASModule, content : string)
     // Update the content in the module
     ClearModule(module);
     module.content = content;
+    module.exists = true;
     LoadModule(module);
 }
 
@@ -865,9 +867,12 @@ export function UpdateModuleFromDisk(module : ASModule)
     try
     {
         module.content = fs.readFileSync(module.filename, 'utf8');
+        module.exists = true;
     }
     catch (readError)
     {
+        module.content = "";
+        module.exists = false;
         console.dir(readError);
     }
     module.lastEditStart = -1;
@@ -4371,6 +4376,7 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
         // the next statement, but haven't typed the semicolon yet.
         // In this case we will try to split it into two statements instead.
         let trySplit = false;
+        let allowNoSplit = false;
         if (!statement.ast)
         {
             if (scope.module.isEditingInside(statement.start_offset, statement.end_offset))
@@ -4385,12 +4391,13 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
             if (startLine != endLine && scope.module.getPosition(scope.module.lastEditStart).line < endLine)
             {
                 trySplit = true;
+                allowNoSplit = true;
             }
         }
 
         if (trySplit)
         {
-            let splitContent = SplitStatementBasedOnEdit(statement.content, scope.module.lastEditStart - statement.start_offset);
+            let splitContent = SplitStatementBasedOnEdit(statement.content, scope.module.lastEditStart - statement.start_offset, allowNoSplit);
             if (splitContent && splitContent.length != 0)
             {
                 let orig_start = statement.start_offset;
@@ -4407,6 +4414,9 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
                 let prevStatement = statement;
                 for (let splitIndex = 1; splitIndex < splitContent.length; ++splitIndex)
                 {
+                    if (!splitContent[splitIndex])
+                        continue;
+
                     let newStatement = new ASStatement();
                     newStatement.content = splitContent[splitIndex];
                     newStatement.start_offset = splitOffset;
@@ -4439,7 +4449,7 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
         ParseAllStatements(subscope, debug)
 }
 
-function SplitStatementBasedOnEdit(content : string, editOffset : number) : Array<string>
+function SplitStatementBasedOnEdit(content : string, editOffset : number, allowNoSplit : boolean) : Array<string>
 {
     // Find the first linebreak after the edit position that completes all brackets before the edit position
     let length = content.length;
@@ -4561,7 +4571,7 @@ function SplitStatementBasedOnEdit(content : string, editOffset : number) : Arra
         // Once we encounter a linebreak that is both after the
         // edit position, and also all parens and brackets have been closed,
         // we split it into two statements.
-        if (splitIndex > editOffset && curchar == '\n'
+        if (splitIndex >= editOffset && curchar == '\n'
             && depth_brace == 0 && depth_paren == 0 && depth_squarebracket == 0)
         {
             return [
@@ -4569,6 +4579,15 @@ function SplitStatementBasedOnEdit(content : string, editOffset : number) : Arra
                 content.substring(splitIndex+1),
             ];
         }
+    }
+
+    // We reached the end of the statement without a linebreak, but we could still have a valid split all the way at the end
+    if (allowNoSplit && depth_brace == 0 && depth_paren == 0 && depth_squarebracket == 0)
+    {
+        return [
+            content,
+            null,
+        ];
     }
 
     // We didn't find a valid split that satisfies the bracket condition,

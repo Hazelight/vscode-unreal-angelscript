@@ -12,7 +12,8 @@ import {
 	SemanticTokensDelta,
 	CodeActionParams,
 	CodeAction,
-	DidCloseTextDocumentParams
+	DidCloseTextDocumentParams,
+	FileChangeType
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -389,7 +390,14 @@ connection.onDidChangeWatchedFiles((_change) => {
 			{
 				scriptfiles.PostProcessModuleTypes(module);
 				scriptfiles.ResolveModule(module);
-				scriptdiagnostics.UpdateScriptModuleDiagnostics(module);
+
+				let alwaysSendDiagnostics = false;
+				if (change.type == FileChangeType.Deleted)
+					alwaysSendDiagnostics = true;
+				if (change.type == FileChangeType.Created)
+					alwaysSendDiagnostics = true;
+
+				scriptdiagnostics.UpdateScriptModuleDiagnostics(module, false, alwaysSendDiagnostics);
 			}
 		}
 	}

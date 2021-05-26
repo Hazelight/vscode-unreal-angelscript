@@ -24,9 +24,9 @@ function NotifyDiagnostics(uri : string, notifyEmpty = true)
     let fromCompile = CompileDiagnostics.get(scriptfiles.NormalizeUri(uri));
     if (fromCompile)
     {
-        allDiagnostics = allDiagnostics.concat(fromCompile);
-
         let asmodule = scriptfiles.GetModuleByUri(uri);
+        if (!asmodule || asmodule.exists)
+            allDiagnostics = allDiagnostics.concat(fromCompile);
         if (asmodule && asmodule.loaded)
             TrimDiagnosticPositions(asmodule, allDiagnostics);
     }
@@ -53,10 +53,10 @@ export function OnDiagnosticsChanged(bindFunction : any)
     NotifyFunctions.push(bindFunction);
 }
 
-export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule, initialResolve = false)
+export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule, initialResolve = false, alwaysSend = false)
 {
     let diagnostics = new Array<Diagnostic>();
-
+    
     // Go through all the parsed scopes and add diagnostics
     AddScopeDiagnostics(asmodule.rootscope, diagnostics);
 
@@ -86,7 +86,7 @@ export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule, i
     if (oldDiagnostics && oldDiagnostics.length != 0)
         notifyEmpty = true;
 
-    NotifyDiagnostics(asmodule.displayUri, notifyEmpty);
+    NotifyDiagnostics(asmodule.displayUri, notifyEmpty || alwaysSend);
 }
 
 function AddScopeDiagnostics(scope : scriptfiles.ASScope, diagnostics : Array<Diagnostic>)
