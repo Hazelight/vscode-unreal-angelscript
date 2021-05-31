@@ -24,6 +24,13 @@ let parser_enum_statement_initial = parser_enum_statement.save();
 
 export let node_types = require("../grammar/node_types.js");
 
+export let ASKeywords = [
+    "for", "if", "enum", "return", "continue", "break", "import", "class", "struct", "default",
+    "void", "const", "delegate", "event", "else", "while", "case", "Cast", "namespace",
+    "UFUNCTION", "UPROPERTY", "UCLASS", "USTRUCT", "nullptr", "true", "false", "this", "auto",
+    "final", "property", "override", "mixin",
+];
+
 export enum ASScopeType
 {
     Global,
@@ -526,12 +533,6 @@ export class ASDelegateBind
     node_name : any = null;
 };
 
-let ASKeywords = [
-    "for", "if", "enum", "return", "continue", "break", "import", "class", "struct", "default",
-    "void", "const", "delegate", "event", "else", "while", "case", "Cast", "namespace",
-    "UFUNCTION", "UPROPERTY", "UCLASS", "USTRUCT", "nullptr", "true", "false", "this", "auto",
-    "final", "property", "override", "mixin",
-];
 export let ModuleDatabase = new Map<string, ASModule>();
 let ModulesByUri = new Map<string, ASModule>();
 

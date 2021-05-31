@@ -52,7 +52,7 @@
                 },
                 {
                     "name": "keyword.specifier.angelscript",
-                    "match": "\\b(EditAnywhere|EditDefaultsOnly|EditInstanceOnly|BlueprintReadWrite|BlueprintReadOnly|NotBlueprintVisible|NotEditable|DefaultComponent|RootComponent|Attach|AttachSocket|Transient|Interp|NoClear|NotVisible|EditConst|BlueprintHidden|ShowOnActor|Config|Replicated|NotReplicated|ReplicationCondition|EditFixedSize|AdvancedDisplay|Meta|Category)\\b"
+                    "match": "\\b(BlueprintReadWrite|BlueprintReadOnly|BlueprintHidden|EditInstanceOnly|EditDefaultsOnly|EditAnywhere|NotVisible|EditConst|VisibleAnywhere|VisibleInstanceOnly|VisibleDefaultsOnly|AdvancedDisplay|Transient|Config|Interp|NoClear|Category|Keywords|ToolTip|DisplayName|EditInline|ExposeOnSpawn|EditFixedSize|BlueprintProtected|DefaultComponent|RootComponent|ShowOnActor|Attach|AttachSocket|Meta|Instanced|BlueprintSetter|BlueprintGetter|Replicated|ReplicatedUsing|NotReplicated|ReplicationCondition)\\b"
                 }
             ]
         },
@@ -77,7 +77,7 @@
                 },
                 {
                     "name": "keyword.specifier.angelscript",
-                    "match": "\\b(BlueprintOverride|BlueprintEvent|BlueprintCallable|NotBlueprintCallable|BlueprintPure|NetFunction|CrumbFunction|DevFunction|Category|Meta|CallInEditor|Unreliable|NetMulticast|Client|Server|WithValidation|BlueprintAuthorityOnly)\\b"
+                    "match": "\\b(BlueprintCallable|NotBlueprintCallable|BlueprintPure|BlueprintEvent|NetFunction|CrumbFunction|DevFunction|Unreliable|BlueprintOverride|CallInEditor|Category|Keywords|ToolTip|DisplayName|BlueprintProtected|Meta|NetMulticast|Server|Client|WithValidation|BlueprintAuthorityOnly)\\b"
                 }
             ]
         },
@@ -102,7 +102,7 @@
                 },
                 {
                     "name": "keyword.specifier.angelscript",
-                    "match": "\\b(Abstract|Meta|Deprecated|Blueprintable|NotBlueprintable|NotPlaceable|Config|DefaultConfig|HideCategories|ComponentWrapperClass)\\b"
+                    "match": "\\b(NotPlaceable|NotBlueprintable|Blueprintable|Abstract|Config|Deprecated|HideCategories|DefaultConfig|ComponentWrapperClass|Meta)\\b"
                 }
             ]
         },

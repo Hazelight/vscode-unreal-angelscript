@@ -4,6 +4,7 @@ import {
 } from 'vscode-languageserver/node';
 import * as typedb from './database';
 import * as scriptfiles from './as_parser';
+import * as specifiers from './specifiers';
 
 let CommonTypenames = new Set<string>([
     "FVector", "FRotator", "FTransform", "FQuat"
@@ -69,6 +70,10 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
     // No completions at all when we are typing the name in a variable declaration
     if (context.isNamingVariable)
         return [];
+
+    // Add completions from unreal macro specifiers
+    if (AddCompletionsFromUnrealMacro(context, completions))
+        return completions;
 
     if (context.completingSymbol == null)
         return null;
@@ -393,6 +398,53 @@ function AddCompletionsFromKeywordList(context : CompletionContext, keywords : A
     }
 }
 
+function AddCompletionsFromSpecifiers(context : CompletionContext, specifiers : any, completions : Array<CompletionItem>)
+{
+    for(let spec in specifiers)
+    {
+        if (!context.completingSymbol || CanCompleteTo(context.completingSymbol, spec))
+        {
+            completions.push({
+                    label: spec,
+                    documentation: specifiers[spec],
+                    kind: CompletionItemKind.Keyword
+            });
+        }
+    }
+}
+
+function AddCompletionsFromUnrealMacro(context : CompletionContext, completions : Array<CompletionItem>) : boolean
+{
+    if (context.isSubExpression)
+    {
+        if (/^\s*UCLASS\s*$/.test(context.subOuterStatement.content))
+        {
+            AddCompletionsFromSpecifiers(context, specifiers.ASClassSpecifiers, completions);
+            return true;
+        }
+
+        if (/^\s*USTRUCT\s*$/.test(context.subOuterStatement.content))
+        {
+            AddCompletionsFromSpecifiers(context, specifiers.ASStructSpecifiers, completions);
+            return true;
+        }
+
+        if (/^\s*UPROPERTY\s*$/.test(context.subOuterStatement.content))
+        {
+            AddCompletionsFromSpecifiers(context, specifiers.ASPropertySpecifiers, completions);
+            return true;
+        }
+
+        if (/^\s*UFUNCTION\s*$/.test(context.subOuterStatement.content))
+        {
+            AddCompletionsFromSpecifiers(context, specifiers.ASFunctionSpecifiers, completions);
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function AddCompletionsFromKeywords(context : CompletionContext, completions : Array<CompletionItem>)
 {
     let inFunctionBody = !context.scope || context.scope.isInFunctionBody();
@@ -486,13 +538,6 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
             }
         }
 
-        if (context.isSubExpression && /^\s*UPROPERTY\s*$/.test(context.subOuterStatement.content))
-        {
-            AddCompletionsFromKeywordList(context, [
-                "EditAnywhere","EditDefaultsOnly","EditInstanceOnly","BlueprintReadWrite","BlueprintReadOnly","NotBlueprintVisible","NotEditable","DefaultComponent","RootComponent","Attach","Transient","NotVisible","EditConst","BlueprintHidden","Replicated","NotReplicated","ReplicationCondition","Interp","NoClear","Meta"
-            ], completions);
-        }
-
         let scopeType = context.scope.getParentType();
         if (scopeType && !scopeType.isStruct)
         {
@@ -506,13 +551,6 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                             commitCharacters: ["("],
                     });
                 }
-            }
-
-            if (context.isSubExpression && /^\s*UFUNCTION\s*$/.test(context.subOuterStatement.content))
-            {
-                AddCompletionsFromKeywordList(context, [
-                    "BlueprintOverride","BlueprintEvent","BlueprintCallable","NotBlueprintCallable","BlueprintPure","NetFunction","CrumbFunction","DevFunction","Category","Meta","NetMulticast","Client","Server","WithValidation","BlueprintAuthorityOnly","CallInEditor","Unreliable",
-                ], completions);
             }
         }
     }
@@ -534,29 +572,8 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                 });
             }
         }
-
-        if (context.isSubExpression && /^\s*UFUNCTION\s*$/.test(context.subOuterStatement.content))
-        {
-            AddCompletionsFromKeywordList(context, [
-                "BlueprintCallable","NotBlueprintCallable","BlueprintPure","Category","Meta",
-            ], completions);
-        }
     }
 
-    if (context.isSubExpression && /^\s*UCLASS\s*$/.test(context.subOuterStatement.content))
-    {
-        AddCompletionsFromKeywordList(context, [
-            "Abstract", "Meta", "Deprecated", "Blueprintable", "NotBlueprintable",
-            "NotPlaceable", "Config", "DefaultConfig", "HideCategories",
-        ], completions);
-    }
-
-    if (context.isSubExpression && /^\s*USTRUCT\s*$/.test(context.subOuterStatement.content))
-    {
-        AddCompletionsFromKeywordList(context, [
-            "Meta",
-        ], completions);
-    }
 }
 
 function GetTypenameCommitChars(context : CompletionContext, typename : string, commitChars : Array<string>)

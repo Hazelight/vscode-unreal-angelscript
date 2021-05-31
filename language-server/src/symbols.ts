@@ -7,6 +7,7 @@ import {
 
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
+import * as specifiers from './specifiers';
 
 export function GetDefinition(asmodule : scriptfiles.ASModule, position : Position) : Array<Location>
 {
@@ -258,7 +259,13 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
     let offset = asmodule.getOffset(position);
     let findSymbol = asmodule.getSymbolAt(offset);
     if (!findSymbol)
-        return null;
+    {
+        // If there's no symbol below the cursor, try to provider a hover for the world under cursor
+        let word = GetWordAt(asmodule, offset);
+        if (!word)
+            return null;
+        return GetWordHover(word);
+    }
 
     switch (findSymbol.type)
     {
@@ -361,6 +368,71 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
         }
         break;
     }
+}
+
+function IsIdentifierValid(content : string, index : number)
+{
+    let charCode = content.charCodeAt(index);
+    if (charCode > 47 && charCode < 58)
+        return true;
+    if (charCode > 64 && charCode < 91)
+        return true;
+    if (charCode > 96 && charCode < 123)
+        return true;
+    if (charCode == 95)
+        return true;
+    return false;
+}
+
+function GetWordAt(asmodule : scriptfiles.ASModule, offset : number) : string
+{
+    let startOffset = offset;
+    while (startOffset > 0)
+    {
+        if (!IsIdentifierValid(asmodule.content, startOffset))
+        {
+            startOffset += 1;
+            break;
+        }
+        startOffset -= 1;
+    }
+
+    let endOffset = offset+1;
+    while (endOffset > 0)
+    {
+        if (!IsIdentifierValid(asmodule.content, endOffset))
+            break;
+        endOffset += 1;
+    }
+
+    if (startOffset < endOffset)
+        return asmodule.content.substring(startOffset, endOffset);
+    return null;
+}
+
+function GetWordHover(word : string) : Hover
+{
+    if (!word)
+        return;
+
+    let documentation = null;
+    if (word in specifiers.ASPropertySpecifiers)
+        documentation = specifiers.ASPropertySpecifiers[word];
+    else if (word in specifiers.ASClassSpecifiers)
+        documentation = specifiers.ASClassSpecifiers[word];
+    else if (word in specifiers.ASFunctionSpecifiers)
+        documentation = specifiers.ASFunctionSpecifiers[word];
+    else if (word in specifiers.ASStructSpecifiers)
+        documentation = specifiers.ASStructSpecifiers[word];
+
+    if (documentation)
+    {
+        return <Hover> {contents: <MarkupContent> {
+            kind: "markdown",
+            value: documentation,
+        }};
+    }
+    return null;
 }
 
 function FormatHoverDocumentation(doc : string) : string
