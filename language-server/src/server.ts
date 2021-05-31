@@ -657,8 +657,6 @@ function WaitForResolveSymbols(params : SemanticTokensParams) : SemanticTokens |
 		return result;
 
 	function timerFunc(resolve : any, reject : any, triesLeft : number) {
-		if (triesLeft <= 0 || UnrealTypesTimedOut)
-			return resolve(null);
 		let result = TryResolveSymbols(asmodule);
 		if (result)
 			return resolve(result);

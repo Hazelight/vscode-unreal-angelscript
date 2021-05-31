@@ -70,7 +70,7 @@ export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule, i
     let oldDiagnostics = ParseDiagnostics.get(asmodule.uri);
     ParseDiagnostics.set(asmodule.uri, diagnostics);
 
-    // If this is the initial resolve and we have nothing, don't send it
+
     if (initialResolve && diagnostics.length == 0)
         return;
 
