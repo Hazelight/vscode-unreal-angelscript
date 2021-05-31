@@ -15,7 +15,7 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
     let offset = asmodule.getOffset(position);
 
     // If there is a symbol beneath the cursor, go to that symbol/
-    let findSymbol = asmodule.getSymbolAt(offset);
+    let findSymbol = asmodule.getSymbolAtOrBefore(offset);
     if (findSymbol)
     {
         let defs = GetSymbolDefinition(asmodule, findSymbol);
@@ -45,7 +45,7 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
 export function FindUnimportedSymbolOnLine(asmodule : scriptfiles.ASModule, position : Position) : scriptfiles.ASSymbol
 {
     let offset = asmodule.getOffset(position);
-    let findSymbol = asmodule.getSymbolAt(offset);
+    let findSymbol = asmodule.getSymbolAtOrBefore(offset);
     if (findSymbol.isUnimported)
         return findSymbol;
 
@@ -216,7 +216,7 @@ export function GetUnrealTypeFor(typename : string) : string
 export function GetCppSymbol(asmodule : scriptfiles.ASModule, position : Position) : [string, string]
 {
     let offset = asmodule.getOffset(position);
-    let findSymbol = asmodule.getSymbolAt(offset);
+    let findSymbol = asmodule.getSymbolAtOrBefore(offset);
     if (!findSymbol)
         return null;
 

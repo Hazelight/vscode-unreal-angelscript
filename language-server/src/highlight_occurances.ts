@@ -17,7 +17,7 @@ export function HighlightOccurances(uri : string, position : Position) : Array<D
     scriptfiles.ResolveModule(asmodule);
 
     let offset = asmodule.getOffset(position);
-    let findSymbol = asmodule.getSymbolAt(offset);
+    let findSymbol = asmodule.getSymbolAtOrBefore(offset);
     if (!findSymbol)
         return null;
 

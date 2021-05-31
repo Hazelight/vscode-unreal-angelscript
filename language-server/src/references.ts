@@ -18,7 +18,7 @@ export function* FindReferences(uri : string, position : Position) : any
     scriptfiles.ResolveModule(asmodule);
 
     let offset = asmodule.getOffset(position);
-    let findSymbol = asmodule.getSymbolAt(offset);
+    let findSymbol = asmodule.getSymbolAtOrBefore(offset);
     if (!findSymbol)
         return null;
 
@@ -120,7 +120,7 @@ export function PrepareRename(uri : string, position : Position) : Range | Respo
     scriptfiles.ResolveModule(asmodule);
 
     let offset = asmodule.getOffset(position);
-    let findSymbol = asmodule.getSymbolAt(offset);
+    let findSymbol = asmodule.getSymbolAtOrBefore(offset);
     if (!findSymbol)
         return null;
 
@@ -190,7 +190,7 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
     scriptfiles.ResolveModule(asmodule);
 
     let offset = asmodule.getOffset(position);
-    let findSymbol = asmodule.getSymbolAt(offset);
+    let findSymbol = asmodule.getSymbolAtOrBefore(offset);
     if (!findSymbol)
         return edits;
 

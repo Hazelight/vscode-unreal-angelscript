@@ -159,6 +159,21 @@ export class ASModule
         return null;
     }
 
+    getSymbolAtOrBefore(offset : number) : ASSymbol
+    {
+        // Find the symbol of the character we're standing on
+        let symbolBefore : ASSymbol = null;
+        for (let symbol of this.symbols)
+        {
+            if (offset >= symbol.start && offset < symbol.end)
+                return symbol;
+            if (offset == symbol.end)
+                symbolBefore = symbol;
+        }
+        // If no symbol was found, potentially return the symbol in front of the cursor
+        return symbolBefore;
+    }
+
     isEditingInside(start : number, end : number) : boolean
     {
         if (this.lastEditStart == -1)
@@ -1660,6 +1675,8 @@ function GenerateTypeInformation(scope : ASScope)
                 nsType.methods.push(dbfunc);
                 nsType.addSymbol(dbfunc);
             }
+
+            ExtendScopeToStatement(scope, scope.previous);
         }
         // Destructor declaration placed inside a class
         else if (scope.previous.ast.type == node_types.DestructorDecl)
