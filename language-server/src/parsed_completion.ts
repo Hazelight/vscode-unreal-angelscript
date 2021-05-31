@@ -1814,6 +1814,9 @@ function isEditScope(inScope : scriptfiles.ASScope) : boolean
 
 function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DBProperty, inScope : scriptfiles.ASScope) : boolean
 {
+    if (!prop.containingType)
+        return true;
+
     if (prop.isPrivate || prop.isProtected)
     {
         if (!inScope)
@@ -1825,13 +1828,13 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DB
         if (prop.isPrivate)
         {
             // Needs to be in this class to have access
-            if (!curtype || dbtype.typename != curtype.typename)
+            if (!curtype || dbtype.typename != prop.containingType.typename)
                 return false;
         }
         else if (prop.isProtected)
         {
             // Needs to be in a subclass to have access
-            if (!curtype || !dbtype.inheritsFrom(curtype.typename))
+            if (!curtype || !dbtype.inheritsFrom(prop.containingType.typename))
                 return false;
         }
     }
@@ -1853,6 +1856,9 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DB
 
 function isFunctionAccessibleFromScope(curtype : typedb.DBType, func : typedb.DBMethod, inScope : scriptfiles.ASScope) : boolean
 {
+    if (!func.containingType)
+        return true;
+
     if (func.isPrivate || func.isProtected)
     {
         if (!inScope)
@@ -1864,13 +1870,13 @@ function isFunctionAccessibleFromScope(curtype : typedb.DBType, func : typedb.DB
         if (func.isPrivate)
         {
             // Needs to be in this class to have access
-            if (!curtype || dbtype.typename != curtype.typename)
+            if (!curtype || dbtype.typename != func.containingType.typename)
                 return false;
         }
         else if (func.isProtected)
         {
             // Needs to be in a subclass to have access
-            if (!curtype || !dbtype.inheritsFrom(curtype.typename))
+            if (!curtype || !dbtype.inheritsFrom(func.containingType.typename))
                 return false;
         }
     }
@@ -2089,7 +2095,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
             if (foundOverrides.has(method.name))
                 continue;
 
-            let complStr = GetDeclarationSnippet(method, false);
+            let complStr = GetDeclarationSnippet(method, currentIndent, false);
             let complEdits = textEdits;
 
             if (method.isEvent)
@@ -2148,22 +2154,55 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
     }
 }
 
-function GetDeclarationSnippet(method : typedb.DBMethod, includeReturnType : boolean) : string
+function GetDeclarationSnippet(method : typedb.DBMethod, indent : string, includeReturnType : boolean) : string
 {
+    let preambleLength = method.name.length + 2;
+    if (method.returnType)
+        preambleLength += method.returnType.length;
+    else
+        preambleLength += 4;
+
     let complStr = "";
     if (includeReturnType)
         complStr += method.returnType+" ";
     complStr += method.name+"(";
+
+    let lineLength = preambleLength;
+    if (indent)
+        lineLength += indent.length;
     if (method.args)
     {
-        let firstArg = true;
-        for (let arg of method.args)
+        for (let i = 0; i < method.args.length; ++i)
         {
-            if (!firstArg)
-                complStr += ", ";
-            firstArg = false;
+            let arg = method.args[i];
+            let argLength = arg.typename.length;
+            if (arg.name)
+                argLength += arg.name.length + 1;
 
-            complStr += arg.typename+" "+arg.name;
+            if (lineLength + argLength > 100 && indent != null)
+            {
+                if (i != 0)
+                {
+                    complStr += ",";
+                    lineLength += 1;
+                }
+                complStr += "\n"+" ".repeat(preambleLength);
+                lineLength = indent.length + preambleLength;
+            }
+            else if (i != 0)
+            {
+                complStr += ", ";
+                lineLength += 2;
+            }
+
+            complStr += arg.typename;
+            if (arg.name)
+            {
+                complStr += " ";
+                complStr += arg.name;
+            }
+
+            lineLength += argLength;
         }
     }
     complStr += ")";
@@ -2271,7 +2310,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
         let func = type.getMethodWithIdHint(item.data[2], item.data[3]);
         if (func)
         {
-            let complStr = NoBreakingSpaces(GetDeclarationSnippet(func, true));
+            let complStr = NoBreakingSpaces(GetDeclarationSnippet(func, null, true));
             item.documentation = <MarkupContent> {
                 kind: MarkupKind.Markdown,
                 value: "```angelscript_snippet\n"+complStr+"\n```\n\n",
