@@ -518,11 +518,11 @@ var_decl -> typename _ var_decl_multi_part (_ %comma _ var_decl_multi_part):+ {%
 
 var_decl_multi_part -> %identifier (_ "=" _ expression):? {%
     function (d) {
-        if (d[2])
+        if (d[1])
             return {
                 ...Compound(d, n.VariableDecl, null),
                 name: Identifier(d[0]),
-                expression: d[1][2],
+                expression: d[1][3],
                 inline_assignment: true
             };
         else

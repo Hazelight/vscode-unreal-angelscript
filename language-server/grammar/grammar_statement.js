@@ -541,11 +541,11 @@ var grammar = {
     {"name": "var_decl_multi_part$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "var_decl_multi_part", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "var_decl_multi_part$ebnf$1"], "postprocess": 
         function (d) {
-            if (d[2])
+            if (d[1])
                 return {
                     ...Compound(d, n.VariableDecl, null),
                     name: Identifier(d[0]),
-                    expression: d[1][2],
+                    expression: d[1][3],
                     inline_assignment: true
                 };
             else
