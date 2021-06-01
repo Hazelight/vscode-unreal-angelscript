@@ -602,19 +602,29 @@ export class DBType
         return extend;
     }
 
+
+    combineTypes : Array<DBType> = null;
+    combineTypesId : number = -1;
     getCombineTypesList() : Array<DBType>
     {
-        let extend : Array<DBType> = [ this ];
-        let checkIndex = 0;
-        while (checkIndex < extend.length)
+        if (this.combineTypes)
         {
-            let checkType = extend[checkIndex];
+            if (this.combineTypesId == DirtyTypeCacheId)
+                return this.combineTypes;
+        }
+
+        this.combineTypes = [ this ];
+        this.combineTypesId = DirtyTypeCacheId;
+        let checkIndex = 0;
+        while (checkIndex < this.combineTypes.length)
+        {
+            let checkType = this.combineTypes[checkIndex];
 
             if (checkType.supertype)
             {
                 let dbsuper = GetType(checkType.supertype);
-                if(dbsuper && !extend.includes(dbsuper))
-                    extend.push(dbsuper);
+                if(dbsuper && !this.combineTypes.includes(dbsuper))
+                    this.combineTypes.push(dbsuper);
             }
 
             if (checkType.siblingTypes)
@@ -622,15 +632,15 @@ export class DBType
                 for (let sibling of checkType.siblingTypes)
                 {
                     let dbsibling = GetType(sibling);
-                    if(dbsibling && !extend.includes(dbsibling))
-                        extend.push(dbsibling);
+                    if(dbsibling && !this.combineTypes.includes(dbsibling))
+                        this.combineTypes.push(dbsibling);
                 }
             }
 
             checkIndex += 1;
         }
 
-        return extend;
+        return this.combineTypes;
     }
 
     allProperties() : Array<DBProperty>
@@ -862,55 +872,31 @@ export class DBType
         return false;
     }
 
-    findFirstSymbol(name : string, allow_symbols = DBAllowSymbol.PropertiesAndFunctions, depth = 100) : DBSymbol | null
+    findFirstSymbol(name : string, allow_symbols = DBAllowSymbol.PropertiesAndFunctions) : DBSymbol | null
     {
-        let syms = this.symbols.get(name);
-        if (syms && syms.length != 0)
+        for (let type of this.getCombineTypesList())
         {
-            for (let sym of syms)
+            let syms = type.symbols.get(name);
+            if (syms && syms.length != 0)
             {
-                if (sym instanceof DBProperty)
+                for (let sym of syms)
                 {
-                    if (allow_symbols == DBAllowSymbol.FunctionOnly)
-                        continue;
-                    if (allow_symbols == DBAllowSymbol.FunctionsAndMixins)
-                        continue;
-                    return sym;
-                }
-                else if (sym instanceof DBMethod)
-                {
-                    if (allow_symbols == DBAllowSymbol.PropertyOnly)
-                        continue;
-                    if (sym.isMixin && allow_symbols != DBAllowSymbol.FunctionsAndMixins)
-                        continue;
-                    return sym;
-                }
-            }
-        }
-        if (depth == 0)
-            return null;
-
-        if (this.supertype)
-        {
-            let dbsuper = GetType(this.supertype);
-            if (dbsuper)
-            {
-                let sym = dbsuper.findFirstSymbol(name, allow_symbols, depth-1);
-                if (sym)
-                    return sym;
-            }
-        }
-
-        if (this.siblingTypes)
-        {
-            for (let sibling of this.siblingTypes)
-            {
-                let dbsibling = GetType(sibling);
-                if (dbsibling)
-                {
-                    let sym = dbsibling.findFirstSymbol(name, allow_symbols, depth-1);
-                    if (sym)
+                    if (sym instanceof DBProperty)
+                    {
+                        if (allow_symbols == DBAllowSymbol.FunctionOnly)
+                            continue;
+                        if (allow_symbols == DBAllowSymbol.FunctionsAndMixins)
+                            continue;
                         return sym;
+                    }
+                    else if (sym instanceof DBMethod)
+                    {
+                        if (allow_symbols == DBAllowSymbol.PropertyOnly)
+                            continue;
+                        if (sym.isMixin && allow_symbols != DBAllowSymbol.FunctionsAndMixins)
+                            continue;
+                        return sym;
+                    }
                 }
             }
         }
@@ -925,62 +911,38 @@ export class DBType
             return null;
 
         let charPrefix = prefix.substr(0, 2).toLowerCase();
-        let syms = this.symbolsByPrefix.get(charPrefix);
-        if (syms && syms.length != 0)
+        for (let type of this.getCombineTypesList())
         {
-            for (let sym of syms)
+            let syms = type.symbolsByPrefix.get(charPrefix);
+            if (syms && syms.length != 0)
             {
-                if (sym instanceof DBProperty)
+                for (let sym of syms)
                 {
-                    if (allow_symbols == DBAllowSymbol.FunctionOnly)
-                        continue;
-                    if (allow_symbols == DBAllowSymbol.FunctionsAndMixins)
-                        continue;
-                }
-                else if (sym instanceof DBMethod)
-                {
-                    if (allow_symbols == DBAllowSymbol.PropertyOnly)
-                        continue;
-                    if (sym.isMixin && allow_symbols != DBAllowSymbol.FunctionsAndMixins)
-                        continue;
-                }
+                    if (sym instanceof DBProperty)
+                    {
+                        if (allow_symbols == DBAllowSymbol.FunctionOnly)
+                            continue;
+                        if (allow_symbols == DBAllowSymbol.FunctionsAndMixins)
+                            continue;
+                    }
+                    else if (sym instanceof DBMethod)
+                    {
+                        if (allow_symbols == DBAllowSymbol.PropertyOnly)
+                            continue;
+                        if (sym.isMixin && allow_symbols != DBAllowSymbol.FunctionsAndMixins)
+                            continue;
+                    }
 
-                if (caseSensitive)
-                {
-                    if (sym.name.startsWith(prefix))
-                        return sym;
-                }
-                else
-                {
-                    if (sym.name.toLowerCase().startsWith(prefix.toLowerCase()))
-                        return sym;
-                }
-            }
-        }
-        if (depth == 0)
-            return null;
-
-        if (this.supertype)
-        {
-            let dbsuper = GetType(this.supertype);
-            if (dbsuper)
-            {
-                let sym = dbsuper.findFirstSymbolWithPrefix(prefix, allow_symbols, caseSensitive, depth-1);
-                if (sym)
-                    return sym;
-            }
-        }
-
-        if (this.siblingTypes)
-        {
-            for (let sibling of this.siblingTypes)
-            {
-                let dbsibling = GetType(sibling);
-                if (dbsibling)
-                {
-                    let sym = dbsibling.findFirstSymbolWithPrefix(prefix, allow_symbols, caseSensitive, depth-1);
-                    if (sym)
-                        return sym;
+                    if (caseSensitive)
+                    {
+                        if (sym.name.startsWith(prefix))
+                            return sym;
+                    }
+                    else
+                    {
+                        if (sym.name.toLowerCase().startsWith(prefix.toLowerCase()))
+                            return sym;
+                    }
                 }
             }
         }
@@ -988,39 +950,22 @@ export class DBType
         return null;
     }
 
-    findSymbols(name : string, depth = 100) : Array<DBSymbol>
+    findSymbols(name : string) : Array<DBSymbol>
     {
         let result : Array<DBSymbol> = [];
-        this.findSymbolsInternal(result, name, depth);
+        this.findSymbolsInternal(result, name);
         return result;
     }
 
-    private findSymbolsInternal(result : Array<DBSymbol>, name : string, depth : number)
+    private findSymbolsInternal(result : Array<DBSymbol>, name : string)
     {
-        let syms = this.symbols.get(name);
-        if (syms)
+        for (let type of this.getCombineTypesList())
         {
-            for (let sym of syms)
-                result.push(sym);
-        }
-
-        if (depth == 0)
-            return;
-
-        if (this.supertype)
-        {
-            let dbsuper = GetType(this.supertype);
-            if (dbsuper)
-                dbsuper.findSymbolsInternal(result, name, depth-1);
-        }
-
-        if (this.siblingTypes)
-        {
-            for (let sibling of this.siblingTypes)
+            let syms = type.symbols.get(name);
+            if (syms)
             {
-                let dbsibling = GetType(sibling);
-                if (dbsibling)
-                    dbsibling.findSymbolsInternal(result, name, depth-1);
+                for (let sym of syms)
+                    result.push(sym);
             }
         }
     }
@@ -1101,6 +1046,12 @@ export class DBType
         return this.classification;
     }
 };
+
+export let DirtyTypeCacheId = 0;
+export function OnDirtyTypeCaches()
+{
+    DirtyTypeCacheId++;
+}
 
 export let database = new Map<string, DBType>();
 export let databaseByPrefix = new Map<string, Array<DBType>>();
@@ -1428,6 +1379,7 @@ export function AddTypeToDatabase(dbtype : DBType)
     }
 
     database.set(dbtype.typename, dbtype);
+    OnDirtyTypeCaches();
 }
 
 export function RemoveTypeFromDatabase(dbtype : DBType)
@@ -1446,6 +1398,7 @@ export function RemoveTypeFromDatabase(dbtype : DBType)
                 prefixSyms.splice(previousIndex, 1);
         }
     }
+    OnDirtyTypeCaches();
 }
 
 export function GetAllTypes() : Map<string, DBType>

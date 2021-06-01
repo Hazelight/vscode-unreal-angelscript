@@ -6,6 +6,7 @@ import * as nearley from 'nearley';
 
 import * as typedb from './database';
 import { ProcessScriptTypeGeneratedCode } from "./generated_code";
+import { performance } from "perf_hooks";
 
 let grammar_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_statement.js"));
 let grammar_class_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_class_statement.js"));
@@ -622,6 +623,8 @@ export function ParseModule(module : ASModule, debug : boolean = false)
 {
     if (module.parsed)
         return;
+
+    typedb.OnDirtyTypeCaches();
     module.parsed = true;
 
     module.rootscope = new ASScope;
