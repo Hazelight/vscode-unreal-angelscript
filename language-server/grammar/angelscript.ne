@@ -1087,7 +1087,7 @@ func_qualifiers -> _ (func_qualifier __ ):* func_qualifier {%
         if (d[1])
         {
             for (let part of d[1])
-                quals.push(part.value);
+                quals.push(part[0].value);
         }
         return quals;
     }
