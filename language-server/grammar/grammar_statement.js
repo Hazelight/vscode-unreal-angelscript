@@ -961,8 +961,8 @@ var grammar = {
     {"name": "constant", "symbols": [(lexer.has("nullptr_token") ? {type: "nullptr_token"} : nullptr_token)], "postprocess":  
         function (d) { return Literal(n.ConstNullptr, d[0]); }
         },
-    {"name": "unary_operator", "symbols": [(lexer.has("op_binary_sum") ? {type: "op_binary_sum"} : op_binary_sum)]},
-    {"name": "unary_operator", "symbols": [(lexer.has("op_unary") ? {type: "op_unary"} : op_unary)]},
+    {"name": "unary_operator", "symbols": [(lexer.has("op_binary_sum") ? {type: "op_binary_sum"} : op_binary_sum)], "postprocess": id},
+    {"name": "unary_operator", "symbols": [(lexer.has("op_unary") ? {type: "op_unary"} : op_unary)], "postprocess": id},
     {"name": "unary_operator", "symbols": [(lexer.has("postfix_operator") ? {type: "postfix_operator"} : postfix_operator)], "postprocess": id},
     {"name": "typename$ebnf$1", "symbols": ["const_qualifier"], "postprocess": id},
     {"name": "typename$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},

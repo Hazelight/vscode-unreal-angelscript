@@ -955,11 +955,9 @@ constant -> %nullptr_token {%
     function (d) { return Literal(n.ConstNullptr, d[0]); }
 %}
 
-unary_operator
-    -> %op_binary_sum
-     | %op_unary
-     | %postfix_operator
-{% id %}
+unary_operator -> %op_binary_sum {% id %}
+unary_operator -> %op_unary {% id %}
+unary_operator -> %postfix_operator {% id %}
 
 typename -> const_qualifier:? unqualified_typename ref_qualifiers:? {%
     function (d) { return ExtendedCompound(d, {
