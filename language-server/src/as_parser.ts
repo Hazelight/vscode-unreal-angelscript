@@ -79,6 +79,13 @@ export class ASModule
     flatImportList = new Set<string>();
     preParsedImports = new Array<string>();
 
+    queuedParse : any = null;
+
+    rawStatements : Array<ASStatement> = [];
+    cachedStatements : Array<ASStatement> = null;
+    loadedFromCacheCount : number = 0;
+    parsedStatementCount : number = 0;
+
     getOffset(position : Position) : number
     {
         if (!this.textDocument)
@@ -530,12 +537,16 @@ export class ASScope extends ASElement
 export class ASStatement extends ASElement
 {
     content : string;
+    rawIndex : number = -1;
 
     start_offset : number = -1;
     end_offset : number = -1;
 
     ast : any = null;
     parsed : boolean = false;
+    parseError : boolean = false;
+    parsedType : ASScopeType = ASScopeType.Code;
+
     generatedTypes : boolean = false;
 };
 
@@ -624,6 +635,8 @@ export function ParseModule(module : ASModule, debug : boolean = false)
     if (module.parsed)
         return;
 
+    //let startTime = performance.now()
+
     typedb.OnDirtyTypeCaches();
     module.parsed = true;
 
@@ -638,6 +651,9 @@ export function ParseModule(module : ASModule, debug : boolean = false)
     // Parse each statement into an abstract syntax tree
     ParseAllStatements(module.rootscope, debug);
 
+    // Clear previously cached statements from last parse
+    module.cachedStatements = null;
+
     // Create the global type for the module
     module.global_type = AddDBType(module.rootscope, "//"+module.modulename);
     module.global_type.siblingTypes = [];
@@ -647,6 +663,8 @@ export function ParseModule(module : ASModule, debug : boolean = false)
 
     // Traverse syntax trees to lift out functions, variables and imports during this first parse step
     GenerateTypeInformation(module.rootscope);
+
+    //console.log("Parse "+module.modulename+" " + (performance.now() - startTime) + " ms - "+module.loadedFromCacheCount+" cached, "+module.parsedStatementCount+" parsed")
 }
 
 // Parse the specified module and all its unparsed dependencies
@@ -1087,6 +1105,11 @@ function ClearModule(module : ASModule)
     module.importedModules = [];
     module.flatImportList.clear();
     module.preParsedImports = [];
+
+    module.cachedStatements = module.rawStatements;
+    module.rawStatements = [];
+    module.loadedFromCacheCount = 0;
+    module.parsedStatementCount = 0;
 }
 
 export function GetSymbolLocation(modulename : string, typename : string, symbolname : string) : Location | null
@@ -4125,6 +4148,8 @@ function ParseScopeIntoStatements(scope : ASScope)
                 statement.end_offset = cur_offset;
 
                 scope.statements.push(statement);
+                statement.rawIndex = scope.module.rawStatements.length;
+                scope.module.rawStatements.push(statement);
                 finishElement(statement);
             }
         }
@@ -4378,6 +4403,56 @@ function DetermineScopeType(scope : ASScope)
     }
 }
 
+function GetCachedStatementParse(module : ASModule, scopetype : ASScopeType, statement : ASStatement, rawIndex : number) : boolean
+{
+    if (!module.cachedStatements)
+        return false;
+    if (rawIndex >= module.cachedStatements.length)
+        return false;
+
+    // Check if the last statement we have cached matches
+    let cachedStatement = module.cachedStatements[rawIndex];
+    if (cachedStatement && cachedStatement.parsed && cachedStatement.parsedType == scopetype && cachedStatement.content == statement.content)
+    {
+        statement.ast = cachedStatement.ast;
+        statement.parsed = true;
+        statement.parseError = cachedStatement.parseError;
+        statement.parsedType = cachedStatement.parsedType;
+        return true;
+    }
+
+    // Also check if the next statement in the cache matches, maybe we inserted something
+    if (rawIndex+1 < module.cachedStatements.length)
+    {
+        cachedStatement = module.cachedStatements[rawIndex+1];
+        if (cachedStatement && cachedStatement.parsed && cachedStatement.parsedType == scopetype && cachedStatement.content == statement.content)
+        {
+            statement.parsed = true;
+            statement.parseError = cachedStatement.parseError;
+            statement.parsedType = cachedStatement.parsedType;
+            statement.ast = cachedStatement.ast;
+            return true;
+        }
+    }
+
+    // Also check if the previous statement in the cache matches, maybe we deleted something
+    if (rawIndex > 0)
+    {
+        cachedStatement = module.cachedStatements[rawIndex-1];
+        if (cachedStatement && cachedStatement.parsed && cachedStatement.parsedType == scopetype && cachedStatement.content == statement.content)
+        {
+            statement.parsed = true;
+            statement.parseError = cachedStatement.parseError;
+            statement.parsedType = cachedStatement.parsedType;
+            statement.ast = cachedStatement.ast;
+            return true;
+        }
+    }
+
+    // No statement matches, but skip ahead in the cache anyway, more chance to find matching again later
+    return false;
+}
+
 function ParseAllStatements(scope : ASScope, debug : boolean = false)
 {
     // Determine what the type of this scope is based on the previous statement
@@ -4390,7 +4465,16 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
         if (!statement)
             continue;
 
-        ParseStatement(scope.scopetype, statement, debug);
+        let fromCache = GetCachedStatementParse(scope.module, scope.scopetype, statement, statement.rawIndex);
+        if (!fromCache)
+        {
+            ParseStatement(scope.scopetype, statement, debug);
+            scope.module.parsedStatementCount += 1;
+        }
+        else
+        {
+            scope.module.loadedFromCacheCount += 1;
+        }
 
         // The statement failed to parse, and we are currently editing
         // inside it. It's likely that we are typing a new statement in front of
@@ -4428,7 +4512,17 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
                 statement.content = splitContent[0];
                 statement.end_offset = statement.start_offset + statement.content.length;
                 statement.parsed = false;
-                ParseStatement(scope.scopetype, statement, debug);
+
+                let fromCache = GetCachedStatementParse(scope.module, scope.scopetype, statement, statement.rawIndex);
+                if (!fromCache)
+                {
+                    ParseStatement(scope.scopetype, statement, debug);
+                    scope.module.parsedStatementCount += 1;
+                }
+                else
+                {
+                    scope.module.loadedFromCacheCount += 1;
+                }
 
                 // Add new statements for each element in the split
                 let splitOffset = statement.end_offset;
@@ -4452,7 +4546,16 @@ function ParseAllStatements(scope : ASScope, debug : boolean = false)
 
                     scope.statements.push(newStatement);
 
-                    ParseStatement(scope.scopetype, newStatement, debug);
+                    let fromCache = GetCachedStatementParse(scope.module, scope.scopetype, newStatement, statement.rawIndex);
+                    if (!fromCache)
+                    {
+                        ParseStatement(scope.scopetype, newStatement, debug);
+                        scope.module.parsedStatementCount += 1;
+                    }
+                    else
+                    {
+                        scope.module.loadedFromCacheCount += 1;
+                    }
                 }
             }
         }
@@ -4653,6 +4756,7 @@ export function ParseStatement(scopetype : ASScopeType, statement : ASStatement,
 {
     statement.parsed = true;
     statement.ast = null;
+    statement.parsedType = scopetype;
 
     let parser : nearley.Parser = null;
     switch (scopetype)
@@ -4695,6 +4799,7 @@ export function ParseStatement(scopetype : ASScopeType, statement : ASStatement,
         }
 
         parseError = true;
+        statement.parseError = true;
     }
 
     if (!parseError)
@@ -4702,16 +4807,19 @@ export function ParseStatement(scopetype : ASScopeType, statement : ASStatement,
         if (parser.results.length == 0)
         {
             statement.ast = null;
+            statement.parseError = true;
         }
         else if (parser.results.length == 1)
         {
             // Unambiguous, take the first one
             statement.ast = parser.results[0];
+            statement.parseError = false;
         }
         else
         {
             // We have some simple disambiguation rules to apply first
             statement.ast = DisambiguateStatement(parser.results);
+            statement.parseError = false;
 
             // If the disambiguation failed, take the first one anyway
             if (!statement.ast)

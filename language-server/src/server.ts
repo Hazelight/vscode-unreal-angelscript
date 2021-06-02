@@ -764,29 +764,30 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 	// The content of a text document did change in VSCode.
 	// params.uri uniquely identifies the document.
 	// params.contentChanges describe the content changes to the document.
+	if (params.contentChanges.length == 0)
+		return;
 
-	try
-	{
-		if (params.contentChanges.length == 0)
-			return;
+	let content = params.contentChanges[0].text;
+	let uri = params.textDocument.uri;
+	let modulename = getModuleName(uri);
+	
+	let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
+	scriptfiles.UpdateModuleFromContent(asmodule, content);
 
-		let content = params.contentChanges[0].text;
-		let uri = params.textDocument.uri;
-		let modulename = getModuleName(uri);
-		
-		let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
-		scriptfiles.UpdateModuleFromContent(asmodule, content);
-		scriptfiles.ParseModuleAndDependencies(asmodule);
-		if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
-		{
-			scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
-			scriptfiles.ResolveModule(asmodule);
-			scriptdiagnostics.UpdateScriptModuleDiagnostics(asmodule);
-		}
-	}
-	catch (error)
+	if (!asmodule.queuedParse)
 	{
-		console.log("Error!");
+		// We don't parse because of didChange more than ten times per second,
+		// so we don't end up with a giant backlog of parses.
+		asmodule.queuedParse = setTimeout(function() {
+			asmodule.queuedParse = null;
+			scriptfiles.ParseModuleAndDependencies(asmodule);
+			if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
+			{
+				scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
+				scriptfiles.ResolveModule(asmodule);
+				scriptdiagnostics.UpdateScriptModuleDiagnostics(asmodule);
+			}
+		}, 100);
 	}
  });
 
