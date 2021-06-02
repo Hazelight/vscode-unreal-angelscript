@@ -185,8 +185,11 @@ function ScoreMethodForArguments(context : CompletionContext, argContext : Compl
     let score = 0;
 
     // Check if we've passed too many arguments
-    if (context.subOuterArgumentIndex > func.args.length)
-        score -= 50;
+    if (context.subOuterArgumentIndex >= func.args.length)
+    {
+        if(context.subOuterArgumentIndex > 0 || (context.statement.content && context.statement.content.length > 0))
+            score -= 50;
+    }
 
     // Check if all named arguments we're using are matched
     let activeArg = -1;
