@@ -2564,6 +2564,10 @@ function ResolveTypeFromOperator(scope : ASScope, leftType : typedb.DBType, righ
             return rightType;
         return leftType;
     }
+    else if (!rightType && leftType && leftType.isPrimitive)
+    {
+        return leftType;
+    }
 
     // Try the operator overload for the left side
     if (leftType)
