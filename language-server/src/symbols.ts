@@ -46,7 +46,7 @@ export function FindUnimportedSymbolOnLine(asmodule : scriptfiles.ASModule, posi
 {
     let offset = asmodule.getOffset(position);
     let findSymbol = asmodule.getSymbolAtOrBefore(offset);
-    if (findSymbol.isUnimported)
+    if (findSymbol && findSymbol.isUnimported)
         return findSymbol;
 
     let lineStartOffset = asmodule.getOffset(
