@@ -331,10 +331,17 @@ var grammar = {
     {"name": "statement", "symbols": [(lexer.has("while_token") ? {type: "while_token"} : while_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
         function (d) { return Compound(d, n.WhileLoop, [d[4], d[7]]); }
         },
+    {"name": "global_statement", "symbols": [(lexer.has("import_token") ? {type: "import_token"} : import_token)], "postprocess": 
+        function (d) {
+            return Compound(d, n.ImportStatement, [null]);
+        }
+        },
     {"name": "global_statement$ebnf$1", "symbols": []},
     {"name": "global_statement$ebnf$1$subexpression$1", "symbols": [(lexer.has("dot") ? {type: "dot"} : dot), (lexer.has("identifier") ? {type: "identifier"} : identifier)]},
     {"name": "global_statement$ebnf$1", "symbols": ["global_statement$ebnf$1", "global_statement$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "global_statement", "symbols": [(lexer.has("import_token") ? {type: "import_token"} : import_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "global_statement$ebnf$1"], "postprocess": 
+    {"name": "global_statement$ebnf$2", "symbols": [(lexer.has("dot") ? {type: "dot"} : dot)], "postprocess": id},
+    {"name": "global_statement$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "global_statement", "symbols": [(lexer.has("import_token") ? {type: "import_token"} : import_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "global_statement$ebnf$1", "global_statement$ebnf$2"], "postprocess": 
         function (d) {
             let tokens = [d[2]];
             for (let part of d[3])
@@ -342,6 +349,8 @@ var grammar = {
                 tokens.push(part[0]);
                 tokens.push(part[1]);
             }
+            if (d[4])
+                tokens.push(d[4]);
             return Compound(d, n.ImportStatement, [CompoundIdentifier(tokens, null)]);
         }
         },

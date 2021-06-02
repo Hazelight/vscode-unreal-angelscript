@@ -569,7 +569,7 @@ export function GetAllLoadedModules() : Array<ASModule>
     let files : Array<ASModule> = [];
     for (let module of ModuleDatabase)
     {
-        if (module[1].loaded)
+        if (module[1].loaded && module[1].exists)
             files.push(module[1]);
     }
     return files;

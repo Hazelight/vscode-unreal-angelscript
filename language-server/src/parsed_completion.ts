@@ -71,6 +71,10 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
     if (context.isNamingVariable)
         return [];
 
+    // Add completions from import statements
+    if (AddCompletionsFromImportStatement(context, completions))
+        return completions;
+
     // Add completions from unreal macro specifiers
     if (AddCompletionsFromUnrealMacro(context, completions))
         return completions;
@@ -414,6 +418,37 @@ function AddCompletionsFromSpecifiers(context : CompletionContext, specifiers : 
             });
         }
     }
+}
+
+function AddCompletionsFromImportStatement(context : CompletionContext, completions : Array<CompletionItem>) : boolean
+{
+    if (context.statement && context.statement.ast && context.statement.ast.type == scriptfiles.node_types.ImportStatement)
+    {
+        let complString = "";
+        if(context.completingSymbol)
+            complString = context.completingSymbol;
+        
+        let untilDot = "";
+        let dotPos = complString.lastIndexOf(".");
+        if (dotPos != -1)
+            untilDot = complString.substr(0, dotPos+1);
+
+        for (let asmodule of scriptfiles.GetAllLoadedModules())
+        {
+            if (CanCompleteTo(complString, asmodule.modulename))
+            {
+                completions.push({
+                    label: asmodule.modulename,
+                    kind: CompletionItemKind.File,
+                    filterText: asmodule.modulename.substr(untilDot.length),
+                    insertText: asmodule.modulename.substr(untilDot.length),
+                });
+            }
+        }
+        return true;
+    }
+
+    return false;
 }
 
 function AddCompletionsFromUnrealMacro(context : CompletionContext, completions : Array<CompletionItem>) : boolean
@@ -1298,6 +1333,19 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                 context.completingSymbol = node.name.value;
             else
                 context.completingSymbol = "";
+            return true;
+        }
+        break;
+        case scriptfiles.node_types.ImportStatement:
+        {
+            context.priorExpression = null;
+            context.priorType = null;
+            context.isNamingVariable = false;
+            if (node.children && node.children[0])
+            {
+                context.completingNode = node.children[0];
+                context.completingSymbol = node.children[0].value;
+            }
             return true;
         }
         break;

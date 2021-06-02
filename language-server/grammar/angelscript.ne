@@ -341,7 +341,13 @@ statement -> %while_token _ %lparen _ expression _ %rparen optional_statement {%
     function (d) { return Compound(d, n.WhileLoop, [d[4], d[7]]); }
 %}
 
-global_statement -> %import_token _ %identifier (%dot %identifier):* {%
+global_statement -> %import_token {%
+    function (d) {
+        return Compound(d, n.ImportStatement, [null]);
+    }
+%}
+
+global_statement -> %import_token _ %identifier (%dot %identifier):* %dot:? {%
     function (d) {
         let tokens = [d[2]];
         for (let part of d[3])
@@ -349,6 +355,8 @@ global_statement -> %import_token _ %identifier (%dot %identifier):* {%
             tokens.push(part[0]);
             tokens.push(part[1]);
         }
+        if (d[4])
+            tokens.push(d[4]);
         return Compound(d, n.ImportStatement, [CompoundIdentifier(tokens, null)]);
     }
 %}
