@@ -1958,6 +1958,9 @@ function GetCodeOffsetIgnoreTable(code : string) : Array<number>
 
     let sq_string = false;
     let dq_string = false;
+    
+    let inFormatString = false;
+    let inFormatExpression = false;
 
     for (let index = 0, count = code.length; index < count; ++index)
     {
@@ -1994,6 +1997,33 @@ function GetCodeOffsetIgnoreTable(code : string) : Array<number>
             continue;
         }
 
+        // Format string sections
+        if (inFormatString)
+        {
+            if (inFormatExpression)
+            {
+                if (char == '}')
+                {
+                    inFormatExpression = false;
+                    ignoreTable.push(index);
+                }
+            }
+            else
+            {
+                if (char == '{')
+                {
+                    if (index+1 < count && code[index+1] == '{')
+                    {
+                        ++index;
+                        continue;
+                    }
+
+                    inFormatExpression = true;
+                    ignoreTable.push(index);
+                }
+            }
+        }
+
         // Strings
         if (char == '"' && !sq_string)
         {
@@ -2001,14 +2031,20 @@ function GetCodeOffsetIgnoreTable(code : string) : Array<number>
             {
                 if (index <= 0 || code[index-1] != '\\')
                 {
-                    ignoreTable.push(index+1);
+                    if (!inFormatExpression)
+                        ignoreTable.push(index+1);
                     dq_string = false;
+                    inFormatString = false;
+                    inFormatExpression = false;
                 }
             }
             else
             {
                 ignoreTable.push(index);
                 dq_string = true;
+
+                if (index > 0 && code[index-1] == 'f')
+                    inFormatString = true;
             }
         }
         else if (dq_string)

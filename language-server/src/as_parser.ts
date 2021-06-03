@@ -651,9 +651,6 @@ export function ParseModule(module : ASModule, debug : boolean = false)
     // Parse each statement into an abstract syntax tree
     ParseAllStatements(module.rootscope, debug);
 
-    // Clear previously cached statements from last parse
-    module.cachedStatements = null;
-
     // Create the global type for the module
     module.global_type = AddDBType(module.rootscope, "//"+module.modulename);
     module.global_type.siblingTypes = [];
@@ -762,6 +759,9 @@ export function ResolveModule(module : ASModule)
 
     // Detect all symbols used in the scope
     DetectScopeSymbols(module.rootscope);
+
+    // Clear previously cached statements from last parse
+    module.cachedStatements = null;
 }
 
 // Update a module with new transient content
@@ -2233,6 +2233,12 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
             return typedb.GetType("FName");
         }
         break;
+        // f"X"
+        case node_types.ConstFormatString:
+        {
+            return typedb.GetType("FString");
+        }
+        break;
         // true/false
         case node_types.ConstBool:
         {
@@ -2930,6 +2936,11 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.ConstName: return typedb.GetType("FName"); break;
         case node_types.ConstString: return typedb.GetType("FString"); break;
         case node_types.ConstNullptr: return typedb.GetType("UObject"); break;
+        // Format string f"Blah {CODE}"
+        case node_types.ConstFormatString:
+            DetectFormatStringSymbols(scope, statement, node, parseContext);
+            return typedb.GetType("FString");
+        break;
         // X
         case node_types.Identifier:
         {
@@ -4104,6 +4115,99 @@ function CheckIdentifierIsPrefixForValidSymbolInType(scope : ASScope, statement 
     }
 
     return false;
+}
+
+let re_equalsspecifier = /^(.*)=\s*$/;
+let re_formatspecifier = /^(.*)=?:(.?[=<>^])?[0-9dxXbconeEfFgG,+-\.%#\s]*$/;
+function DetectFormatStringSymbols(scope : ASScope, statement : ASStatement, node : any, parseContext : ASParseContext)
+{
+    // It's not ideal having to re-parse the string into parts here, but not sure it can be avoided
+
+    // Parse each {CODE} expression into a string
+    let expressions = new Array<string>();
+    let offsets = new Array<number>();
+
+    let index = 2;
+    let count = node.value.length;
+    let expressionStart = -1;
+
+    for (; index < count; ++index)
+    {
+        let char : string = node.value[index];
+
+        if (expressionStart == -1)
+        {
+            if (char == '{')
+            {
+                if (index+1 < count && node.value[index+1] == '{')
+                {
+                    index += 1;
+                    continue;
+                }
+                else
+                {
+                    expressionStart = index+1;
+                }
+            }
+        }
+        else
+        {
+            if (char == '}')
+            {
+                expressions.push(node.value.substring(expressionStart, index));
+                offsets.push(expressionStart);
+                expressionStart = -1;
+            }
+        }
+    }
+
+    if (expressionStart != -1 && expressionStart < count-1)
+    {
+        expressions.push(node.value.substring(expressionStart, count-1));
+        offsets.push(expressionStart);
+    }
+
+    for (let i = 0; i < expressions.length; ++i)
+    {
+        // Run it through the format specifier regex to remove the specifier part
+        let match = expressions[i].match(re_equalsspecifier);
+        if (match)
+        {
+            expressions[i] = match[1];
+        }
+        else
+        {
+            match = expressions[i].match(re_formatspecifier);
+            if (match)
+            {
+                expressions[i] = match[1];
+            }
+        }
+    
+        let fakeStatement = new ASStatement();
+        fakeStatement.content = expressions[i];
+        fakeStatement.start_offset = statement.start_offset + node.start + offsets[i];
+        fakeStatement.end_offset = fakeStatement.start_offset + fakeStatement.content.length;
+
+        fakeStatement.rawIndex = scope.module.rawStatements.length;
+        scope.module.rawStatements.push(fakeStatement);
+
+        // Parse the expression part with our grammar
+        let fromCache = GetCachedStatementParse(scope.module, ASScopeType.Code, fakeStatement, fakeStatement.rawIndex);
+        if (!fromCache)
+        {
+            ParseStatement(ASScopeType.Code, fakeStatement);
+            scope.module.parsedStatementCount += 1;
+        }
+        else
+        {
+            scope.module.loadedFromCacheCount += 1;
+        }
+
+        // Detect symbols in the parsed expression
+        if (fakeStatement.ast)
+            DetectNodeSymbols(scope, fakeStatement, fakeStatement.ast, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+    }
 }
 
 function ParseScopeIntoStatements(scope : ASScope)

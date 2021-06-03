@@ -27,6 +27,7 @@ module.exports = {
     ConstDouble: indexed ? i++ : "ConstDouble",
     ConstString: indexed ? i++ : "ConstString",
     ConstName: indexed ? i++ : "ConstName",
+    ConstFormatString: indexed ? i++ : "ConstFormatString",
     ConstBool: indexed ? i++ : "ConstBool",
     ConstNullptr: indexed ? i++ : "ConstNullptr",
 

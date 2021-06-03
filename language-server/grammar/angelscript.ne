@@ -653,7 +653,7 @@ parameter -> typename _ %identifier _ "=" optional_expression {%
 macro_list -> null {%
     function(d) { return []; }
 %}
-macro_list -> macro_argument (_ "," _ macro_argument):* {%
+macro_list -> macro_argument (_ "," _ macro_argument):* (_ %comma):? {%
     function(d) {
         let args = [d[0]];
         if (d[1])
@@ -943,6 +943,10 @@ constant -> %sqstring {%
 
 constant -> "n" %dqstring {%
     function(d) { return CompoundLiteral(n.ConstName, d, null); }
+%}
+
+constant -> "f" %dqstring {%
+    function(d) { return CompoundLiteral(n.ConstFormatString, d, null); }
 %}
 
 constant -> const_number {% id %}

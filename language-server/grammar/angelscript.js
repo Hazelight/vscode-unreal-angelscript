@@ -673,7 +673,10 @@ var grammar = {
     {"name": "macro_list$ebnf$1", "symbols": []},
     {"name": "macro_list$ebnf$1$subexpression$1", "symbols": ["_", {"literal":","}, "_", "macro_argument"]},
     {"name": "macro_list$ebnf$1", "symbols": ["macro_list$ebnf$1", "macro_list$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "macro_list", "symbols": ["macro_argument", "macro_list$ebnf$1"], "postprocess": 
+    {"name": "macro_list$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
+    {"name": "macro_list$ebnf$2", "symbols": ["macro_list$ebnf$2$subexpression$1"], "postprocess": id},
+    {"name": "macro_list$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "macro_list", "symbols": ["macro_argument", "macro_list$ebnf$1", "macro_list$ebnf$2"], "postprocess": 
         function(d) {
             let args = [d[0]];
             if (d[1])
@@ -953,6 +956,9 @@ var grammar = {
         },
     {"name": "constant", "symbols": [{"literal":"n"}, (lexer.has("dqstring") ? {type: "dqstring"} : dqstring)], "postprocess": 
         function(d) { return CompoundLiteral(n.ConstName, d, null); }
+        },
+    {"name": "constant", "symbols": [{"literal":"f"}, (lexer.has("dqstring") ? {type: "dqstring"} : dqstring)], "postprocess": 
+        function(d) { return CompoundLiteral(n.ConstFormatString, d, null); }
         },
     {"name": "constant", "symbols": ["const_number"], "postprocess": id},
     {"name": "constant", "symbols": [(lexer.has("bool_token") ? {type: "bool_token"} : bool_token)], "postprocess":  

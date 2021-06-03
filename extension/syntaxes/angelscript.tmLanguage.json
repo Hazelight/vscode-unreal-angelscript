@@ -150,6 +150,55 @@
             "end": "(?=\\n)"
         },
 
+		{
+			"begin": "f\"",
+			"beginCaptures": {
+				"0": {
+					"name": "keyword.operator.quantifier.regexp"
+				}
+			},
+			"end": "\"",
+			"endCaptures": {
+				"0": {
+					"name": "keyword.operator.quantifier.regexp"
+				}
+			},
+			"name": "string.quoted.double.c",
+			"patterns": [
+				{
+					"include": "#string_escaped_char"
+				},
+				{
+					"match": "{{",
+					"name": "string.quoted.double.c"
+				},
+				{
+					"match": "}}",
+					"name": "string.quoted.double.c"
+				},
+				{
+					"begin": "{",
+					"beginCaptures": {
+						"0": {
+							"name": "keyword.formatexpression.angelscript"
+						}
+					},
+					"patterns": [
+						{
+							"include": "source.angelscript"
+						}
+					],
+					"name": "meta.embedded.expression.angelscript",
+					"end": "=?\\s*(:(.?[=<>^])?[0-9dxXbconeEfFgG=,+-\\.^%#\\s]*)?(}|(?=\")|(?=\n))",
+					"endCaptures": {
+						"0": {
+							"name": "keyword.formatexpression.angelscript"
+						}
+					}
+				}
+			]
+		},
+
         {
             "include": "#comments"
         },
