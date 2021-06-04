@@ -294,6 +294,7 @@ export class ASSymbol
 
     isWriteAccess : boolean = false;
     isUnimported : boolean = false;
+    noColor : boolean = false;
 
     overlapsRange(range_start : number, range_end : number) : boolean
     {
@@ -3057,6 +3058,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.FunctionCall:
         {
             // This could be a constructor call to a type
+            let isDelegateBind = false;
             let left_type : typedb.DBType = null;
             let left_symbol : typedb.DBSymbol | typedb.DBType = null;
             if (node.children[0] && node.children[0].type == node_types.Identifier)
@@ -3092,6 +3094,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                                 delegateBind.node_name = node.children[1].children[1];
                             delegateBind.delegateType = left_type.typename;
                             scope.module.delegateBinds.push(delegateBind);
+                            isDelegateBind = true;
                         }
                     }
                 }
@@ -3124,9 +3127,57 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     delegateBind.node_name = node.children[1].children[1];
                 delegateBind.delegateType = left_symbol.containingType.typename;
                 scope.module.delegateBinds.push(delegateBind);
+                isDelegateBind = true;
             }
 
-            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            // Add a symbol for the function we're binding if this is a delegate bind
+            if (isDelegateBind && left_symbol
+                && left_symbol instanceof typedb.DBMethod
+                && node.children[1])
+            {
+                parseContext.argumentFunction = left_symbol;
+                let objectSymbol = DetectNodeSymbols(scope, statement, node.children[1].children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+
+                let insideType = GetTypeFromSymbol(objectSymbol);
+                let nameNode = node.children[1].children[1];
+                if (nameNode && nameNode.type == node_types.ConstName && insideType)
+                {
+                    let foundFunc = insideType.findFirstSymbol(
+                        nameNode.value.substring(2, nameNode.value.length-1),
+                        typedb.DBAllowSymbol.FunctionOnly);
+
+                    if (!foundFunc)
+                    {
+                        if (!scope.module.isEditingNode(statement, nameNode))
+                        {
+                            AddUnknownSymbol(scope, statement, nameNode, false);
+                        }
+                    }
+                    else
+                    {
+                        let symbol = AddIdentifierSymbol(scope, statement, nameNode,
+                            ASSymbolType.MemberFunction, foundFunc.containingType.typename, foundFunc.name);
+                        if (symbol)
+                        {
+                            symbol.start += 2;
+                            symbol.end -= 1;
+                            symbol.noColor = true;
+                        }
+                    }
+                }
+
+                // Detect symbols for remaining arguments
+                for (let i = 1; i < node.children[1].children.length; ++i)
+                {
+                    parseContext.argumentFunction = left_symbol;
+                    DetectNodeSymbols(scope, statement, node.children[1].children[i], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                }
+            }
+            else
+            {
+                // Detect symbols for all children
+                DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            }
 
             // Pass through the return type to be used for the next level
             return left_type;

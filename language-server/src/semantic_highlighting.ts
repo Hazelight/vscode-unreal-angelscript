@@ -70,6 +70,9 @@ function BuildSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTokensB
 {
 	for (let symbol of asmodule.symbols)
 	{
+		if (symbol.noColor)
+			continue;
+
 		let pos = asmodule.getPosition(symbol.start);
 		let length = symbol.end - symbol.start;
 
