@@ -6,6 +6,7 @@ export let ASPropertySpecifiers : any = {
     "EditInstanceOnly": "Property can only be changed on instances in the level",
     "EditDefaultsOnly": "Property can only be changed on defaults inside blueprint classes",
     "EditAnywhere": "Property can be changed by blueprint classes and on instances in the level",
+    "NotEditable": "Property cannot be edited from unreal anywhere",
     "NotVisible": "Property cannot be changed or seen in the details panel at all",
     "EditConst": "Property can be seen in the details panel but not edited",
     "VisibleAnywhere": "Property can be seen both on blueprint classes and instances in the level, but not changed",
