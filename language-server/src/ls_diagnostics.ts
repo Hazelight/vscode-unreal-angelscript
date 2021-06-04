@@ -211,52 +211,30 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                     break;
                 }
 
-                if (signatureArg.endsWith("&in") != boundArg.endsWith("&in"))
-                {
-                    signatureMatches = false;
-                    break;
-                }
-
                 if (signatureArg.endsWith("&out") != boundArg.endsWith("&out"))
                 {
                     signatureMatches = false;
                     break;
                 }
 
-                // Values and constrefs are compatible
-                if (signatureArg.endsWith("&"))
+                let isReferenceInUnreal = false;
+                if (signatureArg.endsWith("&in"))
+                    isReferenceInUnreal = true;
+                else if (signatureArg.endsWith("&") && !signatureArg.startsWith("const "))
+                    isReferenceInUnreal = true;
+
+                let isBindReference = false;
+                if (boundArg.endsWith("&in"))
+                    isBindReference = true;
+                else if (boundArg.endsWith("&") && !boundArg.startsWith("const "))
+                    isBindReference = true;
+
+                // If unreal expects a reference property here, we need to make sure the
+                // bind is also a reference property or the bind will fail.
+                if (isReferenceInUnreal != isBindReference)
                 {
-                    let isSignatureConstRef = signatureArg.startsWith("const ");
-                    if (isSignatureConstRef)
-                    {
-                        let isBindConstRef = boundArg.endsWith("&") && boundArg.startsWith("const ");
-                        let isBindValue = !boundArg.endsWith("&");
-                        if (!isBindConstRef && !isBindValue)
-                        {
-                            signatureMatches = false;
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        let isBindRef = boundArg.endsWith("&");
-                        let isBindConst = boundArg.startsWith("const ");
-                        if (!isBindRef || isBindConst)
-                        {
-                            signatureMatches = false;
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    let isBindConstRef = boundArg.endsWith("&") && boundArg.startsWith("const ");
-                    let isBindValue = !boundArg.endsWith("&");
-                    if (!isBindConstRef && ! isBindValue)
-                    {
-                        signatureMatches = false;
-                        break;
-                    }
+                    signatureMatches = false;
+                    break;
                 }
             }
         }

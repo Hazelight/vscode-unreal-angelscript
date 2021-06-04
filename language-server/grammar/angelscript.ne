@@ -27,6 +27,10 @@ const lexer = moo.compile({
     op_assignment: "=",
     op_unary: ["!", "~"],
     ternary: "?",
+    trpstring:  {
+        match: /"""[^]*"""/,
+        lineBreaks: true,
+    },
     dqstring:  /"(?:\\["\\A-Za-z0-9]|[^\n"\\])*"/,
     sqstring:  /'(?:\\['\\A-Za-z0-9]|[^\n'\\])*'/,
     hex_number: /0x[0-9A-Fa-f]+/,
@@ -937,6 +941,10 @@ constant -> %dqstring {%
     function(d) { return Literal(n.ConstString, d[0]); }
 %}
 
+constant -> %trpstring {%
+    function(d) { return Literal(n.ConstString, d[0]); }
+%}
+
 constant -> %sqstring {%
     function(d) { return Literal(n.ConstString, d[0]); }
 %}
@@ -1076,8 +1084,8 @@ typename_identifier -> (%identifier _ %ns _ ):* %identifier {%
 const_qualifier -> %const_token _ {%
     function (d) { return Identifier(d[0]); }
 %}
-ref_qualifiers -> _ "&" ("in" | "out" | "inout"):? {%
-    function (d) { return d[2] ? d[1].value+d[2][0].value : d[1].value; }
+ref_qualifiers -> _ "&" (_ ("in" | "out" | "inout")):? {%
+    function (d) { return d[2] ? d[1].value+d[2][1][0].value : d[1].value; }
 %}
 
 func_qualifiers -> null {%

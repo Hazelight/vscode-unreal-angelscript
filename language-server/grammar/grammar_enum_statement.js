@@ -31,6 +31,10 @@ const lexer = moo.compile({
     op_assignment: "=",
     op_unary: ["!", "~"],
     ternary: "?",
+    trpstring:  {
+        match: /"""[^]*"""/,
+        lineBreaks: true,
+    },
     dqstring:  /"(?:\\["\\A-Za-z0-9]|[^\n"\\])*"/,
     sqstring:  /'(?:\\['\\A-Za-z0-9]|[^\n'\\])*'/,
     hex_number: /0x[0-9A-Fa-f]+/,
@@ -951,6 +955,9 @@ var grammar = {
     {"name": "constant", "symbols": [(lexer.has("dqstring") ? {type: "dqstring"} : dqstring)], "postprocess": 
         function(d) { return Literal(n.ConstString, d[0]); }
         },
+    {"name": "constant", "symbols": [(lexer.has("trpstring") ? {type: "trpstring"} : trpstring)], "postprocess": 
+        function(d) { return Literal(n.ConstString, d[0]); }
+        },
     {"name": "constant", "symbols": [(lexer.has("sqstring") ? {type: "sqstring"} : sqstring)], "postprocess": 
         function(d) { return Literal(n.ConstString, d[0]); }
         },
@@ -1088,13 +1095,14 @@ var grammar = {
     {"name": "const_qualifier", "symbols": [(lexer.has("const_token") ? {type: "const_token"} : const_token), "_"], "postprocess": 
         function (d) { return Identifier(d[0]); }
         },
-    {"name": "ref_qualifiers$ebnf$1$subexpression$1", "symbols": [{"literal":"in"}]},
-    {"name": "ref_qualifiers$ebnf$1$subexpression$1", "symbols": [{"literal":"out"}]},
-    {"name": "ref_qualifiers$ebnf$1$subexpression$1", "symbols": [{"literal":"inout"}]},
+    {"name": "ref_qualifiers$ebnf$1$subexpression$1$subexpression$1", "symbols": [{"literal":"in"}]},
+    {"name": "ref_qualifiers$ebnf$1$subexpression$1$subexpression$1", "symbols": [{"literal":"out"}]},
+    {"name": "ref_qualifiers$ebnf$1$subexpression$1$subexpression$1", "symbols": [{"literal":"inout"}]},
+    {"name": "ref_qualifiers$ebnf$1$subexpression$1", "symbols": ["_", "ref_qualifiers$ebnf$1$subexpression$1$subexpression$1"]},
     {"name": "ref_qualifiers$ebnf$1", "symbols": ["ref_qualifiers$ebnf$1$subexpression$1"], "postprocess": id},
     {"name": "ref_qualifiers$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "ref_qualifiers", "symbols": ["_", {"literal":"&"}, "ref_qualifiers$ebnf$1"], "postprocess": 
-        function (d) { return d[2] ? d[1].value+d[2][0].value : d[1].value; }
+        function (d) { return d[2] ? d[1].value+d[2][1][0].value : d[1].value; }
         },
     {"name": "func_qualifiers", "symbols": [], "postprocess": 
         function(d) { return null; }
