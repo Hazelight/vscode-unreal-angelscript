@@ -1052,7 +1052,13 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         context.statement.ast = null;
 
         // Try to parse as a proper statement in the scope
-        scriptfiles.ParseStatement(context.scope.scopetype, context.statement);
+        let baseType = context.scope.scopetype;
+
+        // Inside a default statement, we always parse as if it's a code block
+        if (context.baseStatement && context.baseStatement.ast && context.baseStatement.ast.type == scriptfiles.node_types.DefaultStatement)
+            baseType = scriptfiles.ASScopeType.Code;
+
+        scriptfiles.ParseStatement(baseType, context.statement);
 
         // We might want to try to parse this as a global statement if we're in a declaration
         if (!context.statement.ast)
