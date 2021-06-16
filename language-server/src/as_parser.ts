@@ -2139,6 +2139,8 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
             let addSymbol = AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
             if (exists instanceof typedb.DBType)
             {
+                if (exists.isEnum)
+                    addSymbol.symbol_name = exists.typename;
                 if (exists.declaredModule && !scope.module.isModuleImported(exists.declaredModule))
                     addSymbol.isUnimported = true;
             }
@@ -3015,7 +3017,21 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, null);
             if (nsType)
             {
-                addedSymbol.symbol_name = nsType.typename;
+                if (nsType.isShadowedNamespace())
+                {
+                    addedSymbol.type = ASSymbolType.Typename;
+                    addedSymbol.symbol_name = nsType.rawName;
+                }
+                else if (nsType.isEnum)
+                {
+                    addedSymbol.type = ASSymbolType.Typename;
+                    addedSymbol.symbol_name = nsType.typename;
+                }
+                else
+                {
+                    addedSymbol.symbol_name = nsType.typename;
+                }
+                
                 if (nsType.declaredModule && !scope.module.isModuleImported(nsType.declaredModule))
                     addedSymbol.isUnimported = true;
             }
@@ -3567,9 +3583,13 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         }
         break;
         case node_types.StructDefinition:
-        case node_types.EnumDefinition:
         {
             AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
+        }
+        break;
+        case node_types.EnumDefinition:
+        {
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, "__"+node.name.value);
         }
         break;
         // Namespace definitions add a namespace symbol
@@ -3778,7 +3798,8 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         let nsType = typedb.GetType("__"+node.value);
         if (nsType)
         {
-            let addedSymbol = AddIdentifierSymbol(scope, statement, node, ASSymbolType.Namespace, null, nsType.typename);
+            let symType = nsType.isEnum ? ASSymbolType.Typename : ASSymbolType.Namespace;
+            let addedSymbol = AddIdentifierSymbol(scope, statement, node, symType, null, nsType.typename);
             if (nsType.declaredModule && !scope.module.isModuleImported(nsType.declaredModule))
                 addedSymbol.isUnimported = true;
 
@@ -3831,11 +3852,21 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
     if (!dbtype)
         return false;
 
-    AddIdentifierSymbol(scope, statement, {
+    let nsSymbol = AddIdentifierSymbol(scope, statement, {
         start: identifier.start,
         end: identifier.start+nsName.length,
         value: nsName
     }, ASSymbolType.Namespace, null, dbtype.typename);
+    
+    if (dbtype.isShadowedNamespace())
+    {
+        nsSymbol.type = ASSymbolType.Typename;
+        nsSymbol.symbol_name = dbtype.rawName;
+    }
+    else if (dbtype.isEnum)
+    {
+        nsSymbol.type = ASSymbolType.Typename;
+    }
 
     // Could be a symbol inside the type
     let findName = identifier.value.substr(nsName.length+2).trim();

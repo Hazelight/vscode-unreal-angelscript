@@ -10,7 +10,7 @@ export function* FindReferences(uri : string, position : Position) : any
     // Find the symbol that is at the specified location in the document
     let asmodule = scriptfiles.GetModuleByUri(uri);
     if (!asmodule)
-        return null;
+        return references;
 
     // Make sure the module is parsed and resolved
     scriptfiles.ParseModuleAndDependencies(asmodule);
@@ -20,11 +20,11 @@ export function* FindReferences(uri : string, position : Position) : any
     let offset = asmodule.getOffset(position);
     let findSymbol = asmodule.getSymbolAtOrBefore(offset);
     if (!findSymbol)
-        return null;
+        return references;
 
     // Unknown symbols cannot be searched for
     if (findSymbol.type == scriptfiles.ASSymbolType.UnknownError)
-        return null;
+        return references;
 
     // Local variables and parameters have special treatment that needs to be scope-aware,
     // we also only need to search within the module for these
@@ -33,7 +33,7 @@ export function* FindReferences(uri : string, position : Position) : any
     {
         let declaredScope = asmodule.getScopeDeclaringLocalSymbol(findSymbol);
         if (!declaredScope)
-            return null;
+            return references;
         for (let symbol of asmodule.symbols)
         {
             if (symbol.type != findSymbol.type)
