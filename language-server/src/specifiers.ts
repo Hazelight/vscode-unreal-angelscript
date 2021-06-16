@@ -46,6 +46,7 @@ export let ASClassSpecifiers : any = {
     "HideCategories": "Properties in these categories are not editable on this class",
     "DefaultConfig": "Config properties on this class should be saved to default configs, not user configs",
     "ComponentWrapperClass": "Actor is a lightweight wrapper around a single component",
+    "ClassGroup": "List this class under the specified group in the editor",
     "Meta": "Specify arbitrary meta tags",
 };
 

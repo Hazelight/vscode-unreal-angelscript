@@ -102,7 +102,7 @@
                 },
                 {
                     "name": "keyword.specifier.angelscript",
-                    "match": "\\b(NotPlaceable|NotBlueprintable|Blueprintable|Abstract|Config|Deprecated|HideCategories|DefaultConfig|ComponentWrapperClass|Meta)\\b"
+                    "match": "\\b(NotPlaceable|NotBlueprintable|Blueprintable|Abstract|Config|Deprecated|HideCategories|DefaultConfig|ComponentWrapperClass|ClassGroup|Meta)\\b"
                 }
             ]
         },
