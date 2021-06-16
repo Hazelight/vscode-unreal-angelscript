@@ -12,6 +12,9 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
     // Actions for adding missing imports
     AddImportActions(asmodule, range_start, range_end, actions, diagnostics);
 
+    // Actions for autos
+    AddAutoActions(asmodule, range_start, range_end, actions, diagnostics);
+
     // Actions for generating delegate bind functions
     AddGenerateDelegateFunctionActions(asmodule, range_start, range_end, actions, diagnostics);
 
@@ -39,6 +42,8 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
         ResolveCastHelper(asmodule, action, data);
     else if (data.type == "superCall")
         ResolveSuperCallHelper(asmodule, action, data);
+    else if (data.type == "materializeAuto")
+        ResolveAutoAction(asmodule, action, data);
     return action;
 }
 
@@ -702,4 +707,49 @@ function FindInsertPositionFunctionStart(scope : scriptfiles.ASScope) : [Positio
     let headPos = scope.module.getPosition(scope.declaration.end_offset);
     prefix += "\n";
     return [Position.create(headPos.line, 100000), indent, prefix, suffix];
+}
+
+function AddAutoActions(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+{
+    for (let symbol of asmodule.symbols)
+    {
+        if (!symbol.isAuto)
+            continue;
+        if (!symbol.overlapsRange(range_start, range_end))
+            continue;
+
+        let realTypename = symbol.symbol_name;
+        let dbtype = typedb.GetType(realTypename);
+        if (!dbtype)
+            continue;
+
+        actions.push(<CodeAction> {
+            kind: CodeActionKind.RefactorInline,
+            title: "Change auto to "+realTypename,
+            source: "angelscript",
+            isPreferred: true,
+            data: {
+                uri: asmodule.uri,
+                type: "materializeAuto",
+                typename: realTypename,
+                symbol: symbol,
+            }
+        });
+    }
+}
+
+function ResolveAutoAction(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
+{
+    let symbol = data.symbol as scriptfiles.ASSymbol;
+    let typename = data.typename;
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.replace(
+            asmodule.getRange(symbol.start, symbol.end),
+            typename,
+        )
+    ];
 }

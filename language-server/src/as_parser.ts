@@ -294,6 +294,7 @@ export class ASSymbol
 
     isWriteAccess : boolean = false;
     isUnimported : boolean = false;
+    isAuto : boolean = false;
     noColor : boolean = false;
 
     overlapsRange(range_start : number, range_end : number) : boolean
@@ -2153,6 +2154,8 @@ function UpdateAutoTypenameSymbol(symbol : ASSymbol, expressionType : typedb.DBS
 {
     if (!symbol)
         return;
+
+    symbol.isAuto = true;
     if (!expressionType)
         return;
 
