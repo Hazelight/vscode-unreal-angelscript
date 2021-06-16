@@ -3575,7 +3575,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         // Namespace definitions add a namespace symbol
         case node_types.NamespaceDefinition:
         {
-            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Namespace, null, node.name.value);
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Namespace, null, "__"+node.name.value);
         }
         break;
         // Named argument
@@ -4043,7 +4043,13 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
         else
             symType = isGlobal ? ASSymbolType.GlobalFunction : ASSymbolType.MemberFunction;
 
-        AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name);
+        let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name);
+        if (isGlobal && usedSymbol.declaredModule != dbtype.declaredModule)
+        {
+            if (!scope.module.isModuleImported(usedSymbol.declaredModule))
+                identifierSym.isUnimported = true;
+        }
+
         return usedSymbol;
     }
 
@@ -4054,7 +4060,12 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
         if (getAccessor && getAccessor instanceof typedb.DBMethod)
         {
             symType = isGlobal ? ASSymbolType.GlobalAccessor : ASSymbolType.MemberAccessor;
-            AddIdentifierSymbol(scope, statement, node, symType, getAccessor.containingType, getAccessor.name);
+            let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, getAccessor.containingType, getAccessor.name);
+            if (isGlobal && getAccessor.declaredModule != dbtype.declaredModule)
+            {
+                if (!scope.module.isModuleImported(getAccessor.declaredModule))
+                    identifierSym.isUnimported = true;
+            }
             return typedb.GetType(getAccessor.returnType);
         }
 
@@ -4062,7 +4073,12 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
         if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
         {
             symType = isGlobal ? ASSymbolType.GlobalAccessor : ASSymbolType.MemberAccessor;
-            AddIdentifierSymbol(scope, statement, node, symType, setAccessor.containingType, setAccessor.name);
+            let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, setAccessor.containingType, setAccessor.name);
+            if (isGlobal && setAccessor.declaredModule != dbtype.declaredModule)
+            {
+                if (!scope.module.isModuleImported(setAccessor.declaredModule))
+                    identifierSym.isUnimported = true;
+            }
             return typedb.GetType(setAccessor.args[0].typename);
         }
     }

@@ -33,6 +33,7 @@ export interface DBSymbol
     name : string;
     containingType : DBType;
     keywords : Array<string>;
+    declaredModule : string | null;
 };
 
 export class DBProperty implements DBSymbol
@@ -368,6 +369,7 @@ export class DBType
     delegateReturn : string = null;
 
     declaredModule : string;
+    multipleModules : boolean = false;
     moduleOffset : number;
     moduleScopeStart : number = -1;
     moduleScopeEnd : number = -1;
@@ -391,6 +393,7 @@ export class DBType
         inst.rawName = this.rawName;
         inst.namespaceResolved = this.namespaceResolved;
         inst.shadowedNamespace = this.shadowedNamespace;
+        inst.multipleModules = this.multipleModules;
         inst.declaredModule = this.declaredModule;
         inst.moduleOffset = this.moduleOffset;
         inst.isTemplateInstantiation = true;
@@ -1431,7 +1434,7 @@ export function RemoveModuleFromNamespace(namespace : string, modulename : strin
     let dbtype = database.get(namespace);
     if (!dbtype)
         return;
-    if (dbtype.declaredModule == modulename)
+    if (dbtype.declaredModule == modulename && !dbtype.multipleModules)
     {
         database.delete(namespace);
         return;
@@ -1476,7 +1479,7 @@ export function MergeNamespaceToDB(newtype : DBType, removeOldSymbols : boolean 
 {
     // Check if we already have a database entry for this namespace
     let dbtype = database.get(newtype.typename);
-    if (!dbtype || (dbtype.declaredModule == newtype.declaredModule && removeOldSymbols))
+    if (!dbtype || (dbtype.declaredModule == newtype.declaredModule && removeOldSymbols && !dbtype.multipleModules))
     {
         AddTypeToDatabase(newtype);
         return newtype;
@@ -1550,7 +1553,10 @@ export function MergeNamespaceToDB(newtype : DBType, removeOldSymbols : boolean 
 
     // Now that we're merging methods this type is no longer exclusive to this module
     if (dbtype.declaredModule != newtype.declaredModule)
+    {
         dbtype.declaredModule = null;
+        dbtype.multipleModules = true;
+    }
 
     return dbtype;
 }
