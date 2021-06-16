@@ -698,6 +698,27 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
             }
         }
     }
+
+    // Special case completion for automatically completing FMath:: to Math::
+    if (CanCompleteTo(context.completingSymbol, "FMath"))
+    {
+        let OldNamespace = typedb.GetType("__FMath");
+        let MathNamespace = typedb.GetType("__Math");
+        if (MathNamespace && !OldNamespace)
+        {
+            let commitChars = [":"];
+            GetTypenameCommitChars(context, "FMath", commitChars);
+
+            completions.push({
+                    label: "Math",
+                    kind: CompletionItemKind.Module,
+                    data: ["type", "__Math"],
+                    commitCharacters: commitChars,
+                    insertText: "Math",
+                    filterText: "FMath",
+            });
+        }
+    }
 }
 
 export function AddCompletionsFromClassKeywords(context : CompletionContext, completions : Array<CompletionItem>)
