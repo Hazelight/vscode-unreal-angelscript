@@ -989,6 +989,18 @@ unqualified_typename -> typename_identifier {%
 
 unqualified_typename -> template_typename {% id %}
 
+template_typename -> typename_identifier _ "<" _ ">" {%
+    function (d) {
+        let typename = d[0].value+"<>";
+        return {
+            ...Compound(d, n.Typename, null),
+            value: typename,
+            basetype: d[0],
+            subtypes: [],
+        };
+    }
+%}
+
 template_typename -> typename_identifier _ "<" _ template_subtypes _ ">" {%
     function (d) {
         let typename = d[0].value+"<";

@@ -996,6 +996,17 @@ var grammar = {
         }}
         },
     {"name": "unqualified_typename", "symbols": ["template_typename"], "postprocess": id},
+    {"name": "template_typename", "symbols": ["typename_identifier", "_", {"literal":"<"}, "_", {"literal":">"}], "postprocess": 
+        function (d) {
+            let typename = d[0].value+"<>";
+            return {
+                ...Compound(d, n.Typename, null),
+                value: typename,
+                basetype: d[0],
+                subtypes: [],
+            };
+        }
+        },
     {"name": "template_typename", "symbols": ["typename_identifier", "_", {"literal":"<"}, "_", "template_subtypes", "_", {"literal":">"}], "postprocess": 
         function (d) {
             let typename = d[0].value+"<";
