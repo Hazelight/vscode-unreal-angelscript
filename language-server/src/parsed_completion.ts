@@ -1078,6 +1078,9 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         // Inside a default statement, we always parse as if it's a code block
         if (context.baseStatement && context.baseStatement.ast && context.baseStatement.ast.type == scriptfiles.node_types.DefaultStatement)
             baseType = scriptfiles.ASScopeType.Code;
+        // Candidates that are right expressions are always code snippets
+        if (context.isRightExpression)
+            baseType = scriptfiles.ASScopeType.Code;
 
         scriptfiles.ParseStatement(baseType, context.statement);
 
@@ -1089,7 +1092,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         }
 
         // Try to parse as an expression snippet instead
-        if (!context.statement.ast)
+        if (!context.statement.ast && baseType != scriptfiles.ASScopeType.Code)
             scriptfiles.ParseStatement(scriptfiles.ASScopeType.Code, context.statement);
 
         if (!context.statement.ast)
