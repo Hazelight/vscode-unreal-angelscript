@@ -251,8 +251,17 @@ var grammar = {
         },
     {"name": "expression_or_assignment", "symbols": ["expression"], "postprocess": id},
     {"name": "expression_or_assignment", "symbols": ["assignment"], "postprocess": id},
-    {"name": "statement", "symbols": [(lexer.has("if_token") ? {type: "if_token"} : if_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "expression_or_assignment", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
-        function (d) { return Compound(d, n.IfStatement, [d[4], d[7]]); }
+    {"name": "statement$ebnf$1$subexpression$1", "symbols": ["_", "expression_or_assignment"]},
+    {"name": "statement$ebnf$1", "symbols": ["statement$ebnf$1$subexpression$1"], "postprocess": id},
+    {"name": "statement$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "statement", "symbols": [(lexer.has("if_token") ? {type: "if_token"} : if_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "statement$ebnf$1", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
+        function (d)
+        {
+            if (d[3])
+                return Compound(d, n.IfStatement, [d[3][1], d[6]]);
+            else
+                return Compound(d, n.IfStatement, [null, d[6]]);
+        }
         },
     {"name": "statement", "symbols": [(lexer.has("return_token") ? {type: "return_token"} : return_token), "_", "expression_or_assignment"], "postprocess": 
         function (d) { return Compound(d, n.ReturnStatement, [d[2]]); }
@@ -295,15 +304,22 @@ var grammar = {
     {"name": "statement", "symbols": [(lexer.has("break_token") ? {type: "break_token"} : break_token)], "postprocess": 
         function (d) { return Literal(n.BreakStatement, d[0]); }
         },
-    {"name": "statement$ebnf$1$subexpression$1", "symbols": ["_", "for_declaration"]},
-    {"name": "statement$ebnf$1", "symbols": ["statement$ebnf$1$subexpression$1"], "postprocess": id},
-    {"name": "statement$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "statement$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("semicolon") ? {type: "semicolon"} : semicolon), "for_comma_expression_list"]},
+    {"name": "statement$ebnf$2$subexpression$1", "symbols": ["_", "for_declaration"]},
     {"name": "statement$ebnf$2", "symbols": ["statement$ebnf$2$subexpression$1"], "postprocess": id},
     {"name": "statement$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "statement", "symbols": [(lexer.has("for_token") ? {type: "for_token"} : for_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "statement$ebnf$1", "_", (lexer.has("semicolon") ? {type: "semicolon"} : semicolon), "optional_expression", "statement$ebnf$2", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
+    {"name": "statement$ebnf$3$subexpression$1$ebnf$1$subexpression$1", "symbols": ["_", (lexer.has("semicolon") ? {type: "semicolon"} : semicolon), "for_comma_expression_list"]},
+    {"name": "statement$ebnf$3$subexpression$1$ebnf$1", "symbols": ["statement$ebnf$3$subexpression$1$ebnf$1$subexpression$1"], "postprocess": id},
+    {"name": "statement$ebnf$3$subexpression$1$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "statement$ebnf$3$subexpression$1", "symbols": ["_", (lexer.has("semicolon") ? {type: "semicolon"} : semicolon), "optional_expression", "statement$ebnf$3$subexpression$1$ebnf$1"]},
+    {"name": "statement$ebnf$3", "symbols": ["statement$ebnf$3$subexpression$1"], "postprocess": id},
+    {"name": "statement$ebnf$3", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "statement", "symbols": [(lexer.has("for_token") ? {type: "for_token"} : for_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "statement$ebnf$2", "statement$ebnf$3", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
         function (d) {
-            return Compound(d, n.ForLoop, [d[3] ? d[3][1] : null, d[6], d[7] ? d[7][2] : null, d[10]]);
+            return Compound(d, n.ForLoop,
+                [d[3] ? d[3][1] : null,
+                d[4] ? d[4][2] : null,
+                d[4] && d[4][3] ? d[4][3][2] : null,
+                d[7]]);
         }
         },
     {"name": "for_declaration", "symbols": ["var_decl"], "postprocess": id},
@@ -329,11 +345,11 @@ var grammar = {
         },
     {"name": "for_comma_expression", "symbols": ["expression"], "postprocess": id},
     {"name": "for_comma_expression", "symbols": ["assignment"], "postprocess": id},
-    {"name": "statement", "symbols": [(lexer.has("for_token") ? {type: "for_token"} : for_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "typename", "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", (lexer.has("colon") ? {type: "colon"} : colon), "_", "expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
-        function (d) { return Compound(d, n.ForEachLoop, [d[4], Identifier(d[6]), d[10], d[13]]); }
+    {"name": "statement", "symbols": [(lexer.has("for_token") ? {type: "for_token"} : for_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "typename", "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", (lexer.has("colon") ? {type: "colon"} : colon), "optional_expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
+        function (d) { return Compound(d, n.ForEachLoop, [d[4], Identifier(d[6]), d[9], d[12]]); }
         },
-    {"name": "statement", "symbols": [(lexer.has("while_token") ? {type: "while_token"} : while_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
-        function (d) { return Compound(d, n.WhileLoop, [d[4], d[7]]); }
+    {"name": "statement", "symbols": [(lexer.has("while_token") ? {type: "while_token"} : while_token), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "optional_expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "optional_statement"], "postprocess": 
+        function (d) { return Compound(d, n.WhileLoop, [d[3], d[6]]); }
         },
     {"name": "global_statement", "symbols": [(lexer.has("import_token") ? {type: "import_token"} : import_token)], "postprocess": 
         function (d) {
@@ -625,20 +641,23 @@ var grammar = {
     {"name": "parameter_list", "symbols": [], "postprocess": 
         function(d) { return []; }
         },
-    {"name": "parameter_list$ebnf$1", "symbols": []},
-    {"name": "parameter_list$ebnf$1$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma), "_", "parameter"]},
-    {"name": "parameter_list$ebnf$1", "symbols": ["parameter_list$ebnf$1", "parameter_list$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "parameter_list$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
-    {"name": "parameter_list$ebnf$2", "symbols": ["parameter_list$ebnf$2$subexpression$1"], "postprocess": id},
-    {"name": "parameter_list$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "parameter_list", "symbols": ["parameter", "parameter_list$ebnf$1", "parameter_list$ebnf$2"], "postprocess": 
+    {"name": "parameter_list$ebnf$1$subexpression$1", "symbols": [(lexer.has("comma") ? {type: "comma"} : comma), "_"]},
+    {"name": "parameter_list$ebnf$1", "symbols": ["parameter_list$ebnf$1$subexpression$1"], "postprocess": id},
+    {"name": "parameter_list$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "parameter_list$ebnf$2", "symbols": []},
+    {"name": "parameter_list$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma), "_", "parameter"]},
+    {"name": "parameter_list$ebnf$2", "symbols": ["parameter_list$ebnf$2", "parameter_list$ebnf$2$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
+    {"name": "parameter_list$ebnf$3$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
+    {"name": "parameter_list$ebnf$3", "symbols": ["parameter_list$ebnf$3$subexpression$1"], "postprocess": id},
+    {"name": "parameter_list$ebnf$3", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "parameter_list", "symbols": ["parameter_list$ebnf$1", "parameter", "parameter_list$ebnf$2", "parameter_list$ebnf$3"], "postprocess": 
         function(d) {
             let params = [];
-            if (d[0])
-                params.push(d[0]);
             if (d[1])
+                params.push(d[1]);
+            if (d[2])
             {
-                for (let part of d[1])
+                for (let part of d[2])
                 {
                     if (part[3])
                         params.push(part[3]);
@@ -668,7 +687,7 @@ var grammar = {
             ...Compound(d, n.Parameter, null),
             typename: d[0],
             name: Identifier(d[2]),
-            expression: d[6],
+            expression: d[5],
         }; }
         },
     {"name": "macro_list", "symbols": [], "postprocess": 
@@ -820,6 +839,12 @@ var grammar = {
         },
     {"name": "expr_leaf", "symbols": ["lvalue"], "postprocess": id},
     {"name": "expr_leaf", "symbols": ["constant"], "postprocess": id},
+    {"name": "expr_leaf", "symbols": ["unary_operator"], "postprocess":  
+        function (d) { return {
+            ...Compound(d, n.UnaryOperation, []),
+            operator: Operator(d[0]),
+        };}
+        },
     {"name": "lvalue", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
         function(d, l) { return Identifier(d[0]); }
         },
@@ -906,21 +931,24 @@ var grammar = {
     {"name": "argumentlist", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)], "postprocess": 
         function(d) { return null; }
         },
-    {"name": "argumentlist$ebnf$1", "symbols": []},
-    {"name": "argumentlist$ebnf$1$subexpression$1", "symbols": ["argument", "_", {"literal":","}, "_"]},
-    {"name": "argumentlist$ebnf$1", "symbols": ["argumentlist$ebnf$1", "argumentlist$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "argumentlist$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
-    {"name": "argumentlist$ebnf$2", "symbols": ["argumentlist$ebnf$2$subexpression$1"], "postprocess": id},
-    {"name": "argumentlist$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "argumentlist", "symbols": ["_", "argumentlist$ebnf$1", "argument", "argumentlist$ebnf$2"], "postprocess": 
+    {"name": "argumentlist$ebnf$1$subexpression$1", "symbols": [(lexer.has("comma") ? {type: "comma"} : comma), "_"]},
+    {"name": "argumentlist$ebnf$1", "symbols": ["argumentlist$ebnf$1$subexpression$1"], "postprocess": id},
+    {"name": "argumentlist$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "argumentlist$ebnf$2", "symbols": []},
+    {"name": "argumentlist$ebnf$2$subexpression$1", "symbols": ["argument", "_", {"literal":","}, "_"]},
+    {"name": "argumentlist$ebnf$2", "symbols": ["argumentlist$ebnf$2", "argumentlist$ebnf$2$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
+    {"name": "argumentlist$ebnf$3$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
+    {"name": "argumentlist$ebnf$3", "symbols": ["argumentlist$ebnf$3$subexpression$1"], "postprocess": id},
+    {"name": "argumentlist$ebnf$3", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "argumentlist", "symbols": ["_", "argumentlist$ebnf$1", "argumentlist$ebnf$2", "argument", "argumentlist$ebnf$3"], "postprocess": 
         function(d) { 
             let args = [];
-            if (d[1])
+            if (d[2])
             {
-                for (let part of d[1])
+                for (let part of d[2])
                     args.push(part[0]);
             }
-            args.push(d[2]);
+            args.push(d[3]);
             return Compound(d, n.ArgumentList, args);
         }
         },
@@ -1280,10 +1308,10 @@ var grammar = {
             return null;
         }
         },
-    {"name": "statement$ebnf$3$subexpression$1", "symbols": ["_", {"literal":">"}]},
-    {"name": "statement$ebnf$3", "symbols": ["statement$ebnf$3$subexpression$1"], "postprocess": id},
-    {"name": "statement$ebnf$3", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "statement", "symbols": ["scuffed_template_statement", "statement$ebnf$3"], "postprocess": id},
+    {"name": "statement$ebnf$4$subexpression$1", "symbols": ["_", {"literal":">"}]},
+    {"name": "statement$ebnf$4", "symbols": ["statement$ebnf$4$subexpression$1"], "postprocess": id},
+    {"name": "statement$ebnf$4", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "statement", "symbols": ["scuffed_template_statement", "statement$ebnf$4"], "postprocess": id},
     {"name": "class_statement", "symbols": ["scuffed_template_statement"], "postprocess": id},
     {"name": "global_statement", "symbols": ["scuffed_template_statement"], "postprocess": id},
     {"name": "scuffed_template_statement$ebnf$1$subexpression$1", "symbols": ["_", {"literal":"<"}]},

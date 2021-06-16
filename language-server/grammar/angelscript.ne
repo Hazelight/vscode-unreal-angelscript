@@ -253,8 +253,14 @@ assignment -> lvalue _ %compound_assignment _ expression_or_assignment {%
 expression_or_assignment -> expression {% id %}
 expression_or_assignment -> assignment {% id %}
 
-statement -> %if_token _ %lparen _ expression_or_assignment _ %rparen optional_statement {%
-    function (d) { return Compound(d, n.IfStatement, [d[4], d[7]]); }
+statement -> %if_token _ %lparen (_ expression_or_assignment):? _ %rparen optional_statement {%
+    function (d)
+    {
+        if (d[3])
+            return Compound(d, n.IfStatement, [d[3][1], d[6]]);
+        else
+            return Compound(d, n.IfStatement, [null, d[6]]);
+    }
 %}
 
 statement -> %return_token _ expression_or_assignment {%
@@ -310,9 +316,13 @@ statement -> %break_token {%
     function (d) { return Literal(n.BreakStatement, d[0]); }
 %}
 
-statement -> %for_token _ %lparen (_ for_declaration):? _ %semicolon optional_expression (_ %semicolon for_comma_expression_list):? _ %rparen optional_statement {%
+statement -> %for_token _ %lparen (_ for_declaration):? (_ %semicolon optional_expression (_ %semicolon for_comma_expression_list):?):? _ %rparen optional_statement {%
     function (d) {
-        return Compound(d, n.ForLoop, [d[3] ? d[3][1] : null, d[6], d[7] ? d[7][2] : null, d[10]]);
+        return Compound(d, n.ForLoop,
+            [d[3] ? d[3][1] : null,
+            d[4] ? d[4][2] : null,
+            d[4] && d[4][3] ? d[4][3][2] : null,
+            d[7]]);
     }
 %}
 
@@ -337,12 +347,12 @@ for_comma_expression_list -> _ for_comma_expression (_ "," _ for_comma_expressio
 for_comma_expression -> expression {% id %}
 for_comma_expression -> assignment {% id %}
 
-statement -> %for_token _ %lparen _ typename _ %identifier _ %colon _ expression _ %rparen optional_statement {%
-    function (d) { return Compound(d, n.ForEachLoop, [d[4], Identifier(d[6]), d[10], d[13]]); }
+statement -> %for_token _ %lparen _ typename _ %identifier _ %colon optional_expression _ %rparen optional_statement {%
+    function (d) { return Compound(d, n.ForEachLoop, [d[4], Identifier(d[6]), d[9], d[12]]); }
 %}
 
-statement -> %while_token _ %lparen _ expression _ %rparen optional_statement {%
-    function (d) { return Compound(d, n.WhileLoop, [d[4], d[7]]); }
+statement -> %while_token _ %lparen optional_expression _ %rparen optional_statement {%
+    function (d) { return Compound(d, n.WhileLoop, [d[3], d[6]]); }
 %}
 
 global_statement -> %import_token {%
@@ -608,14 +618,14 @@ ustruct_macro -> %ustruct _ %lparen _ macro_list _ %rparen _ {%
 parameter_list -> null {%
     function(d) { return []; }
 %}
-parameter_list -> parameter (_ %comma _ parameter):* (_ %comma):? {%
+parameter_list -> (%comma _):? parameter (_ %comma _ parameter):* (_ %comma):? {%
     function(d) {
         let params = [];
-        if (d[0])
-            params.push(d[0]);
         if (d[1])
+            params.push(d[1]);
+        if (d[2])
         {
-            for (let part of d[1])
+            for (let part of d[2])
             {
                 if (part[3])
                     params.push(part[3]);
@@ -650,7 +660,7 @@ parameter -> typename _ %identifier _ "=" optional_expression {%
         ...Compound(d, n.Parameter, null),
         typename: d[0],
         name: Identifier(d[2]),
-        expression: d[6],
+        expression: d[5],
     }; }
 %}
 
@@ -800,6 +810,14 @@ expr_postfix -> expr_leaf "!":? {%
 expr_leaf -> lvalue {% id %}
 expr_leaf -> constant {% id %}
 
+# INCOMPLETE: a unary operator where we haven't typed an operand yet
+expr_leaf -> unary_operator {% 
+    function (d) { return {
+        ...Compound(d, n.UnaryOperation, []),
+        operator: Operator(d[0]),
+    };}
+%}
+
 lvalue -> %identifier {%
     function(d, l) { return Identifier(d[0]); }
 %}
@@ -887,15 +905,15 @@ argumentlist -> null {%
 argumentlist -> _ %comma {%
     function(d) { return null; }
 %}
-argumentlist -> _ (argument _ "," _ ):* argument (_ %comma):? {%
+argumentlist -> _ (%comma _):? (argument _ "," _ ):* argument (_ %comma):? {%
     function(d) { 
         let args = [];
-        if (d[1])
+        if (d[2])
         {
-            for (let part of d[1])
+            for (let part of d[2])
                 args.push(part[0]);
         }
-        args.push(d[2]);
+        args.push(d[3]);
         return Compound(d, n.ArgumentList, args);
     }
 %}
