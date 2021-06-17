@@ -289,6 +289,8 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
                 continue;
             if (symbol.symbol_name != findSymbol.symbol_name)
                 continue;
+            if (symbol.isAuto)
+                continue;
 
             // Need to check if the symbol is in our scope
             if (symbol.start >= declaredScope.end_offset)
@@ -345,6 +347,8 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
                 if (symbol.container_type != findSymbol.container_type)
                     continue;
                 if (symbol.symbol_name != findSymbol.symbol_name)
+                    continue;
+                if (symbol.isAuto)
                     continue;
 
                 if (!fileEdits)
