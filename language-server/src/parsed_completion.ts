@@ -13,55 +13,107 @@ let CommonTemplateTypes = new Set<string>(
     ['TArray', 'TMap', 'TSet', 'TSubclassOf', 'TSoftObjectPtr', 'TSoftClassPtr', 'TInstigated', 'TPerPlayer'],
 );
 
+namespace Sort
+{
+    export const EnumValue_Expected = "1";
+    export const EnumName_Expected = "0";
+    export const EnumValue_Max_Expected = "2";
+    export const Local_Expected = "2";
+    export const Local = "3";
+    export const Keyword = "8";
+    export const ImportModule = "8";
+    export const MemberProp_Direct = "a";
+    export const MemberProp_Parent = "c";
+    export const MemberProp_Direct_Expected = "6";
+    export const MemberProp_Parent_Expected = "7";
+    export const Method_Direct_Expected = "8";
+    export const Method_Parent_Expected = "9";
+    export const Method_Direct = "b";
+    export const Method_Parent = "d";
+    export const EnumValue = "h";
+    export const EnumValue_Max = "j";
+    export const GlobalProp = "j";
+    export const GlobalProp_Expected = "d";
+    export const Global = "k";
+    export const Global_Expected = "d";
+    export const Typename = "f";
+    export const Unimported = "x";
+    export const Snippet = "z";
+};
+
 class CompletionContext
 {
-    scope : scriptfiles.ASScope = null;
-    statement : scriptfiles.ASStatement = null;
-    baseStatement : scriptfiles.ASStatement = null;
+    scope: scriptfiles.ASScope = null;
+    statement: scriptfiles.ASStatement = null;
+    baseStatement: scriptfiles.ASStatement = null;
 
-    completingSymbol : string = null;
-    completingNode : any = null;
-    priorExpression : any = null;
-    priorType : typedb.DBType = null;
+    completingSymbol: string = null;
+    completingNode: any = null;
+    priorExpression: any = null;
+    priorType: typedb.DBType = null;
 
     isRightExpression : boolean = false;
-    isSubExpression : boolean = false;
-    isNamingVariable : boolean = false;
-    isIgnoredCode : boolean = false;
-    isIncompleteNamespace : boolean = false;
-    isFunctionDeclaration : boolean = false;
-    isInsideType : boolean = false;
-    maybeTypename : boolean = false;
+    isEqualityExpression : boolean = false;
+    rightOperator : string = null;
 
-    subOuterStatement : scriptfiles.ASStatement = null;
-    subOuterFunctions : Array<typedb.DBMethod> = null;
-    subOuterArgumentIndex : number = -1;
-    fullOuterStatement : scriptfiles.ASStatement = null;
+    isSubExpression: boolean = false;
+    isAssignment: boolean = false;
+    isNamingVariable: boolean = false;
+    isIgnoredCode: boolean = false;
+    isIncompleteNamespace: boolean = false;
+    isFunctionDeclaration: boolean = false;
+    isInsideType: boolean = false;
+    maybeTypename: boolean = false;
+    expectedType: typedb.DBType = null;
+
+    subOuterStatement: scriptfiles.ASStatement = null;
+    subOuterFunctions: Array<typedb.DBMethod> = null;
+    subOuterArgumentIndex: number = -1;
+    fullOuterStatement: scriptfiles.ASStatement = null;
+
+    leftStatement : scriptfiles.ASStatement = null;
+    leftType : typedb.DBType = null;
+
+    isTypeExpected(typename : string) : boolean
+    {
+        if (!this.expectedType)
+            return false;
+        if (!typename || typename == "void")
+            return false;
+        if (this.expectedType.typename == typename)
+            return true;
+           
+        let dbtype = typedb.GetType(typename);
+        if (!dbtype)
+            return false;
+        return dbtype.inheritsFrom(this.expectedType.typename);
+    }
 }
 
 class CompletionExpressionCandidate
 {
-    start : number = -1;
-    end : number = -1;
-    code : string = null;
-    isRightExpression : boolean = false;
+    start: number = -1;
+    end: number = -1;
+    code: string = null;
+    isRightExpression: boolean = false;
+    rightOperator : string = null;
 };
 
 class CompletionArguments
 {
-    isAfterNamedArgument : boolean = false;
-    currentArgumentName : string = null;
-    usedArgumentNames : Array<string> = [];
+    isAfterNamedArgument: boolean = false;
+    currentArgumentName: string = null;
+    usedArgumentNames: Array<string> = [];
 };
 
-export function Complete(asmodule : scriptfiles.ASModule, position : Position) : Array<CompletionItem>
+export function Complete(asmodule: scriptfiles.ASModule, position: Position): Array<CompletionItem>
 {
     if (!asmodule)
         return null;
     let completions = new Array<CompletionItem>();
 
     let offset = asmodule.getOffset(position);
-    let context = GenerateCompletionContext(asmodule, offset-1);
+    let context = GenerateCompletionContext(asmodule, offset - 1);
 
     // No completions when in ignored code (comments, strings, etc)
     if (context.isIgnoredCode)
@@ -124,7 +176,7 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
     // Add completions for global functions we haven't imported
     if (!context.isInsideType)
         AddUnimportedCompletions(context, completions);
-    
+
     // Add completions for mixin calls to global functions
     if (context.priorType)
         AddMixinCompletions(context, completions);
@@ -143,8 +195,7 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
 
     // Check for snippet completions for method overrides
     if (context.scope && context.scope.scopetype == scriptfiles.ASScopeType.Class
-            && !context.isRightExpression && !context.isSubExpression && !context.isInsideType)
-    {
+        && !context.isRightExpression && !context.isSubExpression && !context.isInsideType) {
         AddMethodOverrideSnippets(context, completions, position);
     }
 
@@ -154,9 +205,10 @@ export function Complete(asmodule : scriptfiles.ASModule, position : Position) :
     return completions;
 }
 
-function GenerateCompletionArguments(context : CompletionContext) : CompletionArguments
+function GenerateCompletionArguments(context: CompletionContext): CompletionArguments
 {
     let args = new CompletionArguments();
+
     if (context.fullOuterStatement && context.fullOuterStatement.ast)
     {
         if (context.fullOuterStatement.ast.type == scriptfiles.node_types.FunctionCall
@@ -184,14 +236,14 @@ function GenerateCompletionArguments(context : CompletionContext) : CompletionAr
     return args;
 }
 
-function ScoreMethodForArguments(context : CompletionContext, argContext : CompletionArguments, func : typedb.DBMethod) : [number, number]
+function ScoreMethodForArguments(context: CompletionContext, argContext: CompletionArguments, func: typedb.DBMethod): [number, number]
 {
     let score = 0;
 
     // Check if we've passed too many arguments
     if (context.subOuterArgumentIndex >= func.args.length)
     {
-        if(context.subOuterArgumentIndex > 0 || (context.statement.content && context.statement.content.length > 0))
+        if (context.subOuterArgumentIndex > 0 || (context.statement.content && context.statement.content.length > 0))
             score -= 50;
     }
 
@@ -226,7 +278,7 @@ function ScoreMethodForArguments(context : CompletionContext, argContext : Compl
     return [score, activeArg];
 }
 
-export function Signature(asmodule : scriptfiles.ASModule, position : Position) : SignatureHelp
+export function Signature(asmodule: scriptfiles.ASModule, position: Position): SignatureHelp
 {
     if (!asmodule)
         return null;
@@ -234,7 +286,7 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
     let completions = new Array<CompletionItem>();
 
     let offset = asmodule.getOffset(position);
-    let context = GenerateCompletionContext(asmodule, offset-1);
+    let context = GenerateCompletionContext(asmodule, offset - 1);
 
     if (!context.subOuterFunctions)
         return null;
@@ -243,10 +295,10 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
 
     let argContext = GenerateCompletionArguments(context);
 
-    let sigHelp = <SignatureHelp> {
-        signatures : new Array<SignatureInformation>(),
-        activeSignature : 0,
-        activeParameter : 0,
+    let sigHelp = <SignatureHelp>{
+        signatures: new Array<SignatureInformation>(),
+        activeSignature: 0,
+        activeParameter: 0,
     };
 
     let bestFunction = -1;
@@ -270,7 +322,7 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
             else
                 bestFunctionActiveArg = context.subOuterArgumentIndex;
         }
-        
+
         let skipFirstArg = false;
         if (func.containingType && func.containingType.isNamespaceOrGlobalScope() && func.isMixin)
             skipFirstArg = true;
@@ -281,13 +333,13 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
             for (let a = skipFirstArg ? 1 : 0; a < func.args.length; ++a)
             {
                 params.push(<ParameterInformation>
-                {
-                    label: func.args[a].format()
-                });
+                    {
+                        label: func.args[a].format()
+                    });
             }
         }
 
-        let sig = <SignatureInformation> {
+        let sig = <SignatureInformation>{
             label: func.format(null, skipFirstArg),
             parameters: params,
         };
@@ -307,7 +359,7 @@ export function Signature(asmodule : scriptfiles.ASModule, position : Position) 
     return sigHelp.signatures.length == 0 ? null : sigHelp;
 }
 
-function AddCompletionsFromCallSignature(context : CompletionContext, completions : Array<CompletionItem>)
+function AddCompletionsFromCallSignature(context: CompletionContext, completions: Array<CompletionItem>)
 {
     if (context.subOuterFunctions.length == 0)
         return;
@@ -315,7 +367,7 @@ function AddCompletionsFromCallSignature(context : CompletionContext, completion
     let argContext = GenerateCompletionArguments(context);
 
     // Find the best function to complete with
-    let activeMethod : typedb.DBMethod = null;
+    let activeMethod: typedb.DBMethod = null;
     let bestScore = 0;
     for (let func of context.subOuterFunctions)
     {
@@ -352,16 +404,17 @@ function AddCompletionsFromCallSignature(context : CompletionContext, completion
             if (context.subOuterArgumentIndex < activeMethod.args.length)
             {
                 let arg = activeMethod.args[context.subOuterArgumentIndex];
-                let complStr = arg.typename+" "+arg.name;
+                let complStr = arg.typename + " " + arg.name;
                 if (CanCompleteTo(context.completingSymbol, complStr))
                 {
                     completions.push({
                         label: complStr,
-                        documentation: <MarkupContent> {
+                        documentation: <MarkupContent>{
                             kind: MarkupKind.Markdown,
-                            value: "```angelscript_snippet\n"+complStr+"\n\n```"
+                            value: "```angelscript_snippet\n" + complStr + "\n\n```"
                         },
-                        kind: CompletionItemKind.Snippet
+                        kind: CompletionItemKind.Snippet,
+                        sortText: Sort.Snippet,
                     });
                 }
             }
@@ -383,7 +436,8 @@ function AddCompletionsFromCallSignature(context : CompletionContext, completion
                             kind: MarkupKind.Markdown,
                             value: "```angelscript_snippet\n"+complStr+"\n\n```"
                         },
-                        kind: CompletionItemKind.Snippet
+                        kind: CompletionItemKind.Snippet,
+                        sortText: Sort.Snippet,
                     });
                 }
             }
@@ -398,8 +452,9 @@ function AddCompletionsFromKeywordList(context : CompletionContext, keywords : A
         if (CanCompleteTo(context.completingSymbol, kw))
         {
             completions.push({
-                    label: kw,
-                    kind: CompletionItemKind.Keyword
+                label: kw,
+                kind: CompletionItemKind.Keyword,
+                sortText: Sort.Keyword,
             });
         }
     }
@@ -412,9 +467,10 @@ function AddCompletionsFromSpecifiers(context : CompletionContext, specifiers : 
         if (!context.completingSymbol || CanCompleteTo(context.completingSymbol, spec))
         {
             completions.push({
-                    label: spec,
-                    documentation: specifiers[spec],
-                    kind: CompletionItemKind.Keyword
+                label: spec,
+                documentation: specifiers[spec],
+                kind: CompletionItemKind.Keyword,
+                sortText: Sort.Keyword,
             });
         }
     }
@@ -442,6 +498,7 @@ function AddCompletionsFromImportStatement(context : CompletionContext, completi
                     kind: CompletionItemKind.File,
                     filterText: asmodule.modulename.substr(untilDot.length),
                     insertText: asmodule.modulename.substr(untilDot.length),
+                    sortText: Sort.ImportModule,
                 });
             }
         }
@@ -519,6 +576,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                     label: "UCLASS",
                     kind: CompletionItemKind.Keyword,
                     commitCharacters: ["("],
+                    sortText: Sort.Keyword,
             });
         }
 
@@ -528,6 +586,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                     label: "USTRUCT",
                     kind: CompletionItemKind.Keyword,
                     commitCharacters: ["("],
+                    sortText: Sort.Keyword,
             });
         }
     }
@@ -537,13 +596,14 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         if (!context.isRightExpression && !context.isSubExpression)
         {
             AddCompletionsFromKeywordList(context, [
-                "if", "else", "while", "for",
+                "if", "else", "while", "for", "break", "continue",
             ], completions);
 
             completions.push({
                     label: "return",
                     kind: CompletionItemKind.Keyword,
                     commitCharacters: [" ", ";"],
+                    sortText: Sort.Keyword,
             });
         }
     }
@@ -572,6 +632,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                         label: "UPROPERTY",
                         kind: CompletionItemKind.Keyword,
                         commitCharacters: ["("],
+                        sortText: Sort.Keyword,
                 });
             }
         }
@@ -587,6 +648,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                             label: "UFUNCTION",
                             kind: CompletionItemKind.Keyword,
                             commitCharacters: ["("],
+                            sortText: Sort.Keyword,
                     });
                 }
             }
@@ -607,6 +669,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                         label: "UFUNCTION",
                         kind: CompletionItemKind.Keyword,
                         commitCharacters: ["("],
+                        sortText: Sort.Keyword,
                 });
             }
         }
@@ -656,29 +719,82 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
 
         if (dbtype.isEnum)
         {
-            if (CanCompleteSymbol(context, dbtype))
+            let canCompleteEnum = CanCompleteSymbol(context, dbtype);
+
+            // Allow completing to qualified enum values when appropriate
+            if ((context.isSubExpression && !context.isFunctionDeclaration) || context.isRightExpression)
             {
-                // Allow completing to qualified enum values when appropriate
-                if ((context.isSubExpression && !context.isFunctionDeclaration) || context.isRightExpression)
+                if (context.expectedType == dbtype)
                 {
                     for (let enumvalue of dbtype.properties)
                     {
+                        let canCompleteValue = CanCompleteTo(context.completingSymbol, enumvalue.name);
+                        if (!canCompleteEnum && !canCompleteValue)
+                            continue;
+
                         let enumstr = typename+"::"+enumvalue.name;
-                        completions.push({
+                        let complItem = <CompletionItem> {
                                 label: enumstr,
                                 kind: CompletionItemKind.EnumMember,
                                 data: ["enum", dbtype.typename, enumvalue.name],
-                        });
+                        };
+
+                        let isMaxValue = enumvalue.name.includes("MAX");
+                        if (context.expectedType == dbtype)
+                        {
+                            if (isMaxValue)
+                            {
+                                complItem.sortText =  Sort.EnumValue_Max_Expected;
+                            }
+                            else
+                            {
+                                complItem.preselect = true;
+                                complItem.sortText = Sort.EnumValue_Expected;
+                            }
+                        }
+                        else
+                        {
+                            if (isMaxValue)
+                                complItem.sortText = Sort.EnumValue_Max;
+                            else
+                                complItem.sortText = Sort.EnumValue;
+                        }
+
+                        completions.push(complItem);
+
+                        // Add secondary item for if we're just typing the enum value's name
+                        if (canCompleteValue && context.expectedType == dbtype && !isMaxValue)
+                        {
+                            completions.push({
+                                ...complItem,
+                                filterText: enumvalue.name,
+                            });
+                        }
                     }
                 }
+            }
 
-                completions.push({
-                        label: typename,
-                        kind: CompletionItemKind.Enum,
-                        data: ["type", dbtype.typename],
-                        commitCharacters: [":"],
-                        filterText: GetSymbolFilterText(context, dbtype),
-                });
+            if (canCompleteEnum)
+            {
+                if (!context.expectedType || !context.expectedType.isEnum || context.expectedType == dbtype)
+                {
+                    let complItem = <CompletionItem> {
+                            label: typename,
+                            kind: CompletionItemKind.Enum,
+                            data: ["type", dbtype.typename],
+                            commitCharacters: [":"],
+                            filterText: GetSymbolFilterText(context, dbtype),
+                            sortText: Sort.Typename,
+                    };
+
+                    if (context.expectedType == dbtype)
+                    {
+                        complItem.sortText =  Sort.EnumName_Expected;
+                        complItem.preselect = true;
+                    }
+
+                    completions.push(complItem);
+                }
             }
         }
         else
@@ -694,6 +810,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
                         data: ["type", dbtype.typename],
                         commitCharacters: commitChars,
                         filterText: GetSymbolFilterText(context, dbtype),
+                        sortText: Sort.Typename,
                 });
             }
         }
@@ -716,6 +833,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
                     commitCharacters: commitChars,
                     insertText: "Math",
                     filterText: "FMath",
+                    sortText: Sort.Typename,
             });
         }
     }
@@ -733,6 +851,7 @@ export function AddCompletionsFromClassKeywords(context : CompletionContext, com
                 detail: insideType.typename,
                 kind : CompletionItemKind.Keyword,
                 commitCharacters: [".", ";", ","],
+                sortText: Sort.Keyword,
         });
     }
 
@@ -747,6 +866,7 @@ export function AddCompletionsFromClassKeywords(context : CompletionContext, com
                     detail: insideType.supertype,
                     kind: CompletionItemKind.Keyword,
                     commitCharacters: [":"],
+                    sortText: Sort.Keyword,
             });
         }
     }
@@ -758,18 +878,28 @@ export function AddCompletionsFromLocalVariables(context : CompletionContext, sc
     {
         if (CanCompleteTo(context.completingSymbol, asvar.name))
         {
-            completions.push({
+            let complItem = <CompletionItem> {
                 label: asvar.name,
                 detail: asvar.typename,
                 kind : CompletionItemKind.Variable,
                 commitCharacters: [".", ";", ","],
-            });
+                sortText: Sort.Local,
+            };
+
+            if (context.isTypeExpected(asvar.typename))
+            {
+                complItem.preselect = true;
+                complItem.sortText = Sort.Local_Expected;
+            }
+
+            completions.push(complItem);
         }
     }
 }
 
 export function AddCompletionsFromType(context : CompletionContext, curtype : typedb.DBType, completions : Array<CompletionItem>, showEvents : boolean = true)
 {
+    let scopeType = context.scope ? context.scope.getParentType() : null;
     let props = new Set<string>();
     for (let prop of curtype.allProperties())
     {
@@ -778,6 +908,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             if (!isPropertyAccessibleFromScope(curtype, prop, context.scope))
                 continue;
             props.add(prop.name);
+
             let compl = <CompletionItem>{
                     label: prop.name,
                     kind : CompletionItemKind.Field,
@@ -786,6 +917,32 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                     commitCharacters: [".", ";", ","],
                     filterText: GetSymbolFilterText(context, prop),
             };
+
+            if (prop.containingType.isEnum)
+            {
+                if (prop.name.includes("MAX"))
+                    compl.sortText = Sort.EnumValue_Max;
+                else
+                    compl.sortText = Sort.EnumValue;
+            }
+            else if (prop.containingType == scopeType)
+                compl.sortText = Sort.MemberProp_Direct;
+            else if (!prop.containingType.isNamespaceOrGlobalScope())
+                compl.sortText = Sort.MemberProp_Parent;
+            else
+                compl.sortText = Sort.GlobalProp;
+
+            if (context.isTypeExpected(prop.typename))
+            {
+                compl.preselect = !prop.containingType.isGlobalScope;
+
+                if (prop.containingType == scopeType)
+                    compl.sortText = Sort.MemberProp_Direct_Expected;
+                else if (!prop.containingType.isNamespaceOrGlobalScope())
+                    compl.sortText = Sort.MemberProp_Parent_Expected;
+                else
+                    compl.sortText = Sort.GlobalProp_Expected;
+            }
 
             if (context.isIncompleteNamespace)
                 compl.insertText = ":"+compl.label;
@@ -824,6 +981,25 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                             filterText: GetSymbolFilterText(context, func),
                     };
 
+                    if (func.containingType == scopeType)
+                        compl.sortText = Sort.MemberProp_Direct;
+                    else if (!func.containingType.isNamespaceOrGlobalScope())
+                        compl.sortText = Sort.MemberProp_Parent;
+                    else
+                        compl.sortText = Sort.GlobalProp;
+
+                    if (context.isTypeExpected(func.returnType))
+                    {
+                        compl.preselect = !func.containingType.isGlobalScope;
+
+                        if (func.containingType == scopeType)
+                            compl.sortText = Sort.MemberProp_Direct_Expected;
+                        else if (!func.containingType.isNamespaceOrGlobalScope())
+                            compl.sortText = Sort.MemberProp_Parent_Expected;
+                        else
+                            compl.sortText = Sort.GlobalProp_Expected;
+                    }
+
                     if (context.isIncompleteNamespace)
                         compl.insertText = ":"+compl.label;
                     completions.push(compl);
@@ -836,14 +1012,34 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 let propname = func.name.substr(3);
                 if(!props.has(propname) && func.args.length == 1 && func.returnType == "void")
                 {
-                    let compl = <CompletionItem>{
+                    let compl = <CompletionItem> {
                             label: propname,
                             kind: CompletionItemKind.Field,
                             detail: func.args[0].typename,
                             data: ["accessor", curtype.typename, propname],
                             commitCharacters: [".", ";", ","],
                             filterText: GetSymbolFilterText(context, func),
+                            sortText: (func.containingType == scopeType) ? "a" : "b",
                     };
+
+                    if (func.containingType == scopeType)
+                        compl.sortText = Sort.MemberProp_Direct;
+                    else if (!func.containingType.isNamespaceOrGlobalScope())
+                        compl.sortText = Sort.MemberProp_Parent;
+                    else
+                        compl.sortText = Sort.GlobalProp;
+
+                    if (context.isTypeExpected(func.args[0].typename))
+                    {
+                        compl.preselect = !func.containingType.isGlobalScope;
+
+                        if (func.containingType == scopeType)
+                            compl.sortText = Sort.MemberProp_Direct_Expected;
+                        else if (!func.containingType.isNamespaceOrGlobalScope())
+                            compl.sortText = Sort.MemberProp_Parent_Expected;
+                        else
+                            compl.sortText = Sort.GlobalProp_Expected;
+                    }
 
                     if (context.isIncompleteNamespace)
                         compl.insertText = ":"+compl.label;
@@ -871,7 +1067,32 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                     data: ["func", curtype.typename, func.name, func.id],
                     commitCharacters: commitChars,
                     filterText: GetSymbolFilterText(context, func),
+                    sortText: (func.containingType == scopeType) ? "a" : "b",
             };
+
+            if (func.containingType == scopeType)
+                compl.sortText = Sort.Method_Direct;
+            else if (!func.containingType.isNamespaceOrGlobalScope())
+                compl.sortText = Sort.Method_Parent;
+            else
+                compl.sortText = Sort.Global;
+
+            if (context.isTypeExpected(func.returnType))
+            {
+                compl.preselect = !func.containingType.isGlobalScope;
+
+                if (func.containingType == scopeType)
+                    compl.sortText = Sort.Method_Direct_Expected;
+                else if (!func.containingType.isNamespaceOrGlobalScope())
+                    compl.sortText = Sort.Method_Parent_Expected;
+                else
+                    compl.sortText = Sort.Global_Expected;
+            }
+
+            if (func.isConstructor && context.isTypeExpected(func.returnType))
+            {
+                compl.preselect = true;
+            }
 
             if (context.isIncompleteNamespace)
                 compl.insertText = ":"+compl.label;
@@ -906,6 +1127,7 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
                     data: ["prop", sym.containingType.typename, sym.name],
                     commitCharacters: [".", ";", ","],
                     filterText: GetSymbolFilterText(context, sym),
+                    sortText: Sort.Unimported,
                 };
                 completions.push(compl);
             }
@@ -924,6 +1146,7 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
                     data: ["func", sym.containingType.typename, sym.name, sym.id],
                     commitCharacters: ["("],
                     filterText: GetSymbolFilterText(context, sym),
+                    sortText: Sort.Unimported,
                 };
                 completions.push(compl);
             }
@@ -957,6 +1180,7 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
                         data: ["func_mixin", sym.containingType.typename, sym.name, sym.id],
                         commitCharacters: ["("],
                         filterText: GetSymbolFilterText(context, sym),
+                        sortText: Sort.Method_Parent,
                     };
                     completions.push(compl);
                 }
@@ -1069,7 +1293,12 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
     {
         let candidate = candidates[i];
         context.statement.content = candidate.code;
+        context.statement.end_offset = offset + 1;
+        context.statement.start_offset = offset + 1 - candidate.code.length;
         context.isRightExpression = candidate.isRightExpression;
+        context.rightOperator = candidate.rightOperator;
+        context.priorType = null;
+        context.expectedType = null;
         context.statement.ast = null;
 
         // Try to parse as a proper statement in the scope
@@ -1116,6 +1345,9 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             context.statement.end_offset = offset + 1;
             context.statement.start_offset = offset + 1 - candidate.code.length;
             context.isRightExpression = candidate.isRightExpression;
+            context.rightOperator = candidate.rightOperator;
+            context.priorType = null;
+            context.expectedType = null;
             context.statement.ast = null;
 
             // Try to parse as a proper statement in the scope
@@ -1172,7 +1404,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
     }
 
     // Try to parse the entire function statement we've found
-    if (context.subOuterStatement && context.subOuterStatement.ast)
+    if (context.subOuterStatement)
     {
         let subEndOffset = ScanOffsetEndOfOuterExpression(content, offset-contentOffset, ignoreTable);
         if (subEndOffset != -1)
@@ -1197,6 +1429,140 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         }
     }
 
+    // If we're typing an argument to a function, record the most likely expected type
+    if (context.subOuterFunctions && context.subOuterFunctions.length != 0 && context.subOuterArgumentIndex != -1
+        && !context.expectedType && (!context.isRightExpression || (context.rightOperator == "=" && context.isSubExpression)))
+    {
+        let argContext = GenerateCompletionArguments(context);
+
+        for (let candidateFunction of context.subOuterFunctions)
+        {
+            if (!candidateFunction.args)
+                continue;
+
+            if (argContext.currentArgumentName)
+            {
+                for (let arg of candidateFunction.args)
+                {
+                    if (arg.name == argContext.currentArgumentName)
+                    {
+                        let argType = typedb.GetType(arg.typename);
+                        if (argType && !context.expectedType)
+                            context.expectedType = argType;
+                    }
+                }
+            }
+
+            if (candidateFunction.args.length <= context.subOuterArgumentIndex)
+                continue;
+            let argType = typedb.GetType(candidateFunction.args[context.subOuterArgumentIndex].typename);
+            if (argType && !context.expectedType)
+                context.expectedType = argType;
+        }
+    }
+
+    // Resolve the assignment we're doing
+    context.isAssignment = context.isRightExpression && !context.isSubExpression && context.rightOperator == "=";
+    if (context.isRightExpression && context.statement && context.rightOperator
+        && (context.rightOperator != "=" || !context.isSubExpression))
+    {
+        // Parse the statement in front of the operator sign to get its type
+        context.leftStatement = new scriptfiles.ASStatement();
+        let assignLeftOffset = context.statement.start_offset - 1 - contentOffset - context.rightOperator.length;
+        let lvalueCandidates = ExtractExpressionPreceding(content, assignLeftOffset, ignoreTable);
+        for (let i = lvalueCandidates.length-1; i >= 0; --i)
+        {
+            let candidate = lvalueCandidates[i];
+            context.leftStatement.content = candidate.code;
+            context.leftStatement.ast = null;
+            context.leftStatement.end_offset = assignLeftOffset + 1 + contentOffset;
+            context.leftStatement.start_offset = context.leftStatement.end_offset - candidate.code.length;
+
+            scriptfiles.ParseStatement(scriptfiles.ASScopeType.Code, context.leftStatement);
+
+            if (!context.leftStatement.ast && context.scope)
+                scriptfiles.ParseStatement(context.scope.scopetype, context.leftStatement);
+
+            if (!context.leftStatement.ast)
+                continue;
+
+            // If this is a variable declaration we expect the type of the variable
+            if (context.leftStatement.ast.type == scriptfiles.node_types.VariableDecl)
+            {
+                context.leftType = typedb.GetType(context.leftStatement.ast.typename.value);
+                if (context.leftType)
+                    break;
+            }
+
+            // If this is a default statement we expect the type of the variable
+            if (context.leftStatement.ast.type == scriptfiles.node_types.DefaultStatement)
+            {
+                let subNode = context.leftStatement.ast.children[0];
+                if (subNode)
+                    context.leftType = scriptfiles.ResolveTypeFromExpression(context.scope, subNode);
+                if (context.leftType)
+                    break;
+            }
+
+            // If we managed to parse something, see if this results in a valid left type
+            context.leftType = scriptfiles.ResolveTypeFromExpression(context.scope, context.leftStatement.ast);
+            if (context.leftType)
+                break;
+        }
+
+        if (!context.expectedType)
+        {
+            if (context.rightOperator == "&&" || context.rightOperator == "||" || context.rightOperator == "!")
+            {
+                // On the right of a boolean operator should always be a bool
+                context.expectedType = typedb.GetType("bool");
+            }
+        }
+
+        if (context.leftType && !context.expectedType)
+        {
+            if (context.rightOperator == "==" || context.rightOperator == "=" || context.rightOperator == "!=")
+            {
+                // Comparison operators that expect the same type
+                context.expectedType = context.leftType;
+            }
+            else if (context.leftType.isPrimitive)
+            {
+                // Any non boolean operator on a primitive expects that same type
+                context.expectedType = context.leftType;
+            }
+            else
+            {
+                // See if we have an operator overload for this
+                let overloadMethod = scriptfiles.GetOverloadMethodForOperator(context.rightOperator);
+                if (overloadMethod)
+                {
+                    let overloadFunc = context.leftType.findFirstSymbol(overloadMethod, typedb.DBAllowSymbol.FunctionOnly);
+                    if (overloadFunc instanceof typedb.DBMethod)
+                    {
+                        if (overloadFunc.args && overloadFunc.args.length >= 1)
+                        {
+                            context.expectedType = typedb.GetType(overloadFunc.args[0].typename);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If we're editing inside an if statement, we might expect to be typing a bool
+    if (context.fullOuterStatement && context.fullOuterStatement.ast)
+    {
+        if (context.fullOuterStatement.ast.type == scriptfiles.node_types.IfStatement
+            || context.fullOuterStatement.ast.type == scriptfiles.node_types.WhileStatement)
+        {
+            if (!context.isRightExpression && !context.expectedType)
+            {
+                context.expectedType = typedb.GetType("bool");
+            }
+        }
+    }
+
     // Record some data about the statement we parsed
     if (context.completingNode)
     {
@@ -1215,6 +1581,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         context.isInsideType = true;
     else if (context.statement.ast && context.statement.ast.type == scriptfiles.node_types.NamespaceAccess)
         context.isInsideType = true;
+
     return context;
 }
 
@@ -1288,9 +1655,17 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         case scriptfiles.node_types.PostfixOperation:
         case scriptfiles.node_types.ElseStatement:
             return ExtractPriorExpressionAndSymbol(context, node.children[0]);
-        case scriptfiles.node_types.ReturnStatement:
         case scriptfiles.node_types.DefaultCaseStatement:
             context.isRightExpression = true;
+            return ExtractPriorExpressionAndSymbol(context, node.children[0]);
+        case scriptfiles.node_types.ReturnStatement:
+            context.isRightExpression = true;
+            if (context.scope)
+            {
+                let dbFunc = context.scope.getParentFunction();
+                if (dbFunc && dbFunc.returnType)
+                    context.expectedType = typedb.GetType(dbFunc.returnType);
+            }
             return ExtractPriorExpressionAndSymbol(context, node.children[0]);
         case scriptfiles.node_types.CaseStatement:
             context.isRightExpression = true;
@@ -1535,6 +1910,11 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
                         // Var < Blah.___
                         //     ^
                         let c = addCandidate(1);
+                        if (c)
+                        {
+                            c.isRightExpression = true;
+                            c.rightOperator = "<";
+                        }
                         endParse = true;
                     }
                     else
@@ -1552,7 +1932,10 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
                     // or the start of a template type
                     let c = addCandidate(1);
                     if (c)
+                    {
                         c.isRightExpression = true;
+                        c.rightOperator = ">";
+                    }
                     depth_anglebracket += 1;
                 }
             }
@@ -1578,7 +1961,10 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
                     // Or it could be a partial namespace lookup
                     let c = addCandidate(1);
                     if (c)
+                    {
                         c.isRightExpression = true;
+                        c.rightOperator = ":";
+                    }
                     expectingTerm = true;
                 }
             break;
@@ -1615,7 +2001,32 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
                     //          ^
                     let c = addCandidate(1);
                     if (c)
+                    {
                         c.isRightExpression = true;
+                        c.rightOperator = char;
+
+                        if (exprStartOffset > 0)
+                        {
+                            let prevChar = content[exprStartOffset-1];
+                            switch (prevChar)
+                            {
+                                case '+':
+                                case '-':
+                                case '*':
+                                case '/':
+                                case '=':
+                                case '>':
+                                case '<':
+                                case '!':
+                                case '%':
+                                case '^':
+                                case '&':
+                                case '|':
+                                    c.rightOperator = prevChar + c.rightOperator;
+                                break;
+                            }
+                        }
+                    }
                     endParse = true;
                 }
             }
@@ -2259,6 +2670,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
                     kind: CompletionItemKind.Snippet,
                     data: ["decl_snippet", checktype.typename, method.name, method.id],
                     additionalTextEdits: complEdits,
+                    sortText: Sort.Snippet,
                 });
             }
             else if (includeReturnType)
@@ -2269,6 +2681,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
                     kind: CompletionItemKind.Snippet,
                     data: ["decl_snippet", checktype.typename, method.name, method.id],
                     additionalTextEdits: complEdits,
+                    sortText: Sort.Snippet,
                 });
             }
 
@@ -2495,5 +2908,6 @@ function AddSuperCallSnippet(context : CompletionContext, completions : Array<Co
         insertText: insertText,
         kind: CompletionItemKind.Snippet,
         preselect: true,
+        sortText: Sort.Snippet,
     });
 }

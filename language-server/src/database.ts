@@ -431,6 +431,7 @@ export class DBType
     fromJSON(name : string, input : any)
     {
         this.typename = name;
+        this.isGlobalScope = (name == "__");
         this.properties = new Array<DBProperty>();
         for (let key in input.properties)
         {
@@ -566,6 +567,22 @@ export class DBType
         if (!this.namespaceResolved)
             this.resolveNamespace();
         return this.isNS && this.shadowedNamespace;
+    }
+
+    equalsTypename(typename : string) : boolean
+    {
+        if (!this.namespaceResolved)
+            this.resolveNamespace();
+        if (typename == this.typename)
+            return true;
+        if (this.isNS && typename == this.rawName)
+            return true;
+        let cleaned = CleanTypeName(typename);
+        if (cleaned == this.typename)
+            return true;
+        if (this.isNS && cleaned == this.rawName)
+            return true;
+        return false;
     }
 
     isUnrealType() : boolean

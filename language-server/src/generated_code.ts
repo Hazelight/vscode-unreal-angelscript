@@ -11,7 +11,7 @@ export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType, globalTyp
     if (dbtype.isEvent || dbtype.isDelegate)
         AddGeneratedCodeForDelegate(dbtype, globalType);
 
-    if (!dbtype.isStruct)
+    if (!dbtype.isStruct && !dbtype.isNamespace())
     {
         let nsType = new typedb.DBType();
         nsType.declaredModule = dbtype.declaredModule;

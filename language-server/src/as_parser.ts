@@ -2379,6 +2379,51 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
     return null;
 }
 
+export function GetOverloadMethodForOperator(operator : string) : string
+{
+    switch (operator)
+    {
+        case "+": return "opAdd";
+        case "-": return "opSub";
+        case "*": return "opMul";
+        case "/": return "opDiv";
+        case "%": return "opMod";
+        case "**": return "opPow";
+        case "&": return "opAnd";
+        case "|": return "opOr";
+        case "^": return "opXor";
+        case "<<": return "opShl";
+        case ">>": return "opShr";
+        case ">>>": return "opUShr";
+        case "==": return "opEquals";
+        case "!=": return "opEquals";
+        case "<": return "opCmp";
+        case ">": return "opCmp";
+        case ">=": return "opCmp";
+        case "<=": return "opCmp";
+        case "-": return "opNeg";
+        case "~": return "opCom";
+        case "++": return "opPreInc";
+        case "--": return "opPreDec";
+        case "++": return "opPostInc";
+        case "--": return "opPostDec";
+        case "+=": return "opAddAssign";
+        case "-=": return "opSubAssign";
+        case "*=": return "opMulAssign";
+        case "/=": return "opDivAssign";
+        case "%=": return "opModAssign";
+        case "**=": return "opPowAssign";
+        case "|=": return "opOrAssign";
+        case "&=": return "opAndAssign";
+        case "^=": return "opXorAssign";
+        case "<<=": return "opShlAssign";
+        case ">>=": return "opShrAssign";
+        case ">>>=": return "opUShrAssign";
+    }
+
+    return null;
+}
+
 function getBinaryOperatorOverloadMethod(operator : any) : string
 {
     switch (operator)
