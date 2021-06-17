@@ -548,6 +548,15 @@ export class DBType
         }
     }
 
+    getDisplayName() : string
+    {
+        if (!this.namespaceResolved)
+            this.resolveNamespace();
+        if(this.isNS)
+            return this.rawName;
+        return this.typename;
+    }
+
     isNamespace() : boolean
     {
         if (!this.namespaceResolved)

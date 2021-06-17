@@ -740,13 +740,16 @@ function AddAutoActions(asmodule : scriptfiles.ASModule, range_start : number, r
             continue;
 
         let realTypename = symbol.symbol_name;
+        if (realTypename.startsWith("__"))
+            realTypename = realTypename.substr(2);
+
         let dbtype = typedb.GetType(realTypename);
         if (!dbtype)
             continue;
 
         actions.push(<CodeAction> {
             kind: CodeActionKind.RefactorInline,
-            title: "Change auto to "+realTypename,
+            title: "Change auto to "+dbtype.getDisplayName(),
             source: "angelscript",
             isPreferred: true,
             data: {
