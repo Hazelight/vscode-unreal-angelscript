@@ -52,6 +52,10 @@ class CompletionContext
     priorExpression: any = null;
     priorType: typedb.DBType = null;
 
+    completingSymbolLowerCase : string = null;
+    completingSymbolGetter : string = null;
+    completingSymbolSetter : string = null;
+
     isRightExpression : boolean = false;
     isEqualityExpression : boolean = false;
     rightOperator : string = null;
@@ -179,11 +183,15 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
 
     // Add completions for mixin calls to global functions
     if (context.priorType)
+    {
         AddMixinCompletions(context, completions);
+    }
 
     // Complete typenames if we're in a context where that is possible
     if (!context.isInsideType && !context.isIncompleteNamespace)
+    {
         AddTypenameCompletions(context, completions);
+    }
 
     // Complete keywords if appropriate
     if (!context.isInsideType)
@@ -405,7 +413,7 @@ function AddCompletionsFromCallSignature(context: CompletionContext, completions
             {
                 let arg = activeMethod.args[context.subOuterArgumentIndex];
                 let complStr = arg.typename + " " + arg.name;
-                if (CanCompleteTo(context.completingSymbol, complStr))
+                if (CanCompleteTo(context, complStr))
                 {
                     completions.push({
                         label: complStr,
@@ -428,7 +436,7 @@ function AddCompletionsFromCallSignature(context: CompletionContext, completions
                     continue;
 
                 let complStr = arg.name+" = ";
-                if (CanCompleteTo(context.completingSymbol, complStr))
+                if (CanCompleteTo(context, complStr))
                 {
                     completions.push({
                         label: complStr,
@@ -449,7 +457,7 @@ function AddCompletionsFromKeywordList(context : CompletionContext, keywords : A
 {
     for(let kw of keywords)
     {
-        if (CanCompleteTo(context.completingSymbol, kw))
+        if (CanCompleteTo(context, kw))
         {
             completions.push({
                 label: kw,
@@ -464,7 +472,7 @@ function AddCompletionsFromSpecifiers(context : CompletionContext, specifiers : 
 {
     for(let spec in specifiers)
     {
-        if (!context.completingSymbol || CanCompleteTo(context.completingSymbol, spec))
+        if (!context.completingSymbol || CanCompleteTo(context, spec))
         {
             completions.push({
                 label: spec,
@@ -491,7 +499,7 @@ function AddCompletionsFromImportStatement(context : CompletionContext, completi
 
         for (let asmodule of scriptfiles.GetAllLoadedModules())
         {
-            if (CanCompleteTo(complString, asmodule.modulename))
+            if (CanCompleteStringTo(complString, asmodule.modulename))
             {
                 completions.push({
                     label: asmodule.modulename,
@@ -545,7 +553,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
     let inFunctionBody = !context.scope || context.scope.isInFunctionBody();
 
     AddCompletionsFromKeywordList(context, [
-        "float", "bool", "int", "double",
+        "float", "bool", "int", "double", "auto",
     ], completions);
 
     if (context.isRightExpression || context.isSubExpression)
@@ -570,7 +578,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
             "property"
         ], completions);
 
-        if (CanCompleteTo(context.completingSymbol, "UCLASS"))
+        if (CanCompleteTo(context, "UCLASS"))
         {
             completions.push({
                     label: "UCLASS",
@@ -580,7 +588,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
             });
         }
 
-        if (CanCompleteTo(context.completingSymbol, "USTRUCT"))
+        if (CanCompleteTo(context, "USTRUCT"))
         {
             completions.push({
                     label: "USTRUCT",
@@ -626,7 +634,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                 "override", "final", "property", "private", "protected",
             ], completions);
 
-            if (CanCompleteTo(context.completingSymbol, "UPROPERTY"))
+            if (CanCompleteTo(context, "UPROPERTY"))
             {
                 completions.push({
                         label: "UPROPERTY",
@@ -642,7 +650,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         {
             if (!context.isRightExpression && !context.isSubExpression)
             {
-                if (CanCompleteTo(context.completingSymbol, "UFUNCTION"))
+                if (CanCompleteTo(context, "UFUNCTION"))
                 {
                     completions.push({
                             label: "UFUNCTION",
@@ -663,7 +671,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                 "mixin", "property",
             ], completions)
 
-            if (CanCompleteTo(context.completingSymbol, "UFUNCTION"))
+            if (CanCompleteTo(context, "UFUNCTION"))
             {
                 completions.push({
                         label: "UFUNCTION",
@@ -728,7 +736,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
                 {
                     for (let enumvalue of dbtype.properties)
                     {
-                        let canCompleteValue = CanCompleteTo(context.completingSymbol, enumvalue.name);
+                        let canCompleteValue = CanCompleteTo(context, enumvalue.name);
                         if (!canCompleteEnum && !canCompleteValue)
                             continue;
 
@@ -760,7 +768,8 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
                                 complItem.sortText = Sort.EnumValue;
                         }
 
-                        completions.push(complItem);
+                        if (canCompleteEnum)
+                            completions.push(complItem);
 
                         // Add secondary item for if we're just typing the enum value's name
                         if (canCompleteValue && context.expectedType == dbtype && !isMaxValue)
@@ -817,7 +826,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
     }
 
     // Special case completion for automatically completing FMath:: to Math::
-    if (CanCompleteTo(context.completingSymbol, "FMath"))
+    if (CanCompleteTo(context, "FMath"))
     {
         let OldNamespace = typedb.GetType("__FMath");
         let MathNamespace = typedb.GetType("__Math");
@@ -844,7 +853,7 @@ export function AddCompletionsFromClassKeywords(context : CompletionContext, com
     let insideType = context.scope.getParentType();
     if (!insideType)
         return;
-    if (CanCompleteTo(context.completingSymbol, "this"))
+    if (CanCompleteTo(context, "this"))
     {
         completions.push({
                 label: "this",
@@ -855,7 +864,7 @@ export function AddCompletionsFromClassKeywords(context : CompletionContext, com
         });
     }
 
-    if (context.scope.isInFunctionBody() && CanCompleteTo(context.completingSymbol, "Super"))
+    if (context.scope.isInFunctionBody() && CanCompleteTo(context, "Super"))
     {
         let supertype = typedb.GetType(insideType.supertype);
         // Don't complete to Super if it is a C++ class, that doesn't work
@@ -876,7 +885,7 @@ export function AddCompletionsFromLocalVariables(context : CompletionContext, sc
 {
     for (let asvar of scope.variables)
     {
-        if (CanCompleteTo(context.completingSymbol, asvar.name))
+        if (CanCompleteTo(context, asvar.name))
         {
             let complItem = <CompletionItem> {
                 label: asvar.name,
@@ -1189,8 +1198,10 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
     }
 }
 
-function CanCompleteTo(completing : string, suggestion : string) : boolean
+function CanCompleteStringTo(completing : string, suggestion : string) : boolean
 {
+    if (completing.length == 0)
+        return true;
     if (completing.startsWith("Get"))
     {
         if (suggestion.startsWith("Get"))
@@ -1205,19 +1216,70 @@ function CanCompleteTo(completing : string, suggestion : string) : boolean
     return suggestion.toLowerCase().indexOf(completing.toLowerCase()) != -1;
 }
 
+function CanCompleteTo(context : CompletionContext, suggestion : string) : boolean
+{
+    if (context.completingSymbolLowerCase.length == 0)
+        return true;
+
+    if (context.completingSymbolGetter)
+    {
+        if (suggestion.startsWith("Get"))
+            return suggestion.substr(3).toLowerCase().indexOf(context.completingSymbolGetter) != -1;
+    }
+    else if (context.completingSymbolSetter)
+    {
+        if (suggestion.startsWith("Set"))
+            return suggestion.substr(3).toLowerCase().indexOf(context.completingSymbolSetter) != -1;
+    }
+
+    return suggestion.toLowerCase().indexOf(context.completingSymbolLowerCase) != -1;
+}
+
+function CanCompleteToOnlyStart(context : CompletionContext, suggestion : string) : boolean
+{
+    if (context.completingSymbolLowerCase.length == 0)
+        return true;
+
+    if (context.completingSymbolGetter)
+    {
+        if (suggestion.startsWith("Get"))
+            return suggestion.substr(3).toLowerCase().startsWith(context.completingSymbolGetter);
+    }
+    else if (context.completingSymbolSetter)
+    {
+        if (suggestion.startsWith("Set"))
+            return suggestion.substr(3).toLowerCase().startsWith(context.completingSymbolSetter);
+    }
+
+    return suggestion.toLowerCase().startsWith(context.completingSymbolLowerCase);
+}
+
 function CanCompleteSymbol(context : CompletionContext, symbol : typedb.DBSymbol | typedb.DBType) : boolean
 {
     if (symbol instanceof typedb.DBType)
     {
+        if( symbol.isNamespace())
+        {
+            return CanCompleteToOnlyStart(context, symbol.rawName);
+        }
+        else
+        {
+            if (symbol.keywords)
+                return CanCompleteToOnlyStart(context, GetSymbolFilterText(context, symbol));
+            return CanCompleteToOnlyStart(context, symbol.typename);
+        }
+    }
+    else if (symbol.containingType.isGlobalScope)
+    {
         if (symbol.keywords)
-            return CanCompleteTo(context.completingSymbol, GetSymbolFilterText(context, symbol));
-        return CanCompleteTo(context.completingSymbol, symbol.typename);
+            return CanCompleteToOnlyStart(context, GetSymbolFilterText(context, symbol));
+        return CanCompleteToOnlyStart(context, symbol.name);
     }
     else
     {
         if (symbol.keywords)
-            return CanCompleteTo(context.completingSymbol, GetSymbolFilterText(context, symbol));
-        return CanCompleteTo(context.completingSymbol, symbol.name);
+            return CanCompleteTo(context, GetSymbolFilterText(context, symbol));
+        return CanCompleteTo(context, symbol.name);
     }
 }
 
@@ -1581,6 +1643,20 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         context.isInsideType = true;
     else if (context.statement.ast && context.statement.ast.type == scriptfiles.node_types.NamespaceAccess)
         context.isInsideType = true;
+
+    // Pre-massage completing symbol
+    if (context.completingSymbol)
+    {
+        context.completingSymbolLowerCase = context.completingSymbol.toLowerCase();
+        if (context.completingSymbolLowerCase.startsWith("get"))
+            context.completingSymbolGetter = context.completingSymbolLowerCase.substr(3);
+        else if (context.completingSymbolLowerCase.startsWith("set"))
+            context.completingSymbolSetter = context.completingSymbolLowerCase.substr(3);
+    }
+    else
+    {
+        context.completingSymbolLowerCase = "";
+    }
 
     return context;
 }
@@ -2614,9 +2690,9 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
             let includeReturnType = false;
             let includeParamsOnly = false;
 
-            if (method.name && CanCompleteTo(context.completingSymbol, method.name))
+            if (method.name && CanCompleteTo(context, method.name))
                 includeParamsOnly = true;
-            if (method.returnType && CanCompleteTo(context.completingSymbol, method.returnType))
+            if (method.returnType && CanCompleteTo(context, method.returnType))
                 includeReturnType = true;
             if (method.isPrivate)
                 continue;
