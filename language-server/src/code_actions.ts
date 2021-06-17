@@ -481,6 +481,13 @@ function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : 
     ];
 }
 
+function GetTypeFromExpressionIgnoreNullptr(scope : scriptfiles.ASScope, node : any) : typedb.DBType
+{
+    if (node && node.type == scriptfiles.node_types.ConstNullptr)
+        return null;
+    return scriptfiles.ResolveTypeFromExpression(scope, node);
+}
+
 function AddCastHelpers(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
 {
     let scope = asmodule.getScopeAt(range_start);
@@ -504,7 +511,7 @@ function AddCastHelpers(asmodule : scriptfiles.ASModule, range_start : number, r
             return;
 
         leftType = scriptfiles.ResolveTypeFromExpression(scope, leftNode);
-        rightType = scriptfiles.ResolveTypeFromExpression(scope, rightNode);
+        rightType = GetTypeFromExpressionIgnoreNullptr(scope, rightNode);
     }
     else if (statement.ast.type == scriptfiles.node_types.VariableDecl)
     {
@@ -512,7 +519,16 @@ function AddCastHelpers(asmodule : scriptfiles.ASModule, range_start : number, r
             leftType = typedb.GetType(statement.ast.typename.value);
 
         if (statement.ast.expression)
-            rightType = scriptfiles.ResolveTypeFromExpression(scope, statement.ast.expression);
+            rightType = GetTypeFromExpressionIgnoreNullptr(scope, statement.ast.expression);
+    }
+    else if (statement.ast.type == scriptfiles.node_types.ReturnStatement)
+    {
+        let dbFunc = scope.getDatabaseFunction();
+        if (dbFunc && dbFunc.returnType)
+            leftType = typedb.GetType(dbFunc.returnType);
+
+        if (statement.ast.children && statement.ast.children[0])
+            rightType = GetTypeFromExpressionIgnoreNullptr(scope, statement.ast.children[0]);
     }
 
     if (!leftType || !rightType)
@@ -567,6 +583,11 @@ function ResolveCastHelper(asmodule : scriptfiles.ASModule, action : CodeAction,
     else if (statement.ast.type == scriptfiles.node_types.VariableDecl)
     {
         rightNode = statement.ast.expression;
+    }
+    else if (statement.ast.type == scriptfiles.node_types.ReturnStatement)
+    {
+        if (statement.ast.children && statement.ast.children[0])
+            rightNode = statement.ast.children[0]
     }
 
     if (!rightNode)
