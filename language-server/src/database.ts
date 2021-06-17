@@ -1234,6 +1234,10 @@ export function GetType(typename : string) : DBType | null
     if (foundType)
         return foundType;
 
+    let enumType = database.get("__"+typename)
+    if (enumType && enumType.isEnum)
+        return enumType;
+
     if (typename.indexOf('<') != -1)
     {
         // See if we can create a template instance

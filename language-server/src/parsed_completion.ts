@@ -1244,9 +1244,15 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             context.completingNode = node.children[1];
             context.priorType = scriptfiles.ResolveTypeFromExpression(context.scope, node.children[0]);
             if (context.priorType)
+            {
+                if (context.priorType.isEnum)
+                    context.priorType = null;
                 return true;
+            }
             else
+            {
                 return false;
+            }
         }
         break;
         case scriptfiles.node_types.NamespaceAccess:
