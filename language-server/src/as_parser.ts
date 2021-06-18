@@ -3140,7 +3140,9 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     let constrType = typedb.GetType(node.children[0].value);
                     if (constrType)
                     {
+                        left_symbol = typedb.GetType("__").findFirstSymbol(constrType.typename, typedb.DBAllowSymbol.FunctionOnly);
                         left_type = constrType;
+
                         let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, constrType.typename);
                         if (constrType.declaredModule && !scope.module.isModuleImported(constrType.declaredModule))
                             addedSymbol.isUnimported = true;
@@ -3214,13 +3216,16 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     {
                         if (!scope.module.isEditingNode(statement, nameNode))
                         {
-                            AddUnknownSymbol(scope, statement, nameNode, false);
+                            AddUnknownSymbol(scope, statement, {
+                                value: nameNode.value.substring(2, nameNode.value.length-1),
+                                start: nameNode.start + 2,
+                                end: nameNode.end - 1,
+                            }, false);
                         }
                     }
                     else
                     {
-                        let symbol = AddIdentifierSymbol(scope, statement, nameNode,
-                            ASSymbolType.MemberFunction, foundFunc.containingType.typename, foundFunc.name);
+                        let symbol = AddIdentifierSymbol(scope, statement, nameNode, ASSymbolType.MemberFunction, foundFunc.containingType.typename, foundFunc.name);
                         if (symbol)
                         {
                             symbol.start += 2;
