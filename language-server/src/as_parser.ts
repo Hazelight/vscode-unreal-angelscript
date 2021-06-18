@@ -3364,6 +3364,11 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             {
                 let insideType = scope.dbtype ? scope.dbtype.typename : null;
                 let symType = scope.dbtype && !scope.dbtype.isNamespaceOrGlobalScope() ? ASSymbolType.MemberFunction : ASSymbolType.GlobalFunction;
+                if (node.type == node_types.ConstructorDecl)
+                {
+                    insideType = null;
+                    symType = ASSymbolType.Typename;
+                }
                 AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value);
             }
 
@@ -3382,6 +3387,19 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     if (param.expression)
                         DetectNodeSymbols(scope, statement, param.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
                 }
+            }
+        }
+        break;
+        case node_types.DestructorDecl:
+        {
+            // Add the symbol for the type's name
+            if (node.name)
+            {
+                AddIdentifierSymbol(scope, statement, {
+                    value: node.name.value.substr(1),
+                    start: node.name.start + 1,
+                    end: node.name.end,
+                }, ASSymbolType.Typename, null, node.name.value.substr(1));
             }
         }
         break;
