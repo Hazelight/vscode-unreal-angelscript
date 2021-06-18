@@ -516,7 +516,7 @@ var_decl -> typename _ %identifier _ %lparen argumentlist _ %rparen {%
         ...Compound(d, n.VariableDecl, null),
         name: Identifier(d[2]),
         typename: d[0],
-        expression: d[6],
+        expression: d[5],
         inline_constructor: true,
     }; }
 %}
@@ -839,7 +839,7 @@ lvalue -> lvalue _ %lsqbracket optional_expression _ %rsqbracket {%
     function (d) { return Compound(d, n.IndexOperator, [d[0], d[3]]); }
 %}
 lvalue -> template_typename _ %lparen argumentlist _ %rparen {%
-    function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
+    function (d) { return Compound(d, n.ConstructorCall, [d[0], d[3]]); }
 %}
 
 lvalue -> %cast_token _ "<" _ typename _ ">" _ %lparen optional_expression _ %rparen {%

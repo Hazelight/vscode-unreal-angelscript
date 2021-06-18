@@ -541,7 +541,7 @@ var grammar = {
             ...Compound(d, n.VariableDecl, null),
             name: Identifier(d[2]),
             typename: d[0],
-            expression: d[6],
+            expression: d[5],
             inline_constructor: true,
         }; }
         },
@@ -864,7 +864,7 @@ var grammar = {
         function (d) { return Compound(d, n.IndexOperator, [d[0], d[3]]); }
         },
     {"name": "lvalue", "symbols": ["template_typename", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
-        function (d) { return Compound(d, n.ConstructorCall, [d[0], d[4]]); }
+        function (d) { return Compound(d, n.ConstructorCall, [d[0], d[3]]); }
         },
     {"name": "lvalue", "symbols": [(lexer.has("cast_token") ? {type: "cast_token"} : cast_token), "_", {"literal":"<"}, "_", "typename", "_", {"literal":">"}, "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "optional_expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.CastOperation, [d[4], d[9]]); }
