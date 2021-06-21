@@ -26,6 +26,7 @@ export let ASPropertySpecifiers : any = {
     "EditFixedSize": "Use on TArray propertie, the size of the array cannot be changed from the editor",
     "BlueprintProtected": "Treat this property as protected in blueprint, disallowing it from being edited by non-child blueprints",
     "DefaultComponent": "Component will be created as a default component on the actor",
+    "OverrideComponent": "Specify a component in the praent class to override the class type of",
     "RootComponent": "Use on DefaultComponents, specify that this component should be the root component of the actor",
     "ShowOnActor": "Use on DefaultComponents, properties from the component will appear in the actor's details panel",
     "Attach": "Use on DefaultComponents, specify a different component to attach this to in the scene hierarchy",
