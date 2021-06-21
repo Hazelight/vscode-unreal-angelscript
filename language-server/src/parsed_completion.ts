@@ -710,7 +710,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
             typename = dbtype.rawName;
             kind = CompletionItemKind.Module;
 
-            if (!context.isSubExpression && !context.isRightExpression)
+            if ((!context.isSubExpression && !context.isRightExpression) || context.maybeTypename)
             {
                 if (dbtype.isShadowedNamespace())
                     continue;
@@ -718,7 +718,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
         }
         else
         {
-            if (context.isSubExpression || context.isRightExpression)
+            if (!context.maybeTypename && (context.isSubExpression || context.isRightExpression))
                 continue;
         }
 
