@@ -1531,7 +1531,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         // Parse the statement in front of the operator sign to get its type
         context.leftStatement = new scriptfiles.ASStatement();
         let assignLeftOffset = context.statement.start_offset - 1 - contentOffset - context.rightOperator.length;
-        let lvalueCandidates = ExtractExpressionPreceding(content, assignLeftOffset, ignoreTable);
+        let lvalueCandidates = ExtractExpressionPreceding(content, assignLeftOffset, ignoreTable, true);
         for (let i = lvalueCandidates.length-1; i >= 0; --i)
         {
             let candidate = lvalueCandidates[i];
@@ -1841,7 +1841,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
     return false;
 }
 
-function ExtractExpressionPreceding(content : string, offset : number, ignoreTable : Array<number>) : Array<CompletionExpressionCandidate>
+function ExtractExpressionPreceding(content : string, offset : number, ignoreTable : Array<number>, initialExpectingTerm = false) : Array<CompletionExpressionCandidate>
 {
     let candidates : Array<CompletionExpressionCandidate> = [];
     let exprEndOffset = offset+1;
@@ -1870,7 +1870,7 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
     let depth_paren = 0;
     let depth_sqbracket = 0;
     let depth_anglebracket = 0;
-    let expectingTerm = false;
+    let expectingTerm = initialExpectingTerm;
     let haveFirstIdentifier = false;
 
     let ignoreTableIndex = ignoreTable ? ignoreTable.length-2 : -1;
