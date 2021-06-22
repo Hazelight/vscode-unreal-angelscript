@@ -19,7 +19,7 @@ namespace Sort
     export const EnumName_Expected = "0";
     export const EnumValue_Max_Expected = "2";
     export const Local_Expected = "2";
-    export const Local = "3";
+    export const Local = "4";
     export const Keyword = "8";
     export const ImportModule = "8";
     export const MemberProp_Direct = "a";
@@ -37,6 +37,7 @@ namespace Sort
     export const Global = "k";
     export const Global_Expected = "d";
     export const Typename = "f";
+    export const Typename_Expected = "3";
     export const Unimported = "x";
     export const Snippet = "z";
 };
@@ -813,14 +814,26 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
                 let commitChars = [":"];
                 GetTypenameCommitChars(context, typename, commitChars);
 
-                completions.push({
+                let complItem = <CompletionItem> {
                         label: typename,
                         kind: kind,
                         data: ["type", dbtype.typename],
                         commitCharacters: commitChars,
                         filterText: GetSymbolFilterText(context, dbtype),
                         sortText: Sort.Typename,
-                });
+                };
+
+                if (dbtype.isShadowedNamespace() && context.expectedType && context.expectedType.typename == dbtype.rawName)
+                {
+                    if (context.expectedType.inheritsFrom("UActorComponent"))
+                    {
+                        // If we're expecting a component the namespace is high sort
+                        complItem.sortText = Sort.Typename_Expected;
+                        complItem.preselect = true;
+                    }
+                }
+
+                completions.push(complItem);
             }
         }
     }
