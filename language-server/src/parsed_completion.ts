@@ -1544,6 +1544,11 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         // Parse the statement in front of the operator sign to get its type
         context.leftStatement = new scriptfiles.ASStatement();
         let assignLeftOffset = context.statement.start_offset - 1 - contentOffset - context.rightOperator.length;
+
+        // If we parsed the statement as a binary operator we should read the left side of the binary operation
+        if (context.statement.ast && context.statement.ast.type == scriptfiles.node_types.BinaryOperation)
+            assignLeftOffset = context.statement.start_offset + context.statement.ast.children[0].end - contentOffset - 1;
+
         let lvalueCandidates = ExtractExpressionPreceding(content, assignLeftOffset, ignoreTable, true);
         for (let i = lvalueCandidates.length-1; i >= 0; --i)
         {
@@ -1738,11 +1743,15 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         }
         break;
         case scriptfiles.node_types.BinaryOperation:
+            context.isRightExpression = true;
+            context.rightOperator = node.operator;
             return ExtractPriorExpressionAndSymbol(context, node.children[1]);
         break;
         case scriptfiles.node_types.UnaryOperation:
         case scriptfiles.node_types.PostfixOperation:
         case scriptfiles.node_types.ElseStatement:
+            context.isRightExpression = true;
+            context.rightOperator = node.operator;
             return ExtractPriorExpressionAndSymbol(context, node.children[0]);
         case scriptfiles.node_types.DefaultCaseStatement:
             context.isRightExpression = true;
