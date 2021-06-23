@@ -398,6 +398,10 @@ function AddMethodOverrideSnippets(asmodule : scriptfiles.ASModule, range_start 
             if (method.isPrivate)
                 continue;
 
+            foundOverrides.add(method.name);
+            if (method.isFinal)
+                continue;
+
             actions.push(<CodeAction> {
                 kind: CodeActionKind.RefactorRewrite,
                 title: "Override: "+method.name+"()",
@@ -410,8 +414,6 @@ function AddMethodOverrideSnippets(asmodule : scriptfiles.ASModule, range_start 
                     position: asmodule.getPosition(range_start),
                 }
             });
-
-            foundOverrides.add(method.name);
         }
     }
 }

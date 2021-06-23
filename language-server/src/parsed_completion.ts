@@ -2727,6 +2727,10 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
             if (foundOverrides.has(method.name))
                 continue;
 
+            foundOverrides.add(method.name);
+            if (method.isFinal)
+                continue;
+
             let complStr = GetDeclarationSnippet(method, currentIndent, false);
             let complEdits = textEdits;
 
@@ -2782,8 +2786,6 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
                     sortText: Sort.Snippet,
                 });
             }
-
-            foundOverrides.add(method.name);
         }
     }
 }

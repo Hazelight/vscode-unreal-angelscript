@@ -1640,6 +1640,8 @@ function GenerateTypeInformation(scope : ASScope)
                         dbfunc.isProperty = true;
                     else if (qual == "const")
                         dbfunc.isConst = true;
+                    else if (qual == "final")
+                        dbfunc.isFinal = true;
                 }
             }
 
