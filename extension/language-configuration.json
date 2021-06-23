@@ -19,6 +19,7 @@
         ["\"", "\""],
         ["n\"", "\""],
         ["f\"", "\""],
+        ["/**", " */"],
         ["'", "'"],
     ],
     // symbols that that can be used to surround a selection
@@ -30,5 +31,30 @@
         ["n\"", "\""],
         ["f\"", "\""],
         ["'", "'"]
+    ],
+    "onEnterRules": [
+        {
+            "beforeText": "^\\s*\/\\*\\*([^*]|\\*(?!/))*$",
+            "afterText": "^\\s*\\*/$",
+            "action": {
+                "indent": "indentOutdent",
+                "appendText": " * "
+            }
+        },
+        {
+            "beforeText": "^\\s*\\*(?!/)\\s*([^*]|\\*(?!/))*$",
+            "action": {
+                "indent": "none",
+                "appendText": "* "
+            }
+        },
+        {
+            "previousLineText": "^\\s*(if|while|for)\\s*\\(.*\\)\\s*$",
+            "beforeText": "^.*;$",
+            "action": {
+                "indent": "outdent"
+            }
+        },
     ]
+
 }
