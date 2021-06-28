@@ -1085,6 +1085,7 @@ export function OnDirtyTypeCaches()
 
 export let database = new Map<string, DBType>();
 export let databaseByPrefix = new Map<string, Array<DBType>>();
+export let databaseScriptTypes = new Map<string, Array<DBType>>();
 export let UnrealTypesLoaded = false;
 let NextMethodId = 0;
 
@@ -1412,6 +1413,24 @@ export function AddTypeToDatabase(dbtype : DBType)
         prefixSyms.push(dbtype);
     }
 
+    if (dbtype.declaredModule)
+    {
+        let scriptTypes = databaseScriptTypes.get(dbtype.typename);
+        if (scriptTypes)
+        {
+            for (let i = scriptTypes.length-1; i >= 0; --i)
+            {
+                if (scriptTypes[i].declaredModule == dbtype.declaredModule)
+                    scriptTypes.splice(i, 1);
+            }
+            scriptTypes.push(dbtype);
+        }
+        else
+        {
+            databaseScriptTypes.set(dbtype.typename, [dbtype]);
+        }
+    }
+
     database.set(dbtype.typename, dbtype);
     OnDirtyTypeCaches();
 }
@@ -1432,6 +1451,32 @@ export function RemoveTypeFromDatabase(dbtype : DBType)
                 prefixSyms.splice(previousIndex, 1);
         }
     }
+
+    if (dbtype.declaredModule)
+    {
+        let scriptTypes = databaseScriptTypes.get(dbtype.typename);
+        if (scriptTypes)
+        {
+            for (let i = scriptTypes.length-1; i >= 0; --i)
+            {
+                if (scriptTypes[i] == dbtype)
+                    scriptTypes.splice(i, 1);
+            }
+
+            // Revert to the script type that had this name previously
+            if (scriptTypes.length != 0)
+            {
+                let prevType = scriptTypes[scriptTypes.length-1];
+                scriptTypes.splice(scriptTypes.length-1, 1);
+                AddTypeToDatabase(prevType);
+            }
+            else
+            {
+                databaseScriptTypes.delete(dbtype.typename);
+            }
+        }
+    }
+
     OnDirtyTypeCaches();
 }
 
