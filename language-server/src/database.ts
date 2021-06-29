@@ -1437,8 +1437,12 @@ export function AddTypeToDatabase(dbtype : DBType)
 
 export function RemoveTypeFromDatabase(dbtype : DBType)
 {
+    let wasPrimaryForName = false;
     if (database.get(dbtype.typename) == dbtype)
+    {
         database.delete(dbtype.typename);
+        wasPrimaryForName = true;
+    }
 
     let prefix = GetTypenameCharPrefix(dbtype.typename);
     if (prefix)
@@ -1463,12 +1467,15 @@ export function RemoveTypeFromDatabase(dbtype : DBType)
                     scriptTypes.splice(i, 1);
             }
 
-            // Revert to the script type that had this name previously
             if (scriptTypes.length != 0)
             {
-                let prevType = scriptTypes[scriptTypes.length-1];
-                scriptTypes.splice(scriptTypes.length-1, 1);
-                AddTypeToDatabase(prevType);
+                if (wasPrimaryForName)
+                {
+                    // Revert to the script type that had this name previously
+                    let prevType = scriptTypes[scriptTypes.length-1];
+                    scriptTypes.splice(scriptTypes.length-1, 1);
+                    AddTypeToDatabase(prevType);
+                }
             }
             else
             {
