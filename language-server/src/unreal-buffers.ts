@@ -40,8 +40,8 @@ export enum MessageType
     DebugDatabaseFinished,
     AssetDatabaseInit,
     AssetDatabase,
-	AssetDatabaseFinished,
-	FindAssets,
+    AssetDatabaseFinished,
+    FindAssets,
 }
 
 export class Message
