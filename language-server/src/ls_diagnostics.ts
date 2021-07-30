@@ -478,6 +478,46 @@ function AddNamingConventionDiagnostics(asmodule : scriptfiles.ASModule, diagnos
     AddScopeNamingConventionDiagnostics(asmodule.rootscope, diagnostics);
 }
 
+// Check if the type inherits from AActor, or if the unreal type is unknown,
+// check if the unreal type starts with 'A'
+function IsMaybeActorType(dbtype : typedb.DBType) : boolean
+{
+    let checkType = dbtype;
+    while (checkType)
+    {
+        if (checkType.typename == "AActor")
+            return true;
+
+        if (checkType.supertype)
+        {
+            let superType = typedb.GetType(checkType.supertype);
+            if (superType)
+            {
+                checkType = superType;
+                continue;
+            }
+            else
+                return checkType.supertype.startsWith('A');
+        }
+
+        if (checkType.unrealsuper)
+        {
+            let superType = typedb.GetType(checkType.unrealsuper);
+            if (superType)
+            {
+                checkType = superType;
+                continue;
+            }
+            else
+                return checkType.unrealsuper.startsWith('A');
+        }
+
+        return false;
+    }
+
+    return false;
+}
+
 function AddScopeNamingConventionDiagnostics(scope : scriptfiles.ASScope, diagnostics : Array<Diagnostic>)
 {
     // Check the naming convention for types
@@ -504,7 +544,7 @@ function AddScopeNamingConventionDiagnostics(scope : scriptfiles.ASScope, diagno
                 hasSuggestion = true;
             }
         }
-        else if (scopeType.inheritsFrom("AActor"))
+        else if (IsMaybeActorType(scopeType))
         {
             if (suggestedName.length >= 1 && suggestedName[0] != 'A')
             {
