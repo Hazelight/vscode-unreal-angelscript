@@ -19,8 +19,11 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
     if (findSymbol)
     {
         let defs = GetSymbolDefinition(asmodule, findSymbol);
-        for (let def of defs)
-            locations.push(def.location);
+        if (defs)
+        {
+            for (let def of defs)
+                locations.push(def.location);
+        }
         return locations;
     }
 

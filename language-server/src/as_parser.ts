@@ -3451,12 +3451,15 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
 
                 // Add the function name
                 if (signature.name)
-                    AddIdentifierSymbol(scope, statement, signature.name, ASSymbolType.GlobalFunction, null, signature.name.value);
+                {
+                    let targetModule = "//"+statement.ast.children[1].value;
+                    AddIdentifierSymbol(scope, statement, signature.name, ASSymbolType.GlobalFunction, targetModule, signature.name.value);
+                }
 
                 // Add symbols for all parameters of the function
                 if (signature.parameters)
                 {
-                    for (let param of signature.parameters)
+                   for (let param of signature.parameters)
                     {
                         // Add the typename of the parameter
                         if (param.typename)
