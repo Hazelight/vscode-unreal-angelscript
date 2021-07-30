@@ -49,6 +49,7 @@ export class DBProperty implements DBSymbol
 
     declaredModule : string | null;
     moduleOffset : number;
+    moduleOffsetEnd : number = -1;
 
     containingType : DBType = null;
     keywords : Array<string> = null;
@@ -183,6 +184,7 @@ export class DBMethod implements DBSymbol
 
     declaredModule : string;
     moduleOffset : number;
+    moduleOffsetEnd : number = -1;
     moduleScopeStart : number = -1;
     moduleScopeEnd : number = -1;
 
@@ -372,6 +374,7 @@ export class DBType
     declaredModule : string;
     multipleModules : boolean = false;
     moduleOffset : number;
+    moduleOffsetEnd : number = -1;
     moduleScopeStart : number = -1;
     moduleScopeEnd : number = -1;
 
@@ -397,6 +400,7 @@ export class DBType
         inst.multipleModules = this.multipleModules;
         inst.declaredModule = this.declaredModule;
         inst.moduleOffset = this.moduleOffset;
+        inst.moduleOffsetEnd = this.moduleOffsetEnd;
         inst.isTemplateInstantiation = true;
         if(this.siblingTypes)
             inst.siblingTypes = this.siblingTypes.slice();
@@ -1188,7 +1192,7 @@ export function CleanTypeName(typename : string) : string
     else if (typename.endsWith("&in"))
         typename = typename.substring(0, typename.length-3);
     else if (typename.endsWith("&inout"))
-        typename = typename.substring(0, typename.length-5);
+        typename = typename.substring(0, typename.length-6);
     else if (typename.endsWith("@"))
         typename = typename.substring(0, typename.length-1);
     return typename;

@@ -13,7 +13,8 @@ import {
     CodeActionParams,
     CodeAction,
     DidCloseTextDocumentParams,
-    FileChangeType
+    FileChangeType,
+    DidChangeConfigurationParams
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -48,6 +49,7 @@ let PostProcessTypesQueue : Array<scriptfiles.ASModule> = [];
 let PostProcessTypesQueueIndex = 0;
 let ResolveQueue : Array<scriptfiles.ASModule> = [];
 let ResolveQueueIndex = 0;
+let IsServicingQueues = false;
 
 let ReceivingTypesTimeout : any = null;
 let SetTypeTimeout = false;
@@ -292,6 +294,8 @@ function DetectUnrealTypeListTimeout()
 
 function TickQueues()
 {
+    IsServicingQueues = true;
+
     if (LoadQueueIndex < LoadQueue.length)
     {
         for (let n = 0; n < 10 && LoadQueueIndex < LoadQueue.length; ++n, ++LoadQueueIndex)
@@ -361,6 +365,33 @@ function TickQueues()
         setTimeout(TickQueues, 1);
     else if (ResolveQueue.length != 0)
         setTimeout(TickQueues, 2);
+    else
+        IsServicingQueues = false;
+}
+
+function DirtyAllDiagnostics()
+{
+    if (IsServicingQueues)
+        return;
+
+    // Update diagnostics on all modules
+    let moduleIndex = 0;
+    let moduleList = scriptfiles.GetAllLoadedModules();
+    let timerHandle = setInterval(UpdateDiagnostics, 1);
+
+    function UpdateDiagnostics()
+    {
+        if (moduleIndex >= moduleList.length)
+        {
+            clearInterval(timerHandle);
+            return;
+        }
+
+        let module = moduleList[moduleIndex];
+        if (module && module.resolved)
+            scriptdiagnostics.UpdateScriptModuleDiagnostics(module);
+        moduleIndex += 1;
+    }
 }
 
 function CanResolveModules()
@@ -812,6 +843,20 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
     let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
     if (asmodule)
         asmodule.isOpened = false;
+ });
+
+ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationParams)
+ {
+    let settings = change.settings.UnrealAngelscript;
+    if (!settings)
+        return;
+
+    let diagnosticSettings = scriptdiagnostics.GetDiagnosticSettings();
+    if (diagnosticSettings.namingConventionDiagnostics != settings.diagnosticsForUnrealNamingConvention)
+    {
+        diagnosticSettings.namingConventionDiagnostics = settings.diagnosticsForUnrealNamingConvention;
+        DirtyAllDiagnostics();
+    }
  });
 
 // Listen on the connection

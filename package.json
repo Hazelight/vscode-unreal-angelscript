@@ -28,6 +28,11 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Insert parenthesis pair when auto-completing a function call."
+                },
+                "UnrealAngelscript.diagnosticsForUnrealNamingConvention": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Emit diagnostic warnings and hints when types, functions, or variables violate the Unreal naming convention."
                 }
             }
         },

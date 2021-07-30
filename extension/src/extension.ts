@@ -39,7 +39,8 @@ export function activate(context: ExtensionContext) {
 		// Register the server for plain text documents
 		documentSelector: [{scheme: 'file', language: 'angelscript'}],
 		synchronize: {
-			fileEvents: workspace.createFileSystemWatcher('**/*.as')
+			fileEvents: workspace.createFileSystemWatcher('**/*.as'),
+            configurationSection: "UnrealAngelscript",
 		}
 	}
 

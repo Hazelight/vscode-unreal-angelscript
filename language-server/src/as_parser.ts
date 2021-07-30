@@ -246,6 +246,7 @@ export class ASVariable
     isPrivate : boolean = false;
     isProtected : boolean = false;
     isAuto : boolean = false;
+    isLoopVariable : boolean = false;
     isIterator : boolean = false;
 
     in_statement : boolean = false;
@@ -1450,6 +1451,7 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
         dbprop.documentation = asvar.documentation;
         dbprop.declaredModule = scope.module.modulename;
         dbprop.moduleOffset = asvar.start_offset_name;
+        dbprop.moduleOffsetEnd = asvar.end_offset_name;
         dbprop.isPrivate = asvar.isPrivate;
         dbprop.isProtected = asvar.isProtected;
 
@@ -1497,6 +1499,7 @@ function GenerateTypeInformation(scope : ASScope)
                 dbtype.documentation = typedb.FormatDocumentationComment(classdef.documentation);
 
             dbtype.moduleOffset = scope.previous.start_offset + classdef.name.start;
+            dbtype.moduleOffsetEnd = scope.previous.start_offset + classdef.name.end;
 
             scope.module.types.push(dbtype);
             scope.dbtype = dbtype;
@@ -1528,6 +1531,7 @@ function GenerateTypeInformation(scope : ASScope)
             if (structdef.documentation)
                 dbtype.documentation = typedb.FormatDocumentationComment(structdef.documentation);
             dbtype.moduleOffset = scope.previous.start_offset + structdef.name.start;
+            dbtype.moduleOffsetEnd = scope.previous.start_offset + structdef.name.end;
             dbtype.isStruct = true;
 
             scope.module.types.push(dbtype);
@@ -1560,6 +1564,7 @@ function GenerateTypeInformation(scope : ASScope)
             if (nsdef.documentation)
                 dbtype.documentation = typedb.FormatDocumentationComment(nsdef.documentation);
             dbtype.moduleOffset = scope.previous.start_offset + nsdef.name.start;
+            dbtype.moduleOffsetEnd = scope.previous.start_offset + nsdef.name.end;
 
             scope.module.namespaces.push(dbtype);
             scope.dbtype = dbtype;
@@ -1579,6 +1584,7 @@ function GenerateTypeInformation(scope : ASScope)
             if (enumdef.documentation)
                 dbtype.documentation = typedb.FormatDocumentationComment(enumdef.documentation);
             dbtype.moduleOffset = scope.previous.start_offset + enumdef.name.start;
+            dbtype.moduleOffsetEnd = scope.previous.start_offset + enumdef.name.end;
 
             scope.module.types.push(dbtype);
             scope.dbtype = dbtype;
@@ -1597,6 +1603,7 @@ function GenerateTypeInformation(scope : ASScope)
             if (funcdef.documentation)
                 dbfunc.documentation = typedb.FormatDocumentationComment(funcdef.documentation);
             dbfunc.moduleOffset = scope.previous.start_offset + funcdef.name.start;
+            dbfunc.moduleOffsetEnd = scope.previous.start_offset + funcdef.name.end;
 
             if (funcdef.returntype)
                 dbfunc.returnType = GetQualifiedTypename(funcdef.returntype);
@@ -1691,6 +1698,7 @@ function GenerateTypeInformation(scope : ASScope)
             let dbfunc = AddDBMethod(scope, constrdef.name.value);
             AddParametersToFunction(scope, scope.previous, dbfunc, constrdef.parameters);
             dbfunc.moduleOffset = scope.previous.start_offset + constrdef.name.start;
+            dbfunc.moduleOffsetEnd = scope.previous.start_offset + constrdef.name.end;
             dbfunc.isConstructor = true;
             scope.dbfunc = dbfunc;
 
@@ -1715,6 +1723,7 @@ function GenerateTypeInformation(scope : ASScope)
             let destrdef = scope.previous.ast;
             let dbfunc = AddDBMethod(scope, destrdef.name.value);
             dbfunc.moduleOffset = scope.previous.start_offset + destrdef.name.start;
+            dbfunc.moduleOffsetEnd = scope.previous.start_offset + destrdef.name.end;
             scope.dbfunc = dbfunc;
 
             if (scope.parentscope && scope.parentscope.dbtype)
@@ -1772,12 +1781,18 @@ function GenerateTypeInformation(scope : ASScope)
                     {
                         if (statement.ast.children[0].type == node_types.VariableDecl)
                         {
-                            AddVarDeclToScope(subscope, statement, statement.ast.children[0], true);
+                            let loopVar = AddVarDeclToScope(subscope, statement, statement.ast.children[0], true);
+                            if (loopVar)
+                                loopVar.isLoopVariable = true;
                         }
                         else if (statement.ast.children[0].type == node_types.VariableDeclMulti)
                         {
                             for (let child of statement.ast.children[0].children)
-                                AddVarDeclToScope(subscope, statement, child, true);
+                            {
+                                let loopVar = AddVarDeclToScope(subscope, statement, child, true);
+                                if (loopVar)
+                                    loopVar.isLoopVariable = true;
+                            }
                         }
                     }
 
@@ -1830,6 +1845,7 @@ function GenerateTypeInformation(scope : ASScope)
                     if (statement.ast.documentation)
                         dbtype.documentation = typedb.FormatDocumentationComment(statement.ast.documentation);
                     dbtype.moduleOffset = statement.start_offset + signature.name.start;
+                    dbtype.moduleOffsetEnd = statement.start_offset + signature.name.end;
 
                     dbtype.delegateReturn = signature.returntype ? signature.returntype.value : "void";
                     dbtype.delegateArgs = [];
@@ -1857,6 +1873,7 @@ function GenerateTypeInformation(scope : ASScope)
                 if (funcdef.documentation)
                     dbfunc.documentation = typedb.FormatDocumentationComment(funcdef.documentation);
                 dbfunc.moduleOffset = statement.start_offset + funcdef.name.start;
+                dbfunc.moduleOffsetEnd = statement.start_offset + funcdef.name.end;
 
                 if (funcdef.returntype)
                     dbfunc.returnType = GetQualifiedTypename(funcdef.returntype);
@@ -1895,6 +1912,7 @@ function GenerateTypeInformation(scope : ASScope)
                             dbprop.documentation = typedb.FormatDocumentationComment(enumValue.documentation);
                         dbprop.declaredModule = scope.module.modulename;
                         dbprop.moduleOffset = statement.start_offset + enumValue.name.start;
+                        dbprop.moduleOffsetEnd = statement.start_offset + enumValue.name.end;
 
                         scope.dbtype.properties.push(dbprop);
                         scope.dbtype.addSymbol(dbprop);

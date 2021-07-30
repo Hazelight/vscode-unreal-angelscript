@@ -4,6 +4,15 @@ import * as scriptfiles from './as_parser';
 
 let node_types = require("../grammar/node_types.js");
 
+export interface DiagnosticSettings
+{
+    namingConventionDiagnostics : boolean,
+};
+
+let DiagnosticSettings : DiagnosticSettings = {
+    namingConventionDiagnostics: true,
+};
+
 // Diagnostics sent over to us by the unreal editor
 let CompileDiagnostics = new Map<string, Array<Diagnostic>>();
 // Diagnostics we have determined from within the language server
@@ -16,6 +25,11 @@ export function UpdateCompileDiagnostics(uri : string, diagnostics : Array<Diagn
 {
     CompileDiagnostics.set(scriptfiles.NormalizeUri(uri), diagnostics);
     NotifyDiagnostics(uri);
+}
+
+export function GetDiagnosticSettings() : DiagnosticSettings
+{
+    return DiagnosticSettings;
 }
 
 function NotifyDiagnostics(uri : string, notifyEmpty = true)
@@ -68,10 +82,12 @@ export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule, i
     // Add diagnostics for symbols that aren't imported
     AddSymbolDiagnostics(asmodule, diagnostics);
 
+    // Add diagnostics for variables that don't confirm to the naming convention
+    AddNamingConventionDiagnostics(asmodule, diagnostics);
+
     // Update stored diagnostics
     let oldDiagnostics = ParseDiagnostics.get(asmodule.uri);
     ParseDiagnostics.set(asmodule.uri, diagnostics);
-
 
     if (initialResolve && diagnostics.length == 0)
         return;
@@ -451,4 +467,180 @@ function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBM
             }
         }
     }
+}
+
+function AddNamingConventionDiagnostics(asmodule : scriptfiles.ASModule, diagnostics : Array<Diagnostic>)
+{
+    // Check if the user turned of naming convention checks
+    if (!DiagnosticSettings.namingConventionDiagnostics)
+        return;
+
+    AddScopeNamingConventionDiagnostics(asmodule.rootscope, diagnostics);
+}
+
+function AddScopeNamingConventionDiagnostics(scope : scriptfiles.ASScope, diagnostics : Array<Diagnostic>)
+{
+    // Check the naming convention for types
+    let scopeType = scope.getDatabaseType();
+    if (scopeType && (!scopeType.isNamespaceOrGlobalScope() || scopeType.isEnum))
+    {
+        let suggestedName = scopeType.getDisplayName();
+        let hasSuggestion = false;
+
+        // Make sure the type begins with the correct character indicator
+        if (scopeType.isEnum)
+        {
+            if (suggestedName.length >= 1 && suggestedName[0] != 'E')
+            {
+                suggestedName = "E"+suggestedName;
+                hasSuggestion = true;
+            }
+        }
+        else if (scopeType.isStruct)
+        {
+            if (suggestedName.length >= 1 && suggestedName[0] != 'F')
+            {
+                suggestedName = "F"+suggestedName;
+                hasSuggestion = true;
+            }
+        }
+        else if (scopeType.inheritsFrom("AActor"))
+        {
+            if (suggestedName.length >= 1 && suggestedName[0] != 'A')
+            {
+                suggestedName = "A"+suggestedName;
+                hasSuggestion = true;
+            }
+        }
+        else
+        {
+            if (suggestedName.length >= 1 && suggestedName[0] != 'U')
+            {
+                suggestedName = "U"+suggestedName;
+                hasSuggestion = true;
+            }
+        }
+
+        // Make sure the second character is capitalized
+        if (suggestedName.length >= 2)
+        {
+            let charCode = suggestedName.charCodeAt(1);
+            if (charCode >= 97 && charCode <= 122)
+            {
+                suggestedName = suggestedName[0] + suggestedName[1].toUpperCase() + suggestedName.substr(2);
+                hasSuggestion = true;
+            }
+        }
+
+        if (hasSuggestion)
+        {
+            diagnostics.push(<Diagnostic> {
+                severity: DiagnosticSeverity.Warning,
+                range: scope.module.getRange(scopeType.moduleOffset, scopeType.moduleOffsetEnd),
+                message: `Type '${scopeType.getDisplayName()}' violates the Unreal naming convention. Suggested: ${suggestedName}`,
+                source: "angelscript"
+            });
+        }
+    }
+
+    // We don't apply the more granular checks for variable and function naming
+    // unless the file has been opened by the user.
+    if (scope.module.isOpened)
+    {
+        // Check naming convention for functions
+        let scopeFunc = scope.getDatabaseFunction();
+        if (scopeFunc)
+        {
+            let suggestedName = scopeFunc.name;
+            let hasSuggestion = false;
+
+            // Make sure the first character is capitalized
+            if (suggestedName.length >= 1)
+            {
+                let charCode = suggestedName.charCodeAt(0);
+                if (charCode >= 97 && charCode <= 122)
+                {
+                    // We allow functions that start with 'op' because these are angelscript operator overloads
+                    if (!suggestedName.startsWith("op") || suggestedName.startsWith("~"))
+                    {
+                        suggestedName = suggestedName[0].toUpperCase() + suggestedName.substr(1);
+                        hasSuggestion = true;
+                    }
+                }
+            }
+
+            if (hasSuggestion)
+            {
+                diagnostics.push(<Diagnostic> {
+                    severity: DiagnosticSeverity.Hint,
+                    range: scope.module.getRange(scopeFunc.moduleOffset, scopeFunc.moduleOffsetEnd),
+                    message: `Function '${scopeFunc.name}' violates the Unreal naming convention. Suggested: ${suggestedName}`,
+                    source: "angelscript"
+                });
+            }
+        }
+
+        // Check naming convention for variables
+        for (let scopeVar of scope.variables)
+        {
+            let suggestedName = scopeVar.name;
+            let hasSuggestion = false;
+
+            if (typedb.CleanTypeName(scopeVar.typename) == "bool")
+            {
+                // Bools should start with 'b'
+                if (suggestedName.length >= 1 && suggestedName[0] != 'b')
+                {
+                    // Parameters are also allowed to start with "In" or "Out"
+                    if (scopeVar.isArgument && (suggestedName.startsWith("In") || suggestedName.startsWith("Out")))
+                        continue;
+
+                    suggestedName = "b"+suggestedName;
+                    hasSuggestion = true;
+                }
+
+                // Ensure the second character after the 'b' is uppercase
+                if (suggestedName.length >= 2)
+                {
+                    let charCode = suggestedName.charCodeAt(1);
+                    if (charCode >= 97 && charCode <= 122)
+                    {
+                        suggestedName = suggestedName[0] + suggestedName[1].toUpperCase() + suggestedName.substr(2);
+                        hasSuggestion = true;
+                    }
+                }
+            }
+            else
+            {
+                // Loop variables are allowed to have a single lowercase character
+                if (suggestedName.length == 1 && scopeVar.isLoopVariable)
+                    continue;
+
+                // Ensure the first character is uppercase
+                if (suggestedName.length >= 1)
+                {
+                    let charCode = suggestedName.charCodeAt(0);
+                    if (charCode >= 97 && charCode <= 122)
+                    {
+                        // We allow functions that start with 'op' because these are angelscript operator overloads
+                        suggestedName = suggestedName[0].toUpperCase() + suggestedName.substr(1);
+                        hasSuggestion = true;
+                    }
+                }
+            }
+
+            if (hasSuggestion)
+            {
+                diagnostics.push(<Diagnostic> {
+                    severity: DiagnosticSeverity.Hint,
+                    range: scope.module.getRange(scopeVar.start_offset_name, scopeVar.end_offset_name),
+                    message: `Variable '${scopeVar.name}' violates the Unreal naming convention. Suggested: ${suggestedName}`,
+                    source: "angelscript"
+                });
+            }
+        }
+    }
+
+    for (let subscope of scope.scopes)
+        AddScopeNamingConventionDiagnostics(subscope, diagnostics);
 }
