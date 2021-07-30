@@ -1298,6 +1298,14 @@ export function GetType(typename : string) : DBType | null
     return null;
 }
 
+export function IsPrimitive(typename : string) : boolean
+{
+    let type = GetType(typename);
+    if (!type)
+        return false;
+    return type.isPrimitive;
+}
+
 function GetTypenameCharPrefix(typename : string) : string
 {
     if (typename.length < 2)

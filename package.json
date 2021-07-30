@@ -5,7 +5,7 @@
     "version": "1.0.5",
     "publisher": "Hazelight",
     "engines": {
-        "vscode": "^1.56.0"
+        "vscode": "^1.58.0"
     },
     "categories": [
         "Programming Languages",
@@ -21,6 +21,16 @@
     },
     "main": "./extension/out/extension",
     "contributes": {
+        "configuration": {
+            "title": "Unreal Angelscript",
+            "properties": {
+                "UnrealAngelscript.insertParenthesisOnFunctionCompletion": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Insert parenthesis pair when auto-completing a function call."
+                }
+            }
+        },
         "languages": [
             {
                 "id": "angelscript",
@@ -121,6 +131,10 @@
             {
                 "command": "angelscript.quickOpenImport",
                 "title": "Quick Open Import"
+            },
+            {
+                "command": "angelscript.paren",
+                "title": "Angelscript Parenthesis Completion"
             }
         ],
         "menus": {
@@ -240,8 +254,8 @@
         "moo": "^0.5.1",
         "nearley": "^2.20.1",
         "npm": "^6.14.6",
-        "vscode-languageclient": "^7.0.0",
-        "vscode-languageserver": "^7.0.0",
+        "vscode-languageclient": "^8.0.0-next.1",
+        "vscode-languageserver": "^8.0.0-next.1",
         "vscode-languageserver-textdocument": "^1.0.1"
     },
     "scripts": {

@@ -912,7 +912,6 @@ export function UpdateModuleFromDisk(module : ASModule)
     {
         module.content = "";
         module.exists = false;
-        console.dir(readError);
     }
     module.lastEditStart = -1;
     module.lastEditEnd = -1;

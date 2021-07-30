@@ -1,6 +1,7 @@
 import {
     CompletionItem, CompletionItemKind, Position, MarkupContent, MarkupKind,
-    SignatureHelp, SignatureInformation, ParameterInformation, Range, TextEdit
+    SignatureHelp, SignatureInformation, ParameterInformation, Range, TextEdit,
+    CompletionItemLabelDetails, Command
 } from 'vscode-languageserver/node';
 import * as typedb from './database';
 import * as scriptfiles from './as_parser';
@@ -870,7 +871,10 @@ export function AddCompletionsFromClassKeywords(context : CompletionContext, com
     {
         completions.push({
                 label: "this",
-                detail: insideType.typename,
+                labelDetails: <CompletionItemLabelDetails>
+                {
+                    description: insideType.typename,
+                },
                 kind : CompletionItemKind.Keyword,
                 commitCharacters: [".", ";", ","],
                 sortText: Sort.Keyword,
@@ -885,7 +889,10 @@ export function AddCompletionsFromClassKeywords(context : CompletionContext, com
         {
             completions.push({
                     label: "Super",
-                    detail: insideType.supertype,
+                    labelDetails: <CompletionItemLabelDetails>
+                    {
+                        description: insideType.supertype,
+                    },
                     kind: CompletionItemKind.Keyword,
                     commitCharacters: [":"],
                     sortText: Sort.Keyword,
@@ -902,7 +909,10 @@ export function AddCompletionsFromLocalVariables(context : CompletionContext, sc
         {
             let complItem = <CompletionItem> {
                 label: asvar.name,
-                detail: asvar.typename,
+                labelDetails: <CompletionItemLabelDetails>
+                {
+                    description: asvar.typename,
+                },
                 kind : CompletionItemKind.Variable,
                 commitCharacters: [".", ";", ","],
                 sortText: Sort.Local,
@@ -934,7 +944,10 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             let compl = <CompletionItem>{
                     label: prop.name,
                     kind : CompletionItemKind.Field,
-                    detail: prop.typename,
+                    labelDetails: <CompletionItemLabelDetails>
+                    {
+                        description: prop.typename,
+                    },
                     data: ["prop", curtype.typename, prop.name],
                     commitCharacters: [".", ";", ","],
                     filterText: GetSymbolFilterText(context, prop),
@@ -997,7 +1010,10 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                     let compl = <CompletionItem>{
                             label: propname,
                             kind: CompletionItemKind.Field,
-                            detail: func.returnType,
+                            labelDetails: <CompletionItemLabelDetails>
+                            {
+                                description: func.returnType,
+                            },
                             data: ["accessor", curtype.typename, propname],
                             commitCharacters: [".", ";", ","],
                             filterText: GetSymbolFilterText(context, func),
@@ -1037,7 +1053,10 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                     let compl = <CompletionItem> {
                             label: propname,
                             kind: CompletionItemKind.Field,
-                            detail: func.args[0].typename,
+                            labelDetails: <CompletionItemLabelDetails>
+                            {
+                                description: func.args[0].typename,
+                            },
                             data: ["accessor", curtype.typename, propname],
                             commitCharacters: [".", ";", ","],
                             filterText: GetSymbolFilterText(context, func),
@@ -1118,6 +1137,25 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
             if (context.isIncompleteNamespace)
                 compl.insertText = ":"+compl.label;
+
+            compl.labelDetails = <CompletionItemLabelDetails>
+            {
+                detail: (func.args && func.args.length > 0) ? "(...)" : "()",
+            };
+
+            compl.command = <Command> {
+                title: "",
+                command: "angelscript.paren",
+            };
+
+            if (func.returnType && func.returnType != "void")
+            {
+                compl.labelDetails.description = func.returnType;
+
+                if (!typedb.IsPrimitive(func.returnType))
+                    compl.commitCharacters.push(".");
+            }
+            
             completions.push(compl);
         }
     }
@@ -1145,7 +1183,10 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
                 let compl = <CompletionItem>{
                     label: sym.name,
                     kind : CompletionItemKind.Field,
-                    detail: sym.typename,
+                    labelDetails: <CompletionItemLabelDetails>
+                    {
+                        description: sym.typename,
+                    },
                     data: ["prop", sym.containingType.typename, sym.name],
                     commitCharacters: [".", ";", ","],
                     filterText: GetSymbolFilterText(context, sym),
@@ -1170,6 +1211,24 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
                     filterText: GetSymbolFilterText(context, sym),
                     sortText: Sort.Unimported,
                 };
+
+                compl.labelDetails = <CompletionItemLabelDetails>
+                {
+                    detail: (sym.args && sym.args.length > 0) ? "(...)" : "()",
+                };
+
+                compl.command = <Command> {
+                    title: "",
+                    command: "angelscript.paren",
+                };
+
+                if (sym.returnType && sym.returnType != "void")
+                {
+                    compl.labelDetails.description = sym.returnType;
+                    if (!typedb.IsPrimitive(sym.returnType))
+                        compl.commitCharacters.push(".");
+                }
+
                 completions.push(compl);
             }
         }
@@ -1204,6 +1263,24 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
                         filterText: GetSymbolFilterText(context, sym),
                         sortText: Sort.Method_Parent,
                     };
+
+                    compl.labelDetails = <CompletionItemLabelDetails>
+                    {
+                        detail: (sym.args && sym.args.length > 0) ? "(...)" : "()",
+                    };
+
+                    compl.command = <Command> {
+                        title: "",
+                        command: "angelscript.paren",
+                    };
+
+                    if (sym.returnType && sym.returnType != "void")
+                    {
+                        compl.labelDetails.description = sym.returnType;
+                        if (!typedb.IsPrimitive(sym.returnType))
+                            compl.commitCharacters.push(".");
+                    }
+
                     completions.push(compl);
                 }
             }
@@ -2870,12 +2947,12 @@ function NicifyDefinition(func : typedb.DBMethod, def : string) : string
 export function Resolve(item : CompletionItem) : CompletionItem
 {
     if (!item.data)
-        return item;
+        return null;
 
     let kind = item.data[0];
     let type = typedb.GetType(item.data[1]);
     if (type == null)
-        return item;
+        return null;
 
     if (kind == "type")
     {
@@ -2894,6 +2971,14 @@ export function Resolve(item : CompletionItem) : CompletionItem
             };
             if (prop.documentation)
                 item.documentation.value += "\n"+prop.documentation.replace(/\n/g,"\n\n")+"\n\n";
+
+            if (kind == "prop")
+            {
+                item.labelDetails = <CompletionItemLabelDetails>
+                {
+                    description: prop.typename,
+                };
+            }
         }
     }
     else if (kind == "accessor")
@@ -2905,10 +2990,18 @@ export function Resolve(item : CompletionItem) : CompletionItem
         if (getFunc)
         {
             docStr += "```angelscript_snippet\n"+getFunc.returnType+"\xa0"+item.data[2]+"\n```\n\n";
+            item.labelDetails = <CompletionItemLabelDetails>
+            {
+                description: getFunc.returnType,
+            };
         }
         else if (setFunc && setFunc.args && setFunc.args.length >= 1)
         {
             docStr += "```angelscript_snippet\n"+setFunc.args[0].typename+"\xa0"+item.data[2]+"\n```\n\n";
+            item.labelDetails = <CompletionItemLabelDetails>
+            {
+                description: setFunc.args[0].typename,
+            };
         }
 
         let doc : string = null;
@@ -2939,6 +3032,19 @@ export function Resolve(item : CompletionItem) : CompletionItem
             let doc = func.findAvailableDocumentation();
             if (doc)
                 item.documentation.value += "\n"+doc.replace(/\n/g,"\n\n")+"\n\n";
+
+            item.labelDetails = <CompletionItemLabelDetails>
+            {
+                detail: (func.args && func.args.length > 0) ? "(...)" : "()",
+            };
+
+            item.command = <Command> {
+                title: "",
+                command: "angelscript.paren",
+            };
+
+            if (func.returnType && func.returnType != "void")
+                item.labelDetails.description = func.returnType;
         }
     }
     else if (kind == "decl_snippet")

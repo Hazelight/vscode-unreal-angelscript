@@ -166,6 +166,59 @@ export function activate(context: ExtensionContext) {
 	});
 	context.subscriptions.push(quickOpenImport);
 
+	let completionParen = vscode.commands.registerCommand('angelscript.paren', () =>
+    {
+		let activeEditor = vscode.window.activeTextEditor;
+		if (activeEditor != null)
+        {
+			let line_number = activeEditor.selection.active.line;
+			let text_line = activeEditor.document.lineAt(line_number);
+
+            let char_number = activeEditor.selection.active.character;
+            let char = text_line.text[char_number-1];
+
+            if (char == '(')
+            {
+                // Inserted a opening bracket straight away, ignore anything
+                return;
+            }
+            else if (char == '.')
+            {
+                // Replace the single dot from the commit character with a call
+				activeEditor.edit((edit: vscode.TextEditorEdit) => {
+                        edit.insert(new vscode.Position(line_number, char_number-1), "()");
+                    },
+                    {
+                        undoStopBefore: false,
+                        undoStopAfter: true,
+                    });
+
+                // Open suggestions again since the commit character dot did not act as a completion character dot
+				vscode.commands.executeCommand('editor.action.triggerSuggest');
+            }
+            else if (char_number >= text_line.text.length || text_line.text[char_number] != '(')
+            {
+                let parenConfig = vscode.workspace.getConfiguration("UnrealAngelscript");
+                if (!parenConfig.get("insertParenthesisOnFunctionCompletion"))
+                    return;
+
+                // There is not an opening paren here, and we are at the end of the line,
+                // so we insert a pair of parenthesis
+                activeEditor.insertSnippet(new vscode.SnippetString(
+                    "($0)"),
+                    undefined,
+                    {
+                        undoStopBefore: false,
+                        undoStopAfter: true,
+                    });
+
+                // Open signature help popup since we skipped it by not typing the paren
+				vscode.commands.executeCommand('editor.action.triggerParameterHints');
+            }
+		}
+	});
+	context.subscriptions.push(completionParen);
+
 	console.log("Done activating angelscript extension");
 }
 

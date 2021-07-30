@@ -282,7 +282,7 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
         method.documentation = "Grab a transient settings asset that can be used to temporarily overried values. Must be returned with Actor.ReturnTransientSettings to apply new values.";
         method.args = [
             new typedb.DBArg().init("AHazeActor", "Actor"),
-            new typedb.DBArg().init("UObject", "Instigator"),
+            new typedb.DBArg().init("FInstigator", "Instigator"),
             new typedb.DBArg().init("EHazeSettingsPriority", "Priority", "EHazeSettingsPriority::Script"),
         ];
     }
@@ -299,7 +299,7 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
         }
 
         let setName = dbprop.name;
-        if (setName[0] == 'b' && setName[1] == setName[1].toUpperCase())
+        if (setName[0] == 'b' && setName.length >= 2 && setName[1] == setName[1].toUpperCase())
             setName = setName.substr(1);
 
         {
@@ -310,7 +310,7 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
             method.args = [
                 new typedb.DBArg().init("AHazeActor", "Actor"),
                 new typedb.DBArg().init(dbtype.typename, "NewValue"),
-                new typedb.DBArg().init("UObject", "Instigator"),
+                new typedb.DBArg().init("FInstigator", "Instigator"),
                 new typedb.DBArg().init("EHazeSettingsPriority", "Priority", "EHazeSettingsPriority::Script"),
             ];
         }
@@ -322,7 +322,7 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
             method.moduleOffset = dbprop.moduleOffset;
             method.args = [
                 new typedb.DBArg().init("AHazeActor", "Actor"),
-                new typedb.DBArg().init("UObject", "Instigator"),
+                new typedb.DBArg().init("FInstigator", "Instigator"),
                 new typedb.DBArg().init("EHazeSettingsPriority", "Priority", "EHazeSettingsPriority::Script"),
             ];
         }

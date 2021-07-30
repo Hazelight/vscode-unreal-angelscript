@@ -5,15 +5,15 @@
 	"version": "0.0.1",
 	"publisher": "Hazelight",
 	"engines": {
-		"vscode": "^1.52.0"
+		"vscode": "^1.58.0"
 	},
 	"dependencies": {
-		"vscode-languageclient": "^7.0.0",
-		"vscode-debugadapter": "^1.47.0",
-		"await-notify": "^1.0.1"
+		"await-notify": "^1.0.1",
+		"vscode-debugadapter": "^1.48.0",
+		"vscode-languageclient": "^8.0.0-next.1"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.52.0",
+		"@types/vscode": "^1.58.0",
 		"vscode-test": "^1.3.0"
 	}
 }

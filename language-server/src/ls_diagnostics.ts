@@ -56,6 +56,8 @@ export function OnDiagnosticsChanged(bindFunction : any)
 export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule, initialResolve = false, alwaysSend = false)
 {
     let diagnostics = new Array<Diagnostic>();
+    if (!asmodule.rootscope)
+        return;
     
     // Go through all the parsed scopes and add diagnostics
     AddScopeDiagnostics(asmodule.rootscope, diagnostics);
