@@ -2902,7 +2902,7 @@ function ResolveFunctionOverloadsFromType(scope : ASScope, dbtype : typedb.DBTyp
     }
 }
 
-function ResolveFunctionOverloadsFromIdentifier(scope : ASScope, identifier : string, functions : Array<typedb.DBMethod>, allowMixin = false)
+export function ResolveFunctionOverloadsFromIdentifier(scope : ASScope, identifier : string, functions : Array<typedb.DBMethod>, allowMixin = false)
 {
     // Find a symbol in the class we're in
     let insideType = scope.getParentType();

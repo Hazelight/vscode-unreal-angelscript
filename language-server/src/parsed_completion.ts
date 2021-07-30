@@ -1536,7 +1536,14 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             context.subOuterStatement.start_offset = context.subOuterStatement.end_offset - candidate.code.length;
 
             // Try to parse as a proper statement in the scope
-            scriptfiles.ParseStatement(context.scope.scopetype, context.subOuterStatement);
+            let baseType = context.scope.scopetype;
+
+            // Inside a default statement, we always parse as if it's a code block
+            if (context.baseStatement && context.baseStatement.ast && context.baseStatement.ast.type == scriptfiles.node_types.DefaultStatement)
+                baseType = scriptfiles.ASScopeType.Code;
+
+            // Try to parse as a proper statement in the scope
+            scriptfiles.ParseStatement(baseType, context.subOuterStatement);
 
             // Try to parse as an expression snippet instead
             if (!context.subOuterStatement.ast)
@@ -1549,8 +1556,18 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             context.subOuterFunctions = new Array<typedb.DBMethod>();
             scriptfiles.ResolveFunctionOverloadsFromExpression(context.scope, context.subOuterStatement.ast, context.subOuterFunctions);
             if (context.subOuterFunctions.length != 0)
-            {
                 break;
+
+            // Parse as a variable declaration if we can
+            if (context.subOuterStatement.ast.type == scriptfiles.node_types.VariableDecl)
+            {
+                let dbVarType = typedb.GetType(context.subOuterStatement.ast.typename.value);
+                if (dbVarType && context.subOuterStatement.ast.name)
+                {
+                    scriptfiles.ResolveFunctionOverloadsFromIdentifier(context.scope, dbVarType.typename, context.subOuterFunctions);
+                    if (context.subOuterFunctions.length != 0)
+                        break;
+                }
             }
         }
     }
