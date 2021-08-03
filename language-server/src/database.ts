@@ -576,6 +576,11 @@ export class DBType
         return this.isNamespace();
     }
 
+    isTemplateType() : boolean
+    {
+        return this.subTypes && this.subTypes.length != 0;
+    }
+
     isShadowedNamespace() : boolean
     {
         if (!this.namespaceResolved)

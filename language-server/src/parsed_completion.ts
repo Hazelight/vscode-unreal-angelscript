@@ -14,6 +14,9 @@ let CommonTemplateTypes = new Set<string>(
     ['TArray', 'TMap', 'TSet', 'TSubclassOf', 'TSoftObjectPtr', 'TSoftClassPtr', 'TInstigated', 'TPerPlayer'],
 );
 
+let FunctionLabelSuffix = "()";
+let FunctionLabelWithParamsSuffix = "(_)";
+
 namespace Sort
 {
     export const EnumValue_Expected = "1";
@@ -40,6 +43,7 @@ namespace Sort
     export const Typename = "f";
     export const Typename_Expected = "3";
     export const Unimported = "x";
+    export const Method_Override_Snippet = "0";
     export const Snippet = "z";
 };
 
@@ -1140,7 +1144,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
             compl.labelDetails = <CompletionItemLabelDetails>
             {
-                detail: (func.args && func.args.length > 0) ? "(...)" : "()",
+                detail: (func.args && func.args.length > 0) ? FunctionLabelWithParamsSuffix : FunctionLabelSuffix,
             };
 
             compl.command = <Command> {
@@ -1214,7 +1218,7 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
 
                 compl.labelDetails = <CompletionItemLabelDetails>
                 {
-                    detail: (sym.args && sym.args.length > 0) ? "(...)" : "()",
+                    detail: (sym.args && sym.args.length > 0) ? FunctionLabelWithParamsSuffix : FunctionLabelSuffix,
                 };
 
                 compl.command = <Command> {
@@ -1266,7 +1270,7 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
 
                     compl.labelDetails = <CompletionItemLabelDetails>
                     {
-                        detail: (sym.args && sym.args.length > 0) ? "(...)" : "()",
+                        detail: (sym.args && sym.args.length > 0) ? FunctionLabelWithParamsSuffix : FunctionLabelSuffix,
                     };
 
                     compl.command = <Command> {
@@ -1755,6 +1759,35 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         context.isInsideType = true;
     else if (context.statement.ast && context.statement.ast.type == scriptfiles.node_types.NamespaceAccess)
         context.isInsideType = true;
+
+    // If we're completing a statement like: 'TArray<...' we should consider it a typename
+    if (context.isRightExpression && context.rightOperator == '<' && context.leftStatement)
+    {
+        let leftNode = context.leftStatement.ast;
+        let leftAsType : typedb.DBType = null;
+        let isCast = false;
+
+        if (leftNode.type == scriptfiles.node_types.Typename)
+        {
+            leftAsType = typedb.GetType(leftNode.value);
+        }
+        else if (leftNode.type == scriptfiles.node_types.VariableDecl)
+        {
+            if (!leftNode.name)
+                leftAsType = typedb.GetType(leftNode.typename.value);
+        }
+        else if (leftNode.type == scriptfiles.node_types.CastOperation)
+        {
+            // Casts also always contain typenames
+            isCast = true;
+        }
+
+        if ((leftAsType && leftAsType.isTemplateType()) || isCast)
+        {
+            context.isRightExpression = false;
+            context.maybeTypename = true;
+        }
+    }
 
     // Pre-massage completing symbol
     if (context.completingSymbol)
@@ -2866,7 +2899,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
                     kind: CompletionItemKind.Snippet,
                     data: ["decl_snippet", checktype.typename, method.name, method.id],
                     additionalTextEdits: complEdits,
-                    sortText: Sort.Snippet,
+                    sortText: Sort.Method_Override_Snippet,
                 });
             }
             else if (includeReturnType)
@@ -2877,7 +2910,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
                     kind: CompletionItemKind.Snippet,
                     data: ["decl_snippet", checktype.typename, method.name, method.id],
                     additionalTextEdits: complEdits,
-                    sortText: Sort.Snippet,
+                    sortText: Sort.Method_Override_Snippet,
                 });
             }
         }
@@ -3052,7 +3085,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
 
             item.labelDetails = <CompletionItemLabelDetails>
             {
-                detail: (func.args && func.args.length > 0) ? "(...)" : "()",
+                detail: (func.args && func.args.length > 0) ? FunctionLabelWithParamsSuffix : FunctionLabelSuffix,
             };
 
             item.command = <Command> {
