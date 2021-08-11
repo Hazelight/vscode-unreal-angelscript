@@ -304,12 +304,12 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
 
         {
             let method = AddMethod(nsType, "Set"+setName);
-            method.returnType = null;
+            method.returnType = "void";
             method.documentation = "Apply a transient override for this composable settings property.";
             method.moduleOffset = dbprop.moduleOffset;
             method.args = [
                 new typedb.DBArg().init("AHazeActor", "Actor"),
-                new typedb.DBArg().init(dbtype.typename, "NewValue"),
+                new typedb.DBArg().init(dbprop.typename, "NewValue"),
                 new typedb.DBArg().init("FInstigator", "Instigator"),
                 new typedb.DBArg().init("EHazeSettingsPriority", "Priority", "EHazeSettingsPriority::Script"),
             ];
@@ -317,7 +317,7 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
 
         {
             let method = AddMethod(nsType, "Clear"+setName);
-            method.returnType = null;
+            method.returnType = "void";
             method.documentation = "Clear a previously applied transient override.";
             method.moduleOffset = dbprop.moduleOffset;
             method.args = [

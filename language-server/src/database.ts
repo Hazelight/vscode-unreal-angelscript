@@ -1509,7 +1509,7 @@ export function GetAllTypes() : Map<string, DBType>
     return database;
 }
 
-let re_comment_star_start = /^[ \t]*\*+[ \t]*[\r\n]+/gi;
+let re_comment_star_start = /^[ \t]*\*+([ \t]|\r?\n)/gi;
 let re_comment_star_end = /[\r\n]+[ \t]*\*+[ \t]*/gi;
 export function FormatDocumentationComment(doc : string) : string
 {

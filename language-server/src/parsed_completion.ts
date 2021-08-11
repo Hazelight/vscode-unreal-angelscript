@@ -15,7 +15,7 @@ let CommonTemplateTypes = new Set<string>(
 );
 
 let FunctionLabelSuffix = "()";
-let FunctionLabelWithParamsSuffix = "(_)";
+let FunctionLabelWithParamsSuffix = "(…)";
 
 namespace Sort
 {

@@ -639,6 +639,8 @@ function AddModuleSymbols(asmodule : scriptfiles.ASModule, symbols : Array<Symbo
 
 function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.ASScope, symbols: Array<SymbolInformation>, query : string = null)
 {
+    if (!scope)
+        return;
     let scopeType = scope.getDatabaseType();
     if (scopeType)
     {
@@ -673,7 +675,7 @@ function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.AS
 
         if (scope.scopetype == scriptfiles.ASScopeType.Function)
         {
-            if (scope.parentscope.scopetype == scriptfiles.ASScopeType.Class)
+            if (scope.parentscope && scope.parentscope.scopetype == scriptfiles.ASScopeType.Class)
             {
                 scopeSymbol.kind = SymbolKind.Method;
                 scopeSymbol.containerName = scope.parentscope.getDatabaseType().typename;
