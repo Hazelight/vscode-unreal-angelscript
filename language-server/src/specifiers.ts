@@ -35,6 +35,7 @@ export let ASPropertySpecifiers : any = {
     "Instanced": "The object in this property is a new instance for each containing instance",
     "BlueprintSetter": "Specify a function to call instead when writing this property from blueprint",
     "BlueprintGetter": "Specify a function to call instead when reading this property from blueprint",
+    "BindWidget": "Automatically bind this property to the widget with the same name within child UMG blueprints",
 };
 
 export let ASClassSpecifiers : any = {
