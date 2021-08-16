@@ -56,7 +56,13 @@ class CompletionContext
     completingSymbol: string = null;
     completingNode: any = null;
     priorExpression: any = null;
+
     priorType: typedb.DBType = null;
+    priorTypeWasNamespace : boolean = false;
+
+    requiresPriorType : boolean = false;
+    completingDot : boolean = false;
+    completingNamespace : boolean = false;
 
     completingSymbolLowerCase : string = null;
     completingSymbolGetter : string = null;
@@ -149,8 +155,19 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
 
     if (context.priorType)
     {
+        if (context.requiresPriorType)
+        {
+            // Don't offer completions if we are using the wrong access type
+            if (context.priorTypeWasNamespace != context.completingNamespace)
+                return null;
+        }
+
         // Complete from the type of the expression before us
         searchTypes.push(context.priorType);
+    }
+    else if (context.requiresPriorType)
+    {
+        return null;
     }
     else if (context.scope)
     {
@@ -1454,8 +1471,10 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         context.isRightExpression = candidate.isRightExpression;
         context.rightOperator = candidate.rightOperator;
         context.priorType = null;
+        context.priorTypeWasNamespace = false;
         context.expectedType = null;
         context.statement.ast = null;
+        context.requiresPriorType = false;
 
         // Try to parse as a proper statement in the scope
         let baseType = context.scope.scopetype;
@@ -1503,8 +1522,10 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             context.isRightExpression = candidate.isRightExpression;
             context.rightOperator = candidate.rightOperator;
             context.priorType = null;
+            context.priorTypeWasNamespace = false;
             context.expectedType = null;
             context.statement.ast = null;
+            context.requiresPriorType = false;
 
             // Try to parse as a proper statement in the scope
             scriptfiles.ParseStatement(context.scope.scopetype, context.statement);
@@ -1789,6 +1810,35 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         }
     }
 
+    // If we're completing a 'case' statement, set the type we're switching on as the expected type
+    if (context.statement && context.statement.ast && context.statement.ast.type == scriptfiles.node_types.CaseStatement)
+    {
+        // Find the switch statement preceding this scope
+        if (context.scope)
+        {
+            let prevStatement = context.scope.previous;
+            if (prevStatement instanceof scriptfiles.ASStatement)
+            {
+                if (prevStatement.ast && prevStatement.ast.type == scriptfiles.node_types.SwitchStatement)
+                {
+                    if (!context.expectedType && prevStatement.ast.children[0])
+                    {
+                        context.expectedType = scriptfiles.ResolveTypeFromExpression(context.scope.parentscope, prevStatement.ast.children[0]);
+                    }
+                }
+            }
+        }
+    }
+
+    // If the completion was triggered by a trigger character, we can only do prior-type completions
+    let completionCharacter = content[offset-contentOffset];
+    if (!/[A-Za-z0-9_]/.test(completionCharacter))
+        context.requiresPriorType = true;
+    if (completionCharacter == ".")
+        context.completingDot = true;
+    else if (completionCharacter == ":")
+        context.completingNamespace = true;
+
     // Pre-massage completing symbol
     if (context.completingSymbol)
     {
@@ -1831,6 +1881,8 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                 context.completingSymbol = "";
             context.completingNode = node.children[1];
             context.priorType = scriptfiles.ResolveTypeFromExpression(context.scope, node.children[0]);
+            context.priorTypeWasNamespace = false;
+            context.requiresPriorType = true;
             if (context.priorType)
             {
                 if (context.priorType.isEnum)
@@ -1857,6 +1909,8 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                 context.priorType = typedb.GetType(context.scope.getParentType().supertype);
             else
                 context.priorType = typedb.GetType("__"+node.children[0].value);
+            context.priorTypeWasNamespace = true;
+            context.requiresPriorType = true;
             if (context.priorType)
             {
                 if (node.incomplete_colon)
@@ -1895,9 +1949,36 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         case scriptfiles.node_types.CaseStatement:
             context.isRightExpression = true;
             if (node.children[1])
+            {
                 return ExtractPriorExpressionAndSymbol(context, node.children[1]);
+            }
             else
+            {
+                // We have to pull apart the namespace access a bit 
+                if (node.has_statement && node.children[0] && node.children[0].type == scriptfiles.node_types.NamespaceAccess)
+                {
+                    let nsNode = node.children[0];
+                    if (nsNode.children[1])
+                    {
+                        // We are completing off of the colon that might either start a new statement, or is part of the namespace access
+                        context.priorExpression = nsNode.children[0];
+                        context.completingSymbol = "";
+                        context.completingNode = null;
+
+                        let typeName = nsNode.children[0].value;
+                        if (nsNode.children[1].value)
+                            typeName += "::"+nsNode.children[1].value;
+                        
+                        context.priorType = typedb.GetType("__"+typeName);
+                        context.priorTypeWasNamespace = true;
+                        context.requiresPriorType = true;
+                        context.isIncompleteNamespace = true;
+                        return true;
+                    }
+                }
+
                 return ExtractPriorExpressionAndSymbol(context, node.children[0]);
+            }
         break;
         case scriptfiles.node_types.VariableDecl:
         {

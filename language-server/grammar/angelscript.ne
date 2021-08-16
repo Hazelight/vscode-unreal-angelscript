@@ -280,7 +280,11 @@ statement -> %switch_token _ %lparen optional_expression _ %rparen {%
 %}
 
 statement -> %case_token _ case_label _ %colon optional_statement {%
-    function (d) { return Compound(d, n.CaseStatement, [d[2], d[5]]); }
+    function (d) { return {
+            ...Compound(d, n.CaseStatement, [d[2], d[5]]),
+            has_statement: true,
+        }
+    }
 %}
 
 statement -> %case_token _ %identifier {%

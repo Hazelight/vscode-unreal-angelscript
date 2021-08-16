@@ -276,7 +276,11 @@ var grammar = {
         function (d) { return Compound(d, n.SwitchStatement, [d[3]]); }
         },
     {"name": "statement", "symbols": [(lexer.has("case_token") ? {type: "case_token"} : case_token), "_", "case_label", "_", (lexer.has("colon") ? {type: "colon"} : colon), "optional_statement"], "postprocess": 
-        function (d) { return Compound(d, n.CaseStatement, [d[2], d[5]]); }
+        function (d) { return {
+                ...Compound(d, n.CaseStatement, [d[2], d[5]]),
+                has_statement: true,
+            }
+        }
         },
     {"name": "statement", "symbols": [(lexer.has("case_token") ? {type: "case_token"} : case_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
         function (d) { return Compound(d, n.CaseStatement, [Identifier(d[2]), null]); }
