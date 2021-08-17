@@ -1832,12 +1832,16 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
 
     // If the completion was triggered by a trigger character, we can only do prior-type completions
     let completionCharacter = content[offset-contentOffset];
-    if (!/[A-Za-z0-9_]/.test(completionCharacter))
-        context.requiresPriorType = true;
     if (completionCharacter == ".")
+    {
         context.completingDot = true;
+        context.requiresPriorType = true;
+    }
     else if (completionCharacter == ":")
+    {
         context.completingNamespace = true;
+        context.requiresPriorType = true;
+    }
 
     // Pre-massage completing symbol
     if (context.completingSymbol)
@@ -1930,12 +1934,11 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         break;
         case scriptfiles.node_types.UnaryOperation:
         case scriptfiles.node_types.PostfixOperation:
-        case scriptfiles.node_types.ElseStatement:
             context.isRightExpression = true;
             context.rightOperator = node.operator;
             return ExtractPriorExpressionAndSymbol(context, node.children[0]);
+        case scriptfiles.node_types.ElseStatement:
         case scriptfiles.node_types.DefaultCaseStatement:
-            context.isRightExpression = true;
             return ExtractPriorExpressionAndSymbol(context, node.children[0]);
         case scriptfiles.node_types.ReturnStatement:
             context.isRightExpression = true;
@@ -1947,7 +1950,6 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             }
             return ExtractPriorExpressionAndSymbol(context, node.children[0]);
         case scriptfiles.node_types.CaseStatement:
-            context.isRightExpression = true;
             if (node.children[1])
             {
                 return ExtractPriorExpressionAndSymbol(context, node.children[1]);
@@ -1973,10 +1975,12 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                         context.priorTypeWasNamespace = true;
                         context.requiresPriorType = true;
                         context.isIncompleteNamespace = true;
+                        context.isRightExpression = !!context.priorType;
                         return true;
                     }
                 }
 
+                context.isRightExpression = true;
                 return ExtractPriorExpressionAndSymbol(context, node.children[0]);
             }
         break;
