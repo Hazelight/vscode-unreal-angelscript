@@ -562,12 +562,6 @@ connection.onPrepareRename(function (params : PrepareRenameParams) : Range | Res
     else
         result = scriptreferences.PrepareRename(params.textDocument.uri, params.position);
 
-    // TODO: Remove this when upgrading vscode-languageclient library to latest version.
-    // Right now errors here will cause debug handling on the client, which we don't want.
-    if (result instanceof ResponseError)
-        return null;
-    // END TODO
-
     return result;
 });
 
