@@ -33,6 +33,11 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Emit diagnostic warnings and hints when types, functions, or variables violate the Unreal naming convention."
+                },
+                "UnrealAngelscript.mathCompletionShortcuts": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Add completions for functions in the Math:: namespace so they can be completed without typing Math:: first."
                 }
             }
         },

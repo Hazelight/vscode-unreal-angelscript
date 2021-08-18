@@ -14,6 +14,20 @@ let CommonTemplateTypes = new Set<string>(
     ['TArray', 'TMap', 'TSet', 'TSubclassOf', 'TSoftObjectPtr', 'TSoftClassPtr', 'TInstigated', 'TPerPlayer'],
 );
 
+export interface CompletionSettings
+{
+    mathCompletionShortcuts : boolean,
+};
+
+let CompletionSettings : CompletionSettings = {
+    mathCompletionShortcuts: true,
+};
+
+export function GetCompletionSettings() : CompletionSettings
+{
+    return CompletionSettings;
+}
+
 let FunctionLabelSuffix = "()";
 let FunctionLabelWithParamsSuffix = "(…)";
 
@@ -45,6 +59,7 @@ namespace Sort
     export const Unimported = "x";
     export const Method_Override_Snippet = "0";
     export const Snippet = "z";
+    export const Math_Shortcut = "z";
 };
 
 class CompletionContext
@@ -191,6 +206,9 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
         // Add 'this' and 'Super' if in a class
         if (insideType)
             AddCompletionsFromClassKeywords(context, completions);
+
+        // Shortcut completions from Math:: if enabled
+        AddMathShortcutCompletions(context, completions);
     }
 
     // Search for completions in all global and real types we are looking in
@@ -1919,6 +1937,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             {
                 if (node.incomplete_colon)
                     context.isIncompleteNamespace = true;
+                context.completingNamespace = true;
                 return true;
             }
             else
@@ -3251,4 +3270,60 @@ function AddSuperCallSnippet(context : CompletionContext, completions : Array<Co
         preselect: true,
         sortText: Sort.Snippet,
     });
+}
+
+export function AddMathShortcutCompletions(context : CompletionContext, completions : Array<CompletionItem>)
+{
+    if (!CompletionSettings.mathCompletionShortcuts)
+        return;
+
+    let mathNamespace = typedb.GetType("__Math");
+    if (!mathNamespace)
+        mathNamespace = typedb.GetType("__FMath");
+    if (!mathNamespace)
+        return;
+
+    if (context.isIncompleteNamespace)
+        return;
+
+    mathNamespace.resolveNamespace();
+    for (let func of mathNamespace.methods)
+    {
+        if (!CanCompleteToOnlyStart(context, func.name))
+            continue;
+
+        let commitChars = ["("];
+
+        let compl = <CompletionItem>{
+            label: mathNamespace.rawName+"::"+func.name,
+            kind: CompletionItemKind.Method,
+            data: ["func", mathNamespace.typename, func.name, func.id],
+            commitCharacters: commitChars,
+            filterText: func.name,
+            sortText: Sort.Math_Shortcut,
+        };
+
+        compl.labelDetails = <CompletionItemLabelDetails>
+        {
+            detail: (func.args && func.args.length > 0) ? FunctionLabelWithParamsSuffix : FunctionLabelSuffix,
+        };
+
+        compl.command = <Command> {
+            title: "",
+            command: "angelscript.paren",
+        };
+
+        if (func.returnType && func.returnType != "void")
+        {
+            compl.labelDetails.description = func.returnType;
+
+            if (!typedb.IsPrimitive(func.returnType))
+                compl.commitCharacters.push(".");
+        }
+
+        if (context.expectedType && !context.isTypeExpected(func.returnType))
+            continue;
+        
+        completions.push(compl);
+    }
 }

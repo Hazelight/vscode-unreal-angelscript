@@ -857,6 +857,9 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
         diagnosticSettings.namingConventionDiagnostics = settings.diagnosticsForUnrealNamingConvention;
         DirtyAllDiagnostics();
     }
+
+    let completionSettings = parsedcompletion.GetCompletionSettings();
+    completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;
  });
 
 // Listen on the connection
