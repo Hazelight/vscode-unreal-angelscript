@@ -1712,14 +1712,20 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             }
 
             // If this is a default statement we expect the type of the variable
-            if (context.leftStatement.ast.type == scriptfiles.node_types.DefaultStatement)
+            switch (context.leftStatement.ast.type)
             {
-                let subNode = context.leftStatement.ast.children[0];
-                if (subNode)
-                    context.leftType = scriptfiles.ResolveTypeFromExpression(context.scope, subNode);
-                if (context.leftType)
-                    break;
+                case scriptfiles.node_types.ReturnStatement:
+                case scriptfiles.node_types.DefaultStatement:
+                case scriptfiles.node_types.ElseStatement:
+                {
+                    let subNode = context.leftStatement.ast.children[0];
+                    if (subNode)
+                        context.leftType = scriptfiles.ResolveTypeFromExpression(context.scope, subNode);
+                }
+                break;
             }
+            if (context.leftType)
+                break;
 
             // If we managed to parse something, see if this results in a valid left type
             context.leftType = scriptfiles.ResolveTypeFromExpression(context.scope, context.leftStatement.ast);
