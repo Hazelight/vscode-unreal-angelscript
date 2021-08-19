@@ -3286,6 +3286,9 @@ export function AddMathShortcutCompletions(context : CompletionContext, completi
     if (context.isIncompleteNamespace)
         return;
 
+    let unexpectedCompletions = new Array<CompletionItem>();
+    let completionNames = new Set<string>();
+
     mathNamespace.resolveNamespace();
     for (let func of mathNamespace.methods)
     {
@@ -3322,8 +3325,20 @@ export function AddMathShortcutCompletions(context : CompletionContext, completi
         }
 
         if (context.expectedType && !context.isTypeExpected(func.returnType))
+        {
+            unexpectedCompletions.push(compl);
             continue;
-        
+        }
+
+        completions.push(compl);
+        completionNames.add(compl.label);
+    }
+
+    // Any functions where we _don't_ have an expected overload for, add them still
+    for (let compl of unexpectedCompletions)
+    {
+        if (completionNames.has(compl.label))
+            continue;
         completions.push(compl);
     }
 }
