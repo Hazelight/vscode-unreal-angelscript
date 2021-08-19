@@ -649,6 +649,21 @@ function AddScopeNamingConventionDiagnostics(scope : scriptfiles.ASScope, diagno
                         hasSuggestion = true;
                     }
                 }
+
+                // If we could still be typing a function name, don't add this hint
+                if (hasSuggestion)
+                {
+                    if (scope.scopetype == scriptfiles.ASScopeType.Class
+                        || scope.scopetype == scriptfiles.ASScopeType.Global
+                        || scope.scopetype == scriptfiles.ASScopeType.Namespace)
+                    {
+                        if (scope.module.isEditingInside(scopeVar.start_offset_name, scopeVar.end_offset_name)
+                            && scopeVar.start_offset_expression == -1)
+                        {
+                            hasSuggestion = false;
+                        }
+                    }
+                }
             }
             else
             {
