@@ -846,11 +846,22 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
         return;
 
     let diagnosticSettings = scriptdiagnostics.GetDiagnosticSettings();
+    let dirtyDiagnostics = false;
+
     if (diagnosticSettings.namingConventionDiagnostics != settings.diagnosticsForUnrealNamingConvention)
     {
         diagnosticSettings.namingConventionDiagnostics = settings.diagnosticsForUnrealNamingConvention;
-        DirtyAllDiagnostics();
+        dirtyDiagnostics = true;
     }
+
+    if (diagnosticSettings.markUnreadVariablesAsUnused != settings.markUnreadVariablesAsUnused)
+    {
+        diagnosticSettings.markUnreadVariablesAsUnused = settings.markUnreadVariablesAsUnused;
+        dirtyDiagnostics = true;
+    }
+
+    if (dirtyDiagnostics)
+        DirtyAllDiagnostics();
 
     let completionSettings = parsedcompletion.GetCompletionSettings();
     completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;

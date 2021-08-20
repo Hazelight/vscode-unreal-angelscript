@@ -7,10 +7,12 @@ let node_types = require("../grammar/node_types.js");
 export interface DiagnosticSettings
 {
     namingConventionDiagnostics : boolean,
+    markUnreadVariablesAsUnused : boolean,
 };
 
 let DiagnosticSettings : DiagnosticSettings = {
     namingConventionDiagnostics: true,
+    markUnreadVariablesAsUnused: false,
 };
 
 // Diagnostics sent over to us by the unreal editor
@@ -117,6 +119,8 @@ function AddScopeDiagnostics(scope : scriptfiles.ASScope, diagnostics : Array<Di
         {
             if (!asvar.isUnused)
                 continue;
+            if (!DiagnosticSettings.markUnreadVariablesAsUnused && asvar.hasAnyUsages)
+                continue;
 
             diagnostics.push(<Diagnostic> {
                 severity: DiagnosticSeverity.Hint,
@@ -125,6 +129,20 @@ function AddScopeDiagnostics(scope : scriptfiles.ASScope, diagnostics : Array<Di
                 message: (asvar.isArgument ? "Parameter" : "Variable")+" "+asvar.name+" is unused.",
                 source: "angelscript"
             });
+
+            if (asvar.usages)
+            {
+                for (let usage of asvar.usages)
+                {
+                    diagnostics.push(<Diagnostic> {
+                        severity: DiagnosticSeverity.Hint,
+                        tags: [DiagnosticTag.Unnecessary],
+                        range: scope.module.getRange(usage.start, usage.end),
+                        message: (asvar.isArgument ? "Parameter" : "Variable")+" "+asvar.name+" is unused.",
+                        source: "angelscript"
+                    });
+                }
+            }
         }
     }
 

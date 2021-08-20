@@ -255,6 +255,8 @@ export class ASVariable
 
     potentiallyWrong : boolean = false;
     isUnused : boolean = true;
+    hasAnyUsages : boolean = false;
+    usages : Array<ASSymbol> = null;
 
     start_offset_type : number = -1;
     end_offset_type : number = -1;
@@ -262,6 +264,19 @@ export class ASVariable
     end_offset_name : number = -1;
     start_offset_expression : number = -1;
     end_offset_expression : number = -1;
+
+    isReference() : boolean
+    {
+        return this.typename.indexOf("&") != -1;
+    }
+
+    isValueType() : boolean
+    {
+        let dbType = typedb.GetType(this.typename);
+        if (dbType)
+            return dbType.isValueType();
+        return false;
+    }
 };
 
 export enum ASSymbolType
@@ -2957,7 +2972,10 @@ function DetectScopeSymbols(scope : ASScope)
         if (element instanceof ASStatement)
         {
             if (element.ast)
+            {
+                parseContext.isRootIdentifier = true;
                 DetectNodeSymbols(scope, element, element.ast, parseContext, typedb.DBAllowSymbol.PropertiesAndFunctions);
+            }
         }
         else if (element instanceof ASScope)
         {
@@ -2981,6 +2999,7 @@ class ASParseContext
 {
     allow_errors : boolean = true;
     isWriteAccess : boolean = false;
+    isRootIdentifier : boolean = false;
     argumentFunction : typedb.DBMethod = null;
 };
 
@@ -2991,8 +3010,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
 
     let outerWriteAccess = parseContext.isWriteAccess;
     let outerArgumentFunction = parseContext.argumentFunction;
+    let outerRootIdentifier = parseContext.isRootIdentifier;
     parseContext.isWriteAccess = false;
     parseContext.argumentFunction = null;
+    parseContext.isRootIdentifier = false;
 
     // Add symbols for parameters in function declarations
     switch (node.type)
@@ -3016,12 +3037,33 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         {
             parseContext.isWriteAccess = outerWriteAccess;
             parseContext.argumentFunction = outerArgumentFunction;
+            parseContext.isRootIdentifier = outerRootIdentifier;
             return DetectIdentifierSymbols(scope, statement, node, parseContext, symbol_type);
         }
         break;
         // X.Y
         case node_types.MemberAccess:
         {
+            parseContext.isRootIdentifier = outerRootIdentifier;
+
+            if (outerWriteAccess && node.children[0] && node.children[0].type == node_types.Identifier)
+            {
+                // If the left side is a local variable and not a reference or UObject, pass through the writeAccess flag
+                // This is a hack that only works on a single layer of member access, but it's useful :shrug:
+                let checkscope = scope;
+                while (checkscope && checkscope.isInFunctionBody())
+                {
+                    let usedVariable = checkscope.variablesByName.get(node.children[0].value);
+                    if (usedVariable)
+                    {
+                        if (!usedVariable.isReference() && usedVariable.isValueType())
+                            parseContext.isWriteAccess = true;
+                        break;
+                    }
+                    checkscope = checkscope.parentscope;
+                }
+            }
+
             let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
             if (!left_symbol)
             {
@@ -3033,13 +3075,14 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (node.children[1])
             {
                 parseContext.isWriteAccess = outerWriteAccess;
+                parseContext.isRootIdentifier = outerRootIdentifier;
                 return DetectSymbolsInType(scope, statement, left_symbol, node.children[1], parseContext, symbol_type);
             }
 
             return null;
         }
         break;
-        // X::Y
+        // X:
         case node_types.NamespaceAccess:
         {
             if (!node.children[0] || !node.children[0].value)
@@ -3732,10 +3775,17 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             let usedVariable = checkscope.variablesByName.get(node.value);
             if (usedVariable)
             {
-                usedVariable.isUnused = false;
+                if (!parseContext.isRootIdentifier && (!parseContext.isWriteAccess || usedVariable.isReference()))
+                    usedVariable.isUnused = false;
+                usedVariable.hasAnyUsages = true;
 
                 let symType = usedVariable.isArgument ? ASSymbolType.Parameter : ASSymbolType.LocalVariable;
-                AddIdentifierSymbol(scope, statement, node, symType, null, node.value, parseContext.isWriteAccess);
+                let varSymbol = AddIdentifierSymbol(scope, statement, node, symType, null, node.value, parseContext.isWriteAccess);
+
+                if (!usedVariable.usages)
+                    usedVariable.usages = new Array<ASSymbol>();
+                usedVariable.usages.push(varSymbol);
+
                 return typedb.GetType(usedVariable.typename);
             }
             checkscope = checkscope.parentscope;

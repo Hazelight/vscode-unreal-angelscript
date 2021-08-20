@@ -34,6 +34,11 @@
                     "default": true,
                     "description": "Emit diagnostic warnings and hints when types, functions, or variables violate the Unreal naming convention."
                 },
+                "UnrealAngelscript.markUnreadVariablesAsUnused": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Variables that are written to but never read are marked as unused as well."
+                },
                 "UnrealAngelscript.mathCompletionShortcuts": {
                     "type": "boolean",
                     "default": true,

@@ -866,6 +866,17 @@ export class DBType
         return false;
     }
 
+    isValueType() : boolean
+    {
+        if (this.isPrimitive)
+            return true;
+        if (this.isStruct)
+            return true;
+        if (this.isEnum)
+            return true;
+        return false;
+    }
+
     getInheritanceTypes() : Array<DBType>
     {
         let typeList = new Array<DBType>();
