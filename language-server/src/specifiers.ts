@@ -49,6 +49,8 @@ export let ASClassSpecifiers : any = {
     "DefaultConfig": "Config properties on this class should be saved to default configs, not user configs",
     "ComponentWrapperClass": "Actor is a lightweight wrapper around a single component",
     "ClassGroup": "List this class under the specified group in the editor",
+    "DefaultToInstanced": "Indicates that references to this class default to instanced",
+    "EditInlineNew": "Class can be constructed from editinline New button",
     "Meta": "Specify arbitrary meta tags",
 };
 
