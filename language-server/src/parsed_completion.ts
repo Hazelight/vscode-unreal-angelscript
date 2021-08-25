@@ -2740,6 +2740,7 @@ function GetCodeOffsetIgnoreTable(code : string) : Array<number>
 
     let sq_string = false;
     let dq_string = false;
+    let escape_sequence = false;
     
     let inFormatString = false;
     let inFormatExpression = false;
@@ -2811,13 +2812,17 @@ function GetCodeOffsetIgnoreTable(code : string) : Array<number>
         {
             if (dq_string)
             {
-                if (index <= 0 || code[index-1] != '\\')
+                if (!escape_sequence)
                 {
                     if (!inFormatExpression)
                         ignoreTable.push(index+1);
                     dq_string = false;
                     inFormatString = false;
                     inFormatExpression = false;
+                }
+                else
+                {
+                    escape_sequence = false;
                 }
             }
             else
@@ -2830,16 +2835,26 @@ function GetCodeOffsetIgnoreTable(code : string) : Array<number>
             }
         }
         else if (dq_string)
+        {
+            if (char == '\\')
+                escape_sequence = !escape_sequence;
+            else
+                escape_sequence = false;
             continue;
+        }
 
         if (char == "'" && !dq_string)
         {
             if (sq_string)
             {
-                if (index <= 0 || code[index-1] != '\\')
+                if (!escape_sequence)
                 {
                     ignoreTable.push(index+1);
                     sq_string = false;
+                }
+                else
+                {
+                    escape_sequence = false;
                 }
             }
             else
@@ -2849,7 +2864,13 @@ function GetCodeOffsetIgnoreTable(code : string) : Array<number>
             }
         }
         else if (sq_string)
+        {
+            if (char == '\\')
+                escape_sequence = !escape_sequence;
+            else
+                escape_sequence = false;
             continue;
+        }
 
         // Comments
         if (char == '/')

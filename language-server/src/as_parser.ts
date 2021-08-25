@@ -4547,7 +4547,7 @@ function ParseScopeIntoStatements(scope : ASScope)
             }
 
             if (curchar == '\\')
-                in_escape_sequence = true;
+                in_escape_sequence = !in_escape_sequence;
             else
                 in_escape_sequence = false;
             continue;
@@ -4561,7 +4561,7 @@ function ParseScopeIntoStatements(scope : ASScope)
             }
 
             if (curchar == '\\')
-                in_escape_sequence = true;
+                in_escape_sequence = !in_escape_sequence;
             else
                 in_escape_sequence = false;
             continue;
@@ -4970,7 +4970,7 @@ function SplitStatementBasedOnEdit(content : string, editOffset : number, allowN
             }
 
             if (curchar == '\\')
-                in_escape_sequence = true;
+                in_escape_sequence = !in_escape_sequence;
             else
                 in_escape_sequence = false;
             continue;
@@ -4984,7 +4984,7 @@ function SplitStatementBasedOnEdit(content : string, editOffset : number, allowN
             }
 
             if (curchar == '\\')
-                in_escape_sequence = true;
+                in_escape_sequence = !in_escape_sequence;
             else
                 in_escape_sequence = false;
             continue;
