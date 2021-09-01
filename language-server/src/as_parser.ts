@@ -2956,6 +2956,8 @@ export function ResolveFunctionOverloadsFromIdentifier(scope : ASScope, identifi
             {
                 if (sym.isMixin)
                     continue;
+                if (functions.includes(sym))
+                    continue;
                 functions.push(sym);
             }
         }
@@ -3021,6 +3023,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         // this and other constants
         case node_types.This: return scope.getParentType(); break;
         case node_types.ConstBool: return typedb.GetType("bool"); break;
+        case node_types.ConstDouble: return typedb.GetType("double"); break;
         case node_types.ConstInteger: return typedb.GetType("int"); break;
         case node_types.ConstHexInteger: return typedb.GetType("int"); break;
         case node_types.ConstFloat: return typedb.GetType("float"); break;

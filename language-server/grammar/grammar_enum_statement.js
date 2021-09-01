@@ -859,7 +859,16 @@ var grammar = {
         function (d) { return Compound(d, n.MemberAccess, [d[0], Identifier(d[4])]); }
         },
     {"name": "lvalue", "symbols": [(lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "expression", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
-        function (d) { return d[2]; }
+        function (d) {
+            if (!d[2])
+                return null;
+            if (d[2].type == n.Identifier)
+                return d[2];
+            else
+                return ExtendedCompound(d, {
+                    ...d[2],
+                });
+        }
         },
     {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "argumentlist", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.FunctionCall, [d[0], d[3]]); }

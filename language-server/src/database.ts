@@ -339,6 +339,40 @@ export class DBMethod implements DBSymbol
             return false;
         return this.macroMeta.has(meta.toLowerCase());
     }
+
+    getRequiredArgumentCount() : number
+    {
+        if (!this.args)
+            return 0;
+        for (let i = 0, argCount = this.args.length; i < argCount; ++i)
+        {
+            if (this.args[i].defaultvalue)
+                return i;
+        }
+        return this.args.length;
+    }
+
+    isSignatureEqual(otherFunc : DBMethod) : boolean
+    {
+        if ((!!this.args) != (!!otherFunc.args))
+            return false;
+
+        if (this.args)
+        {
+            if (this.args.length != otherFunc.args.length)
+                return false;
+            for (let i = 0, argCount = this.args.length; i < argCount; ++i)
+            {
+                if (this.args[i].typename != otherFunc.args[i].typename)
+                    return false;
+            }
+        }
+
+        if (this.returnType != otherFunc.returnType)
+            return false;
+
+        return true;
+    }
 };
 
 export class DBType

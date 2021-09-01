@@ -5,7 +5,7 @@
 	"version": "0.0.1",
 	"publisher": "Hazelight",
 	"engines": {
-		"vscode": "^1.58.0"
+		"vscode": "^1.59.0"
 	},
 	"dependencies": {
 		"await-notify": "^1.0.1",
@@ -13,7 +13,7 @@
 		"vscode-languageclient": "^8.0.0-next.1"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.58.0",
+		"@types/vscode": "^1.59.0",
 		"vscode-test": "^1.3.0"
 	}
 }

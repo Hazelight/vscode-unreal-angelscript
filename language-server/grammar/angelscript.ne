@@ -834,7 +834,16 @@ lvalue -> lvalue _ %dot _ %identifier {%
     function (d) { return Compound(d, n.MemberAccess, [d[0], Identifier(d[4])]); }
 %}
 lvalue -> %lparen _ expression _ %rparen {%
-    function (d) { return d[2]; }
+    function (d) {
+        if (!d[2])
+            return null;
+        if (d[2].type == n.Identifier)
+            return d[2];
+        else
+            return ExtendedCompound(d, {
+                ...d[2],
+            });
+    }
 %}
 lvalue -> lvalue _ %lparen argumentlist _ %rparen {%
     function (d) { return Compound(d, n.FunctionCall, [d[0], d[3]]); }

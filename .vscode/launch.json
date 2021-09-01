@@ -6,7 +6,10 @@
 			"request": "launch",
 			"name": "Launch Client",
 			"runtimeExecutable": "${execPath}",
-			"args": ["--extensionDevelopmentPath=${workspaceRoot}"],
+			"args": [
+                "--extensionDevelopmentPath=${workspaceRoot}",
+                "--enable-proposed-api", "Hazelight.unreal-angelscript"
+            ],
 			"outFiles": ["${workspaceRoot}/extension/out/**/*.js"],
 			"preLaunchTask": {
 				"type": "npm",

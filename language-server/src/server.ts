@@ -9,7 +9,7 @@ import {
     SemanticTokensParams, SemanticTokens, SemanticTokensBuilder, ReferenceOptions, ReferenceParams,
     CodeLens, CodeLensParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, DidOpenTextDocumentParams,
     RenameParams, WorkspaceEdit, ResponseError, PrepareRenameParams, Range, Position, Command, SemanticTokensDeltaParams,
-    SemanticTokensDelta,
+    SemanticTokensDelta, TextDocumentItem,
     CodeActionParams,
     CodeAction,
     DidCloseTextDocumentParams,
@@ -30,6 +30,7 @@ import * as scriptdiagnostics from './ls_diagnostics';
 import * as scriptlenses from './code_lenses';
 import * as scriptactions from './code_actions';
 import * as assets from './assets';
+import * as inlayhints from './inlay_hints';
 import * as fs from 'fs';
 let glob = require('glob');
 
@@ -866,6 +867,50 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
     let completionSettings = parsedcompletion.GetCompletionSettings();
     completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;
  });
+
+function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : Array<inlayhints.ASInlayHint> | null
+{
+    if (CanResolveModules())
+    {
+        if (!asmodule)
+            return null;
+        scriptfiles.ParseModuleAndDependencies(asmodule);
+        scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
+        scriptfiles.ResolveModule(asmodule);
+        return inlayhints.GetInlayHintsForRange(asmodule, range);
+    }
+    else
+    {
+        return null;
+    }
+}
+
+function WaitForInlayHints(uri : string, range : Range) : Array<inlayhints.ASInlayHint> | Thenable<Array<inlayhints.ASInlayHint>>
+{
+    let asmodule = scriptfiles.GetModuleByUri(uri);
+    let result = TryResolveInlayHints(asmodule, range);
+    if (result)
+        return result;
+
+    function timerFunc(resolve : any, reject : any, triesLeft : number) {
+        let result = TryResolveInlayHints(asmodule, range);
+        if (result)
+            return resolve(result);
+        setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
+    }
+    let promise = new Promise<Array<inlayhints.ASInlayHint>>(function(resolve, reject)
+    {
+        timerFunc(resolve, reject, 50);
+    });
+    return promise;
+};
+
+connection.onRequest("angelscript/inlayHints", (...params: any[]) : Array<inlayhints.ASInlayHint> | Thenable<Array<inlayhints.ASInlayHint>> => {
+    let uri : string = params[0].uri;
+    let start : Position = params[0].start;
+    let end : Position = params[0].end;
+    return WaitForInlayHints(uri, Range.create(start, end));
+});
 
 // Listen on the connection
 connection.listen();
