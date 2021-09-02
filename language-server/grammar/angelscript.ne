@@ -936,6 +936,12 @@ argument -> %identifier _ "=" optional_expression {%
     function (d) { return Compound(d, n.NamedArgument, [Identifier(d[0]), d[3]]); }
 %}
 
+# INCOMPLETE: We might be typing a named argument in front of an expression,
+# but we haven't typed the = yet
+argument -> %identifier %WS expression {%
+    function (d) { return Compound(d, n.NamedArgument, [Identifier(d[0]), d[3]]); }
+%}
+
 const_number -> %number {%
     function(d) { return Literal(n.ConstInteger, d[0]); }
 %}
