@@ -866,6 +866,14 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
 
     let completionSettings = parsedcompletion.GetCompletionSettings();
     completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;
+
+    let inlayHintSettings = inlayhints.GetInlayHintSettings();
+    inlayHintSettings.inlayHintsEnabled = settings.inlayHints.inlayHintsEnabled;
+    inlayHintSettings.parameterHintsForConstants = settings.inlayHints.parameterHintsForConstants;
+    inlayHintSettings.parameterHintsForComplexExpressions = settings.inlayHints.parameterHintsForComplexExpressions;
+    inlayHintSettings.parameterReferenceHints = settings.inlayHints.parameterReferenceHints;
+    inlayHintSettings.parameterHintsForSingleParameterFunctions = settings.inlayHints.parameterHintsForSingleParameterFunctions;
+    inlayHintSettings.typeHintsForAutos = settings.inlayHints.typeHintsForAutos;
  });
 
 function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : Array<inlayhints.ASInlayHint> | null

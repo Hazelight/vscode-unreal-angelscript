@@ -44,6 +44,36 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Add completions for functions in the Math:: namespace so they can be completed without typing Math:: first."
+                },
+                "UnrealAngelscript.inlayHints.inlayHintsEnabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable inlay hints rendered by the angelscript extension."
+                },
+                "UnrealAngelscript.inlayHints.parameterHintsForConstants": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show parameter name hints when passing a constant literal argument."
+                },
+                "UnrealAngelscript.inlayHints.parameterHintsForComplexExpressions": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show parameter name hints when passing a complex expression as an argument."
+                },
+                "UnrealAngelscript.inlayHints.parameterReferenceHints": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show an inlay hint when a parameter takes a writeable reference."
+                },
+                "UnrealAngelscript.inlayHints.parameterHintsForSingleParameterFunctions": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether to enable parameter name hints for functions that are only passed a single argument."
+                },
+                "UnrealAngelscript.inlayHints.typeHintsForAutos": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show the name of the type as an inlay hint on auto declarations."
                 }
             }
         },
