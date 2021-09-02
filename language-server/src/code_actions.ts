@@ -27,6 +27,9 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
     // Actions for adding super calls
     AddSuperCallHelper(asmodule, range_start, range_end, actions, diagnostics);
 
+    // Actions for promoting to member variables
+    AddVariablePromotionHelper(asmodule, range_start, range_end, actions, diagnostics);
+
     return actions;
 }
 
@@ -44,6 +47,8 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
         ResolveSuperCallHelper(asmodule, action, data);
     else if (data.type == "materializeAuto")
         ResolveAutoAction(asmodule, action, data);
+    else if (data.type == "variablePromotion")
+        ResolveVariablePromotionHelper(asmodule, action, data);
     return action;
 }
 
@@ -777,5 +782,200 @@ function ResolveAutoAction(asmodule : scriptfiles.ASModule, action : CodeAction,
             asmodule.getRange(symbol.start, symbol.end),
             typename,
         )
+    ];
+}
+
+function AddVariablePromotionHelper(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+{
+    let scope = asmodule.getScopeAt(range_start);
+    if (!scope)
+        return;
+
+    let statement = scope.getStatementAt(range_start);
+    if (!statement)
+        return;
+
+    let codeNode = statement.ast;
+    if (!codeNode)
+        return;
+
+    if (codeNode.type == scriptfiles.node_types.Assignment)
+    {
+        let leftNode = codeNode.children[0];
+        if (leftNode.type != scriptfiles.node_types.Identifier)
+            return;
+
+        // If the left side is a known variable we can't provide this action
+        let lvalueType = scriptfiles.ResolveTypeFromExpression(scope, leftNode);
+        if (lvalueType)
+            return;
+
+        // If we don't know what type is on the right we can't provide this action
+        let rvalueType = scriptfiles.ResolveTypeFromExpression(scope, codeNode.children[1]);
+        if(!rvalueType)
+            return;
+
+        let variableName = leftNode.value;
+
+        actions.push(<CodeAction> {
+            kind: CodeActionKind.RefactorInline,
+            title: `Promote ${variableName} to member variable`,
+            source: "angelscript",
+            isPreferred: true,
+            data: {
+                uri: asmodule.uri,
+                type: "variablePromotion",
+                variableName: variableName,
+                variableType: rvalueType.typename,
+                position: range_start,
+            }
+        });
+    }
+}
+
+function FindInsertPositionForGeneratedMemberVariable(asmodule : scriptfiles.ASModule, classScope : scriptfiles.ASScope, anchor_offset : number = -1) : [Position, string]
+{
+    let indent : string = null;
+    let prefix : string = "";
+    let suffix : string = "";
+
+    // Find the first line in the class that has content, and base indentation on that
+    for (let statement of classScope.statements)
+    {
+        let lines = statement.content.split("\n");
+        for (let line of lines)
+        {
+            if (!/^[ \t\r\n]*$/.test(line))
+            {
+                indent = "";
+                for (let i = 0; i < line.length; ++i)
+                {
+                    let curchar = line[i];
+                    if (curchar == ' ' || curchar == '\t')
+                    {
+                        indent += curchar;
+                    }
+                    else if (curchar == '\n' || curchar == '\r')
+                    {
+                        continue;
+                    }
+                    else if (curchar == '#')
+                    {
+                        indent = null;
+                        break;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+        if (indent)
+            break;
+    }
+    if (!indent)
+        indent = "\t";
+
+    // Check if we have a member variable that anchors this one
+    let anchoredVariable : string = null;
+    if (anchor_offset != -1)
+    {
+        let subScope = classScope.getScopeAt(anchor_offset);
+        if (subScope)
+        {
+            for (let statement of subScope.statements)
+            {
+                if (statement.end_offset >= anchor_offset)
+                    continue;
+
+                if (statement.ast.type == scriptfiles.node_types.Assignment)
+                {
+                    if (statement.ast.children[0] && statement.ast.children[0].type == scriptfiles.node_types.Identifier)
+                    {
+                        let varName = statement.ast.children[0].value;
+                        if (classScope.variablesByName.has(varName))
+                            anchoredVariable = varName;
+                    }
+                }
+            }
+        }
+    }
+
+    // Collect data about where stuff is in the class
+    let lastDefaultLineOffset = -1;
+    let lastMemberVariableOffset = -1;
+    let anchoredMemberVariableOffset = -1;
+
+    for (let statement of classScope.statements)
+    {
+        if (!statement.ast)
+            continue;
+
+        if (statement.ast.type == scriptfiles.node_types.VariableDecl)
+        {
+            if (anchoredVariable && statement.ast.name && statement.ast.name.value == anchoredVariable)
+                anchoredMemberVariableOffset = statement.end_offset;
+            if (statement.end_offset > lastMemberVariableOffset)
+                lastMemberVariableOffset = statement.end_offset;
+        }
+        else if (statement.ast.type == scriptfiles.node_types.DefaultStatement)
+        {
+            if (statement.end_offset > lastDefaultLineOffset)
+                lastDefaultLineOffset = statement.end_offset;
+        }
+    }
+
+    let afterPos : Position = null;
+    if (anchoredMemberVariableOffset != -1)
+    {
+        // Insert after the member variable that was most recently assigned
+        afterPos = asmodule.getPosition(anchoredMemberVariableOffset);
+    }
+    else if (lastMemberVariableOffset != -1)
+    {
+        // Insert after the last member variable declaration
+        afterPos = asmodule.getPosition(lastMemberVariableOffset);
+    }
+    else if (lastDefaultLineOffset != -1)
+    {
+        // Insert after the last default statement
+        afterPos = asmodule.getPosition(lastDefaultLineOffset);
+    }
+    else
+    {
+        // Insert at the top of the class
+        afterPos = asmodule.getPosition(classScope.declaration.end_offset);
+    }
+
+    afterPos.line += 1;
+    afterPos.character = 0;
+    return [afterPos, indent];
+}
+
+function ResolveVariablePromotionHelper(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
+{
+    let variableName : string = data.variableName;
+    let variableType : string = data.variableType;
+    let position : number = data.position;
+
+    let scope = asmodule.getScopeAt(position);
+    if (!scope)
+        return;
+
+    let classScope = scope.getParentTypeScope();
+    if (!classScope)
+        return;
+
+    let [insertPosition, indent] = FindInsertPositionForGeneratedMemberVariable(asmodule, classScope, position);
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+
+    let declarationString = `${indent}${variableType} ${variableName};\n`;
+
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(insertPosition, declarationString)
     ];
 }
