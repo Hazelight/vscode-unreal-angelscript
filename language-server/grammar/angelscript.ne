@@ -67,6 +67,7 @@ const lexer = moo.compile({
             bool_token: ['true', 'false'],
             nullptr_token: 'nullptr',
             this_token: 'this',
+            access_token: 'access',
 
             // This is a hack to help disambiguate syntax.
             // A statement of `TArray<int> Var` might be parsed as
@@ -452,7 +453,7 @@ class_declaration -> uproperty_macro:? (access_specifier _):? var_decl {%
     function (d) {
         return ExtendedCompound(d, {
             ...d[2],
-            access: d[1] ? d[1][0].value : null,
+            access: d[1] ? d[1][0] : null,
             macro: d[0],
         });
     }
@@ -463,7 +464,7 @@ class_declaration -> uproperty_macro:? (access_specifier _):? typename {%
             ...Compound(d, n.VariableDecl, null),
             name: null,
             typename: d[2],
-            access: d[1] ? d[1][0].value : null,
+            access: d[1] ? d[1][0] : null,
             macro: d[0],
         });
     }
@@ -473,7 +474,7 @@ class_declaration -> ufunction_macro:? (access_specifier _):? function_signature
     function (d) {
         return ExtendedCompound(d, {
             ...d[2],
-            access: d[1] ? d[1][0].value : null,
+            access: d[1] ? d[1][0] : null,
             macro: d[0],
         });
     }
@@ -483,7 +484,7 @@ class_declaration -> access_specifier _ ufunction_macro function_signature {%
     function (d) {
         return ExtendedCompound(d, {
             ...d[3],
-            access: d[0].value,
+            access: d[0],
             macro: d[2],
         });
     }
@@ -497,6 +498,70 @@ class_statement -> %default_token _ expression {%
 %}
 class_statement -> %default_token _ assignment {%
     function (d) { return Compound(d, n.DefaultStatement, [d[2]]); }
+%}
+class_statement -> access_declaration {%
+    function (d) { return d[0]; }
+%}
+
+access_declaration -> %access_token _ %identifier _ %op_assignment _ access_list {%
+    function (d) {
+        return {
+            ...Compound( d, n.AccessDeclaration, null),
+            name: Identifier(d[2]),
+            classList: d[6],
+        };
+    }
+%}
+access_declaration -> %access_token _ %identifier (_ %op_assignment):? {%
+    function (d) {
+        return {
+            ...Compound( d, n.AccessDeclaration, null),
+            name: Identifier(d[2]),
+            classList: [],
+        };
+    }
+%}
+
+access_list -> null {%
+    function(d) { return []; }
+%}
+access_list -> access_class (_ "," _ access_class):* (_ %comma):? {%
+    function(d) {
+        let args = [d[0]];
+        if (d[1])
+        {
+            for (let part of d[1])
+                args.push(part[3]);
+        }
+        return args;
+    }
+%}
+access_class -> (%identifier | "*") (_ %lparen access_mod_list %rparen):? {%
+    function (d) {
+        return {
+            ...Compound( d, n.AccessClass, null),
+            className: Identifier(d[0][0]),
+            mods: d[1] ? d[1][2] : null,
+        };
+    }
+%}
+
+access_mod_list -> null {%
+    function(d) { return []; }
+%}
+access_mod_list -> access_mod (_ "," _ access_mod):* (_ %comma):? {%
+    function(d) {
+        let args = [d[0]];
+        if (d[1])
+        {
+            for (let part of d[1])
+                args.push(part[3]);
+        }
+        return args;
+    }
+%}
+access_mod -> ("editdefaults" | "readonly" | "inherited") {%
+    function (d) { return d[0][0].value; }
 %}
 
 var_decl -> typename _ %identifier {%
@@ -1161,7 +1226,20 @@ func_qualifier -> %identifier {%
 %}
 
 access_specifier -> ("private" | "protected" | "public") {%
-    function (d) { return d[0][0]; }
+    function (d) { return Identifier(d[0][0]); }
+%}
+access_specifier -> %access_token (_ %colon _ %identifier):? {%
+    function (d)
+    {
+        if (d[1])
+            return Identifier(d[1][3]);
+        return null;
+    }
+%}
+
+# INCOMPLETE: Incomplete access specifier
+class_statement -> %access_token _ %colon (_ %identifier):? {%
+    function (d) { return null; }
 %}
 
 _ -> (%WS | %line_comment | %block_comment | %preprocessor_statement):* {%

@@ -254,6 +254,7 @@ export class ASVariable
     node_expression : any = null;
 
     potentiallyWrong : boolean = false;
+    accessSpecifier : typedb.DBAccessSpecifier = null;
     isUnused : boolean = true;
     hasAnyUsages : boolean = false;
     usages : Array<ASSymbol> = null;
@@ -294,6 +295,8 @@ export enum ASSymbolType
 
     MemberFunction,
     GlobalFunction,
+
+    AccessSpecifier,
 
     UnknownError,
     NoSymbol,
@@ -1443,10 +1446,12 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
 
     if (vardecl.access)
     {
-        if (vardecl.access == "private")
+        if (vardecl.access.value == "private")
             asvar.isPrivate = true;
-        else if (vardecl.access == "protected")
+        else if (vardecl.access.value == "protected")
             asvar.isProtected = true;
+        else if (scope.dbtype)
+            asvar.accessSpecifier = scope.dbtype.getAccessSpecifier(vardecl.access.value);
     }
 
     scope.variables.push(asvar);
@@ -1469,6 +1474,7 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
         dbprop.moduleOffsetEnd = asvar.end_offset_name;
         dbprop.isPrivate = asvar.isPrivate;
         dbprop.isProtected = asvar.isProtected;
+        dbprop.accessSpecifier = asvar.accessSpecifier;
 
         // Add macro specifiers if we had any
         if (vardecl.macro)
@@ -1647,10 +1653,12 @@ function GenerateTypeInformation(scope : ASScope)
 
             if (funcdef.access)
             {
-                if (funcdef.access == "protected")
+                if (funcdef.access.value == "protected")
                     dbfunc.isProtected = true;
-                else if (funcdef.access == "private")
+                else if (funcdef.access.value == "private")
                     dbfunc.isPrivate = true;
+                else if (scope.parentscope.dbtype)
+                    dbfunc.accessSpecifier = scope.parentscope.dbtype.getAccessSpecifier(funcdef.access.value);
             }
 
             if (funcdef.qualifiers)
@@ -1935,6 +1943,12 @@ function GenerateTypeInformation(scope : ASScope)
                 }
             }
             break;
+            case node_types.AccessDeclaration:
+            {
+                // Add the declared access specifier to the type
+                AddAccessSpecifierToType(scope, statement, statement.ast);
+            }
+            break;
         }
 
         statement.generatedTypes = true;
@@ -1947,6 +1961,74 @@ function GenerateTypeInformation(scope : ASScope)
     // If this was a namespace, merge it after we've generated everything and update the dbtype
     if (scope.scopetype == ASScopeType.Namespace && scope.dbtype)
         scope.dbtype = typedb.MergeNamespaceToDB(scope.dbtype, false);
+}
+
+function AddAccessSpecifierToType(scope : ASScope, statement : ASStatement, node : any)
+{
+    if (!scope.dbtype)
+        return;
+
+    let spec = scope.dbtype.getAccessSpecifier(node.name.value);
+    spec.isDeclared = true;
+    spec.declaredModule = scope.module.modulename;
+    spec.moduleOffset = statement.start_offset + node.name.start;
+    spec.moduleOffsetEnd = statement.start_offset + node.name.end;
+
+    if (node.classList)
+    {
+        for (let accessClass of node.classList)
+        {
+            if (accessClass.className.value == "*")
+            {
+                if (accessClass.mods)
+                {
+                    for (let mod of accessClass.mods)
+                    {
+                        if (mod == "editdefaults")
+                            spec.bAnyEditDefaults = true;
+                        else if (mod == "readonly")
+                            spec.bAnyReadOnly = true;
+                    }
+                }
+            }
+            else if (accessClass.className.value == "private")
+            {
+                spec.isPrivate = true;
+            }
+            else if (accessClass.className.value == "protected")
+            {
+                spec.isProtected = true;
+            }
+            else
+            {
+                let cls = new typedb.DBAccessClass();
+                cls.className = accessClass.className.value;
+
+                if (accessClass.mods)
+                {
+                    for (let mod of accessClass.mods)
+                    {
+                        if (mod == "editdefaults")
+                            cls.bEditDefaults = true;
+                        else if (mod == "readonly")
+                            cls.bReadOnly = true;
+                        else if (mod == "inherited")
+                            cls.bInherited = true;
+                    }
+                }
+
+                if (spec.accessClasses)
+                    spec.accessClasses.push(cls);
+                else
+                    spec.accessClasses = [cls];
+            }
+        }
+    }
+
+    if (scope.dbtype.acccessSpecifiers)
+        scope.dbtype.acccessSpecifiers.push(spec);
+    else
+        scope.dbtype.acccessSpecifiers = [spec];
 }
 
 // Either create a new scope for an optional statement after a control statement,
@@ -2181,6 +2263,30 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
             }
             return addSymbol;
         }
+    }
+}
+
+function AddAccessSpecifierSymbol(scope : ASScope, statement : ASStatement, node : any, errorOnUnknown = true) : ASSymbol
+{
+    if (!node)
+        return null;
+    if (node.value == "private" || node.value == "protected")
+        return null;
+
+    let dbtype = scope.getParentType();
+    if (!dbtype)
+        return null;
+
+    let spec = dbtype.getAccessSpecifier(node.value, false);
+    if (!spec || !spec.isDeclared)
+    {
+        if (errorOnUnknown && !scope.module.isEditingNode(statement, node))
+            AddUnknownSymbol(scope, statement, node, false);
+        return null;
+    }
+    else
+    {
+        return AddIdentifierSymbol(scope, statement, node, ASSymbolType.AccessSpecifier, dbtype.typename, node.value);
     }
 }
 
@@ -3420,6 +3526,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.FunctionDecl:
         case node_types.ConstructorDecl:
         {
+            // Add symbol for access specifier if we want
+            if (node.access)
+                AddAccessSpecifierSymbol(scope, statement, node.access);
+
             // Add the symbol for the return type
             if (node.returntype && node.returntype.value != 'void')
                 AddTypenameSymbol(scope, statement, node.returntype);
@@ -3542,6 +3652,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         // Type X;
         case node_types.VariableDecl:
         {
+            // Add symbol for access specifier if we want
+            if (node.access)
+                AddAccessSpecifierSymbol(scope, statement, node.access);
+
             // Add the typename of the variable
             let typenameSymbol : ASSymbol = null;
             if (node.typename)
@@ -3618,6 +3732,34 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 // If this was an auto, we should update the typename symbol to match the expression
                 if (typenameSymbol && typenameSymbol.symbol_name == "auto")
                     UpdateAutoTypenameSymbol(typenameSymbol, expressionType);
+            }
+        }
+        break;
+        // access X = private, Y, Z (mod);
+        case node_types.AccessDeclaration:
+        {
+            // Add symbol for the name 
+            if (node.name)
+            {
+                let insideType = scope.dbtype ? scope.dbtype.typename : null;
+                let symType = ASSymbolType.AccessSpecifier;
+                AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value, true);
+            }
+
+            // Add type symbols for each class we've specified
+            if (node.classList)
+            {
+                for (let cls of node.classList)
+                {
+                    if (cls.className.value == "*")
+                        continue;
+                    if (cls.className.value == "private")
+                        continue;
+                    if (cls.className.value == "protected")
+                        continue;
+
+                    AddIdentifierSymbol(scope, statement, cls.className, ASSymbolType.Typename, null, cls.className.value);
+                }
             }
         }
         break;

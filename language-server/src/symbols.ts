@@ -136,6 +136,25 @@ export function GetSymbolDefinition(asmodule : scriptfiles.ASModule, findSymbol 
             }
         }
         break;
+        case scriptfiles.ASSymbolType.AccessSpecifier:
+        {
+            if (!asmodule)
+                return [];
+            let scope = asmodule.getScopeAt(findSymbol.start);
+            let dbtype = scope.getParentType();
+            if (!dbtype)
+                return [];
+
+            let spec = dbtype.getAccessSpecifier(findSymbol.symbol_name);
+            if (!spec)
+                return [];
+
+            return [{
+                module: asmodule,
+                location: asmodule.getLocationRange(spec.moduleOffset, spec.moduleOffsetEnd),
+            }];
+        }
+        break;
         case scriptfiles.ASSymbolType.MemberVariable:
         case scriptfiles.ASSymbolType.MemberFunction:
         case scriptfiles.ASSymbolType.GlobalFunction:
@@ -370,6 +389,11 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
             }
         }
         break;
+        case scriptfiles.ASSymbolType.AccessSpecifier:
+            return <Hover> {contents: <MarkupContent> {
+                kind: "markdown",
+                value: `Access specifier \`${findSymbol.symbol_name}\` restricts which other classes this can be used from`,
+            }};
     }
 }
 

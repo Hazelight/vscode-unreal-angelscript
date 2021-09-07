@@ -72,6 +72,9 @@ module.exports = {
 
     EnumValueList: indexed ? i++ : "EnumValueList",
     EnumValue: indexed ? i++ : "EnumValue",
+
+    AccessDeclaration: indexed ? i++ : "AccessDeclaration",
+    AccessClass: indexed ? i++ : "AccessClass",
 }
 
 })();

@@ -672,7 +672,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         if (!context.isRightExpression && !context.isSubExpression)
         {
             AddCompletionsFromKeywordList(context, [
-                "override", "final", "property", "private", "protected",
+                "override", "final", "property", "private", "protected", "access"
             ], completions);
 
             if (CanCompleteTo(context, "UPROPERTY"))
@@ -2671,6 +2671,16 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DB
                 return false;
         }
     }
+    else if (prop.accessSpecifier)
+    {
+        let [readable, writable, editable] = prop.accessSpecifier.getAccess(inScope.getParentType());
+        if (!readable && !editable)
+            return false;
+        else if (!readable && !isEditScope(inScope))
+            return false;
+        else if (!editable && isEditScope(inScope))
+            return false;
+    }
 
     if (prop.isEditOnly)
     {
@@ -2712,6 +2722,18 @@ function isFunctionAccessibleFromScope(curtype : typedb.DBType, func : typedb.DB
             if (!curtype || !dbtype.inheritsFrom(func.containingType.typename))
                 return false;
         }
+    }
+    else if (func.accessSpecifier)
+    {
+        let [readable, writable, editable] = func.accessSpecifier.getAccess(inScope.getParentType());
+        if (!readable && !editable && !writable)
+            return false;
+        else if (!editable && isEditScope(inScope))
+            return false;
+        else if (!readable && !writable && !isEditScope(inScope))
+            return false;
+        else if (!writable && !func.isConst)
+            return false;
     }
 
     if (func.isDefaultsOnly)

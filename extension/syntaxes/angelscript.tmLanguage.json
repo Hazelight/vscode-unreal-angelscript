@@ -20,7 +20,7 @@
         },
         {
             "name": "keyword.access.angelscript",
-            "match": "\\b(private|protected)\\b"
+            "match": "\\b(private|protected|access)\\b"
         },
         {
             "name": "storage.type.primitive.angelscript",

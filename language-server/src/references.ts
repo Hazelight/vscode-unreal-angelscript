@@ -66,7 +66,13 @@ export function* FindReferences(uri : string, position : Position) : any
     else if (findSymbol.type == scriptfiles.ASSymbolType.GlobalFunction)
         alternateType = scriptfiles.ASSymbolType.GlobalAccessor;
 
-    let considerModules = scriptfiles.GetModulesPotentiallyImportingSymbol(asmodule, findSymbol);
+    let considerModules : Array<scriptfiles.ASModule> = null;
+
+    // Some symbol types only need to be searched within the current file
+    if (findSymbol.type == scriptfiles.ASSymbolType.AccessSpecifier)
+        considerModules = [asmodule];
+    else
+        considerModules = scriptfiles.GetModulesPotentiallyImportingSymbol(asmodule, findSymbol);
 
     // Look in all considered modules (Slow!)
     let parseCount = 0;
@@ -321,7 +327,13 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
 
         let parseCount = 0;
 
-        let considerModules = scriptfiles.GetModulesPotentiallyImportingSymbol(asmodule, findSymbol);
+        let considerModules : Array<scriptfiles.ASModule> = null;
+
+        // Some symbol types only need to be searched within the current file
+        if (findSymbol.type == scriptfiles.ASSymbolType.AccessSpecifier)
+            considerModules = [asmodule];
+        else
+            considerModules = scriptfiles.GetModulesPotentiallyImportingSymbol(asmodule, findSymbol);
 
         // Look in all considered modules (Slow!)
         for (let checkmodule of considerModules)
