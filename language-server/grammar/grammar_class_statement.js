@@ -568,7 +568,7 @@ var grammar = {
         },
     {"name": "access_class$subexpression$1", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier)]},
     {"name": "access_class$subexpression$1", "symbols": [{"literal":"*"}]},
-    {"name": "access_class$ebnf$1$subexpression$1", "symbols": ["_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "access_mod_list", (lexer.has("rparen") ? {type: "rparen"} : rparen)]},
+    {"name": "access_class$ebnf$1$subexpression$1", "symbols": ["_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "access_mod_list", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)]},
     {"name": "access_class$ebnf$1", "symbols": ["access_class$ebnf$1$subexpression$1"], "postprocess": id},
     {"name": "access_class$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "access_class", "symbols": ["access_class$subexpression$1", "access_class$ebnf$1"], "postprocess": 
@@ -584,27 +584,21 @@ var grammar = {
         function(d) { return []; }
         },
     {"name": "access_mod_list$ebnf$1", "symbols": []},
-    {"name": "access_mod_list$ebnf$1$subexpression$1", "symbols": ["_", {"literal":","}, "_", "access_mod"]},
+    {"name": "access_mod_list$ebnf$1$subexpression$1", "symbols": ["_", {"literal":","}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)]},
     {"name": "access_mod_list$ebnf$1", "symbols": ["access_mod_list$ebnf$1", "access_mod_list$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
     {"name": "access_mod_list$ebnf$2$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
     {"name": "access_mod_list$ebnf$2", "symbols": ["access_mod_list$ebnf$2$subexpression$1"], "postprocess": id},
     {"name": "access_mod_list$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "access_mod_list", "symbols": ["access_mod", "access_mod_list$ebnf$1", "access_mod_list$ebnf$2"], "postprocess": 
+    {"name": "access_mod_list", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "access_mod_list$ebnf$1", "access_mod_list$ebnf$2"], "postprocess": 
         function(d) {
             let args = [d[0]];
             if (d[1])
             {
                 for (let part of d[1])
-                    args.push(part[3]);
+                    args.push(Identifier(part[3]));
             }
             return args;
         }
-        },
-    {"name": "access_mod$subexpression$1", "symbols": [{"literal":"editdefaults"}]},
-    {"name": "access_mod$subexpression$1", "symbols": [{"literal":"readonly"}]},
-    {"name": "access_mod$subexpression$1", "symbols": [{"literal":"inherited"}]},
-    {"name": "access_mod", "symbols": ["access_mod$subexpression$1"], "postprocess": 
-        function (d) { return d[0][0].value; }
         },
     {"name": "var_decl", "symbols": ["typename", "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
         function (d) { return {
@@ -1292,7 +1286,11 @@ var grammar = {
     {"name": "class_statement$ebnf$1", "symbols": ["class_statement$ebnf$1$subexpression$1"], "postprocess": id},
     {"name": "class_statement$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "class_statement", "symbols": [(lexer.has("access_token") ? {type: "access_token"} : access_token), "_", (lexer.has("colon") ? {type: "colon"} : colon), "class_statement$ebnf$1"], "postprocess": 
-        function (d) { return null; }
+        function (d) { return Compound(
+            d, n.IncompleteAccessSpecifier, [
+                d[3] ? Identifier(d[3][1]) : null
+            ]
+        ); }
         },
     {"name": "_$ebnf$1", "symbols": []},
     {"name": "_$ebnf$1$subexpression$1", "symbols": [(lexer.has("WS") ? {type: "WS"} : WS)]},

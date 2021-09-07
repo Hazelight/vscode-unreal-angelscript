@@ -1984,9 +1984,9 @@ function AddAccessSpecifierToType(scope : ASScope, statement : ASStatement, node
                 {
                     for (let mod of accessClass.mods)
                     {
-                        if (mod == "editdefaults")
+                        if (mod.value == "editdefaults")
                             spec.bAnyEditDefaults = true;
-                        else if (mod == "readonly")
+                        else if (mod.value == "readonly")
                             spec.bAnyReadOnly = true;
                     }
                 }
@@ -2001,34 +2001,29 @@ function AddAccessSpecifierToType(scope : ASScope, statement : ASStatement, node
             }
             else
             {
-                let cls = new typedb.DBAccessClass();
-                cls.className = accessClass.className.value;
+                let cls = new typedb.DBAccessPermission();
+                cls.accessName = accessClass.className.value;
 
                 if (accessClass.mods)
                 {
                     for (let mod of accessClass.mods)
                     {
-                        if (mod == "editdefaults")
+                        if (mod.value == "editdefaults")
                             cls.bEditDefaults = true;
-                        else if (mod == "readonly")
+                        else if (mod.value == "readonly")
                             cls.bReadOnly = true;
-                        else if (mod == "inherited")
+                        else if (mod.value == "inherited")
                             cls.bInherited = true;
                     }
                 }
 
-                if (spec.accessClasses)
-                    spec.accessClasses.push(cls);
+                if (spec.permissions)
+                    spec.permissions.push(cls);
                 else
-                    spec.accessClasses = [cls];
+                    spec.permissions = [cls];
             }
         }
     }
-
-    if (scope.dbtype.acccessSpecifiers)
-        scope.dbtype.acccessSpecifiers.push(spec);
-    else
-        scope.dbtype.acccessSpecifiers = [spec];
 }
 
 // Either create a new scope for an optional statement after a control statement,
@@ -3758,7 +3753,26 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     if (cls.className.value == "protected")
                         continue;
 
-                    AddIdentifierSymbol(scope, statement, cls.className, ASSymbolType.Typename, null, cls.className.value);
+                    // Check if this is a global function or a type
+                    let specType = typedb.GetType(cls.className.value);
+                    if (specType)
+                    {
+                        AddIdentifierSymbol(scope, statement, cls.className, ASSymbolType.Typename, null, cls.className.value);
+                    }
+                    else
+                    {
+                        let globalFunctions = typedb.FindScriptGlobalSymbols(cls.className.value);
+                        if (globalFunctions && globalFunctions.length != 0)
+                        {
+                            let func = globalFunctions[0];
+                            AddIdentifierSymbol(scope, statement, cls.className, ASSymbolType.GlobalFunction, func.containingType, func.name);
+                        }
+                        else
+                        {
+                            if (!scope.module.isEditingNode(statement, cls.className))
+                                AddUnknownSymbol(scope, statement, cls.className, false);
+                        }
+                    }
                 }
             }
         }

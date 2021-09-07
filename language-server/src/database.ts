@@ -1174,26 +1174,29 @@ export class DBAccessSpecifier
     bAnyReadOnly : boolean = false;
     bAnyEditDefaults : boolean = false;
 
-    accessClasses : Array<DBAccessClass>;
+    permissions : Array<DBAccessPermission>;
 
     declaredModule : string;
     moduleOffset : number;
     moduleOffsetEnd : number = -1;
 
-    getAccess(fromType : DBType) : [boolean, boolean, boolean]
+    getAccess(fromType : DBType, fromFunction : DBMethod) : [boolean, boolean, boolean]
     {
-        if (fromType == null)
+        if (fromType == null && fromFunction == null)
             return [this.bAnyReadOnly, false, this.bAnyEditDefaults];
 
-        if (this.isProtected)
+        if (fromType)
         {
-            if (fromType.inheritsFrom(this.declaredType))
-                return [true, true, true];
-        }
-        else
-        {
-            if (fromType.typename == this.declaredType)
-                return [true, true, true];
+            if (this.isProtected)
+            {
+                if (fromType.inheritsFrom(this.declaredType))
+                    return [true, true, true];
+            }
+            else
+            {
+                if (fromType.typename == this.declaredType)
+                    return [true, true, true];
+            }
         }
 
         let read = false;
@@ -1205,15 +1208,23 @@ export class DBAccessSpecifier
         if (this.bAnyReadOnly)
             read = true;
 
-        if (this.accessClasses)
+        if (this.permissions)
         {
-            for (let cls of this.accessClasses)
+            for (let cls of this.permissions)
             {
                 let clsApplies = false;
-                if (cls.bInherited)
-                    clsApplies = fromType.inheritsFrom(cls.className);
-                else
-                    clsApplies = (fromType.typename == cls.className);
+
+                if (fromType)
+                {
+                    if (cls.bInherited)
+                        clsApplies = fromType.inheritsFrom(cls.accessName);
+                    else
+                        clsApplies = (fromType.typename == cls.accessName);
+                }
+                else if (fromFunction)
+                {
+                    clsApplies = (fromFunction.name == cls.accessName);
+                }
 
                 if (clsApplies)
                 {
@@ -1245,9 +1256,9 @@ export class DBAccessSpecifier
     }
 };
 
-export class DBAccessClass
+export class DBAccessPermission
 {
-    className : string;
+    accessName : string;
     bInherited : boolean = false;
     bReadOnly : boolean = false;
     bEditDefaults : boolean = false;

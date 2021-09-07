@@ -536,7 +536,7 @@ access_list -> access_class (_ "," _ access_class):* (_ %comma):? {%
         return args;
     }
 %}
-access_class -> (%identifier | "*") (_ %lparen access_mod_list %rparen):? {%
+access_class -> (%identifier | "*") (_ %lparen _ access_mod_list _ %rparen):? {%
     function (d) {
         return {
             ...Compound( d, n.AccessClass, null),
@@ -549,19 +549,16 @@ access_class -> (%identifier | "*") (_ %lparen access_mod_list %rparen):? {%
 access_mod_list -> null {%
     function(d) { return []; }
 %}
-access_mod_list -> access_mod (_ "," _ access_mod):* (_ %comma):? {%
+access_mod_list -> %identifier (_ "," _ %identifier):* (_ %comma):? {%
     function(d) {
         let args = [d[0]];
         if (d[1])
         {
             for (let part of d[1])
-                args.push(part[3]);
+                args.push(Identifier(part[3]));
         }
         return args;
     }
-%}
-access_mod -> ("editdefaults" | "readonly" | "inherited") {%
-    function (d) { return d[0][0].value; }
 %}
 
 var_decl -> typename _ %identifier {%
@@ -1239,7 +1236,11 @@ access_specifier -> %access_token (_ %colon _ %identifier):? {%
 
 # INCOMPLETE: Incomplete access specifier
 class_statement -> %access_token _ %colon (_ %identifier):? {%
-    function (d) { return null; }
+    function (d) { return Compound(
+        d, n.IncompleteAccessSpecifier, [
+            d[3] ? Identifier(d[3][1]) : null
+        ]
+    ); }
 %}
 
 _ -> (%WS | %line_comment | %block_comment | %preprocessor_statement):* {%

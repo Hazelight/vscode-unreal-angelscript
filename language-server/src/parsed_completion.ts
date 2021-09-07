@@ -90,6 +90,7 @@ class CompletionContext
     isSubExpression: boolean = false;
     isAssignment: boolean = false;
     isNamingVariable: boolean = false;
+    isTypingAccessSpecifier: boolean = false;
     isIgnoredCode: boolean = false;
     isIncompleteNamespace: boolean = false;
     isFunctionDeclaration: boolean = false;
@@ -160,6 +161,10 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
 
     // Add completions from unreal macro specifiers
     if (AddCompletionsFromUnrealMacro(context, completions))
+        return completions;
+
+    // Add completions from access specifiers
+    if (AddCompletionsFromAccessSpecifiers(context, completions))
         return completions;
 
     if (context.completingSymbol == null)
@@ -2095,6 +2100,28 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             return true;
         }
         break;
+        case scriptfiles.node_types.IncompleteAccessSpecifier:
+        {
+            context.priorExpression = null;
+            context.priorType = null;
+            context.isNamingVariable = false;
+            context.isTypingAccessSpecifier = true;
+            return true;
+        }
+        break;
+        case scriptfiles.node_types.AccessDeclaration:
+        {
+            if (!node.children || node.children.length == 0)
+            {
+                context.priorExpression = null;
+                context.priorType = null;
+                context.isNamingVariable = true;
+                context.completingNode = node.name;
+                context.completingSymbol = node.name.value;
+                return true;
+            }
+        }
+        break;
     }
 
     return false;
@@ -2673,7 +2700,7 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DB
     }
     else if (prop.accessSpecifier)
     {
-        let [readable, writable, editable] = prop.accessSpecifier.getAccess(inScope.getParentType());
+        let [readable, writable, editable] = prop.accessSpecifier.getAccess(inScope.getParentType(), inScope.getParentFunction());
         if (!readable && !editable)
             return false;
         else if (!readable && !isEditScope(inScope))
@@ -2725,7 +2752,7 @@ function isFunctionAccessibleFromScope(curtype : typedb.DBType, func : typedb.DB
     }
     else if (func.accessSpecifier)
     {
-        let [readable, writable, editable] = func.accessSpecifier.getAccess(inScope.getParentType());
+        let [readable, writable, editable] = func.accessSpecifier.getAccess(inScope.getParentType(), inScope.getParentFunction());
         if (!readable && !editable && !writable)
             return false;
         else if (!editable && isEditScope(inScope))
@@ -3389,5 +3416,102 @@ export function AddMathShortcutCompletions(context : CompletionContext, completi
         if (completionNames.has(compl.label))
             continue;
         completions.push(compl);
+    }
+}
+
+function AddCompletionsFromAccessSpecifiers(context : CompletionContext, completions : Array<CompletionItem>) : boolean
+{
+    if (context.isTypingAccessSpecifier)
+    {
+        let scopeType = context.scope.getParentType();
+        if (scopeType && scopeType.acccessSpecifiers)
+        {
+            for (let spec of scopeType.acccessSpecifiers)
+            {
+                let compl = <CompletionItem>{
+                    label: spec.name,
+                    kind: CompletionItemKind.Keyword,
+                };
+                completions.push(compl);
+            }
+        }
+
+        return true;
+    }
+    else if (context.baseStatement && context.baseStatement.ast
+        && context.baseStatement.ast.type == scriptfiles.node_types.AccessDeclaration)
+    {
+        // Add completions for relevant keywords
+        AddCompletionsFromKeywordList(context, [
+            "private", "protected", "readonly", "editdefaults", "inherited"
+        ], completions);
+
+        // Add completions for all types
+        for (let [typename, dbtype] of typedb.GetAllTypes())
+        {
+            // Ignore template instantations for completion
+            if (dbtype.isTemplateInstantiation)
+                continue;
+            if (dbtype.isNamespace())
+                continue;
+            if (dbtype.isShadowedNamespace())
+                continue;
+            if (typename.startsWith("//"))
+                continue;
+            if (dbtype.isEnum)
+                continue;
+
+            if (CanCompleteSymbol(context, dbtype))
+            {
+                let complItem = <CompletionItem> {
+                        label: typename,
+                        kind: CompletionItemKind.Class,
+                        data: ["type", dbtype.typename],
+                        commitCharacters: [",", ";"],
+                        sortText: Sort.Typename,
+                };
+
+                completions.push(complItem);
+            }
+        }
+
+        // Add completions for all global functions
+        for (let [name, globalSymbols] of typedb.ScriptGlobals)
+        {
+            if (!CanCompleteToOnlyStart(context, name))
+                continue;
+
+            for (let sym of globalSymbols)
+            {
+                if (!sym.containingType)
+                    continue;
+                if (sym instanceof typedb.DBMethod)
+                {
+                    let compl = <CompletionItem>{
+                        label: sym.name,
+                        kind: CompletionItemKind.Method,
+                        data: ["func", sym.containingType.typename, sym.name, sym.id],
+                        commitCharacters: [",", ";"],
+                        sortText: Sort.Unimported,
+                    };
+
+                    compl.labelDetails = <CompletionItemLabelDetails>
+                    {
+                        detail: (sym.args && sym.args.length > 0) ? FunctionLabelWithParamsSuffix : FunctionLabelSuffix,
+                    };
+
+                    if (sym.returnType && sym.returnType != "void")
+                        compl.labelDetails.description = sym.returnType;
+
+                    completions.push(compl);
+                }
+            }
+        }
+
+        return true;
+    }
+    else
+    {
+        return false;
     }
 }
