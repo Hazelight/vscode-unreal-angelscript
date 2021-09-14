@@ -23,6 +23,22 @@ let parser_class_statement_initial = parser_class_statement.save();
 let parser_global_statement_initial = parser_global_statement.save();
 let parser_enum_statement_initial = parser_enum_statement.save();
 
+export interface ASSettings
+{
+    automaticImports : boolean,
+};
+
+let ScriptSettings : ASSettings = {
+    automaticImports: false,
+};
+
+let PreParsedIdentifiersInModules = new Map<string, Array<ASModule>>();
+
+export function GetScriptSettings() : ASSettings
+{
+    return ScriptSettings;
+}
+
 export let node_types = require("../grammar/node_types.js");
 
 export let ASKeywords = [
@@ -75,9 +91,11 @@ export class ASModule
 
     importedModules : Array<ASModule> = [];
     delegateBinds : Array<ASDelegateBind> = [];
+    moduleDependencies = new Set<ASModule>();
 
     flatImportList = new Set<string>();
     preParsedImports = new Array<string>();
+    preParsedIdentifiers = new Array<string>();
 
     queuedParse : any = null;
 
@@ -224,6 +242,61 @@ export class ASModule
     isModuleImported(modulename : string) : boolean
     {
         return this.flatImportList.has(modulename);
+    }
+
+    markDependencyModule(dependency : ASModule)
+    {
+        if (dependency)
+            this.moduleDependencies.add(dependency);
+    }
+
+    markDependencySymbol(dependency : typedb.DBSymbol)
+    {
+        if (dependency instanceof typedb.DBMethod)
+            this.markDependencyFunction(dependency);
+        else if (dependency instanceof typedb.DBProperty)
+            this.markDependencyProperty(dependency);
+    }
+
+    markDependencyType(dependency : typedb.DBType)
+    {
+        if (dependency && dependency.declaredModule)
+            this.moduleDependencies.add(GetModule(dependency.declaredModule));
+    }
+
+    markDependencyFunction(dependency : typedb.DBMethod)
+    {
+        if (!dependency.declaredModule)
+            return;
+
+        this.moduleDependencies.add(GetModule(dependency.declaredModule));
+        if (dependency.args)
+        {
+            for (let arg of dependency.args)
+                this.markDependencyType(typedb.GetType(arg.typename));
+        }
+
+        if (dependency.returnType && dependency.returnType != "void")
+            this.markDependencyType(typedb.GetType(dependency.returnType));
+    }
+
+    markDependencyProperty(dependency : typedb.DBProperty)
+    {
+        if (!dependency.declaredModule)
+            return;
+
+        this.moduleDependencies.add(GetModule(dependency.declaredModule));
+        this.markDependencyType(typedb.GetType(dependency.typename));
+    }
+
+    markDependencyIdentifier(identifier : string)
+    {
+        let moduleList = PreParsedIdentifiersInModules.get(identifier);
+        if (!moduleList)
+            return;
+
+        for (let dependency of moduleList)
+            this.moduleDependencies.add(dependency);
     }
 };
 
@@ -753,33 +826,52 @@ export function ResolveModule(module : ASModule)
 {
     if (!module.parsed)
         return;
-    if (module.resolved)
-        return;
-    module.resolved = true;
 
-    // Resolve which global types should be used
-    module.all_global_types = [ module.global_type, typedb.GetType("__") ];
-
-    // Flatten full tree of imported modules
-    module.flatImportList.clear();
-    let importList = new Array<ASModule>();
-    importList.push(module);
-    for (let i = 0; i < importList.length; ++i)
+    while (!module.resolved)
     {
-        if (!importList[i].parsed)
-            continue;
-        if (module.flatImportList.has(importList[i].modulename))
-            continue;
-        module.flatImportList.add(importList[i].modulename);
-        for (let importMod of importList[i].importedModules)
-            importList.push(importMod);
+        module.resolved = true;
+
+        // Resolve which global types should be used
+        module.all_global_types = [ module.global_type, typedb.GetType("__") ];
+
+        // Flatten full tree of imported modules
+        module.flatImportList.clear();
+        let importList = new Array<ASModule>();
+        importList.push(module);
+        for (let i = 0; i < importList.length; ++i)
+        {
+            if (!importList[i].parsed)
+                continue;
+            if (module.flatImportList.has(importList[i].modulename))
+                continue;
+            module.flatImportList.add(importList[i].modulename);
+            for (let importMod of importList[i].importedModules)
+                importList.push(importMod);
+        }
+
+        // Resolve autos to the correct types
+        ResolveAutos(module.rootscope);
+
+        // Detect all symbols used in the scope
+        DetectScopeSymbols(module.rootscope);
+
+        // If we've detected new dependencies while we were adding symbols,
+        // make sure those dependencies are parsed first, and then re-resolve
+        if (ScriptSettings.automaticImports)
+        {
+            for (let dependencyModule of module.moduleDependencies)
+            {
+                if (!dependencyModule.parsed || !dependencyModule.typesPostProcessed)
+                {
+                    ParseModuleAndDependencies(dependencyModule);
+                    PostProcessModuleTypesAndDependencies(dependencyModule);
+                    module.resolved = false;
+                    module.symbols = [];
+                    module.moduleDependencies.clear();
+                }
+            }
+        }
     }
-
-    // Resolve autos to the correct types
-    ResolveAutos(module.rootscope);
-
-    // Detect all symbols used in the scope
-    DetectScopeSymbols(module.rootscope);
 
     // Clear previously cached statements from last parse
     module.cachedStatements = null;
@@ -921,6 +1013,8 @@ export function UpdateModuleFromDisk(module : ASModule)
 {
     if (!module.filename)
         return;
+
+
     ClearModule(module);
     try
     {
@@ -935,7 +1029,9 @@ export function UpdateModuleFromDisk(module : ASModule)
     module.lastEditStart = -1;
     module.lastEditEnd = -1;
     LoadModule(module);
+
     PreParseImports(module);
+    PreParseTypes(module);
 }
 
 // Called when the debug database changes, and all modules need to stop being resolved
@@ -974,6 +1070,58 @@ function PreParseImports(module : ASModule)
             break;
 
         module.preParsedImports.push(match[1]);
+    }
+}
+
+// Use regex to lift out types, namespaces and global functions so resolve can find them later
+let re_preparse_type = /\s*(class|struct|namespace)\s+([A-Za-z0-9_]+)(\s*:\s*([A-Za-z0-9_]+))?\s*\{/g;
+let re_preparse_function = /(\n|^)[ \t]*(mixin[ \t]+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)([ \t]*&)?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
+function PreParseTypes(module : ASModule)
+{
+    module.preParsedIdentifiers = [];
+
+    re_preparse_type.lastIndex = 0;
+    while (true)
+    {
+        let match = re_preparse_type.exec(module.content);
+        if (!match)
+            break;
+
+        let identifier = match[2];
+        module.preParsedIdentifiers.push(identifier);
+
+        let list = PreParsedIdentifiersInModules.get(identifier);
+        if (list)
+        {
+            if (list.indexOf(module) == -1)
+                list.push(module);
+        }
+        else
+        {
+            PreParsedIdentifiersInModules.set(identifier, [module]);
+        }
+    }
+
+    re_preparse_function.lastIndex = 0;
+    while (true)
+    {
+        let match = re_preparse_function.exec(module.content);
+        if (!match)
+            break;
+
+        let identifier = match[9];
+        module.preParsedIdentifiers.push(identifier);
+
+        let list = PreParsedIdentifiersInModules.get(identifier);
+        if (list)
+        {
+            if (list.indexOf(module) == -1)
+                list.push(module);
+        }
+        else
+        {
+            PreParsedIdentifiersInModules.set(identifier, [module]);
+        }
     }
 }
 
@@ -1048,33 +1196,57 @@ export function GetModulesPotentiallyImporting(findModule : string) : Array<ASMo
             if (markedModules.has(module.modulename))
                 continue;
 
-            // Check if any of our imports are marked
-            let importsMarkedModule = false;
-            if (module.parsed)
+            let isPotentialUser = false;
+            if (ScriptSettings.automaticImports)
             {
-                for (let parsedImport of module.importedModules)
+                if (module.resolved)
                 {
-                    if (markedModules.has(parsedImport.modulename))
+                    // Already resolved modules can be filtered by their recorded dependencies
+                    for (let dependency of module.moduleDependencies)
                     {
-                        importsMarkedModule = true;
-                        break;
+                        if (markedModules.has(dependency.modulename))
+                        {
+                            isPotentialUser = true;
+                            break;
+                        }
                     }
                 }
-            }
-            else if (module.preParsedImports)
-            {
-                for (let foundImport of module.preParsedImports)
+                else
                 {
-                    if (markedModules.has(foundImport))
+                    // Unfortunately all unresolved modules are potential users,
+                    // because we don't have pre-parsed metadata from import statements.
+                    isPotentialUser = true;
+                }
+            }
+            else
+            {
+                // Check if any of our imports are marked
+                if (module.parsed)
+                {
+                    for (let parsedImport of module.importedModules)
                     {
-                        importsMarkedModule = true;
-                        break;
+                        if (markedModules.has(parsedImport.modulename))
+                        {
+                            isPotentialUser = true;
+                            break;
+                        }
+                    }
+                }
+                else if (module.preParsedImports)
+                {
+                    for (let foundImport of module.preParsedImports)
+                    {
+                        if (markedModules.has(foundImport))
+                        {
+                            isPotentialUser = true;
+                            break;
+                        }
                     }
                 }
             }
 
             // Mark the module if it imports a marked module
-            if (importsMarkedModule)
+            if (isPotentialUser)
             {
                 markedModules.add(module.modulename);
                 anyMarked = true;
@@ -1130,6 +1302,18 @@ function ClearModule(module : ASModule)
     module.rawStatements = [];
     module.loadedFromCacheCount = 0;
     module.parsedStatementCount = 0;
+
+    for (let identifier of module.preParsedIdentifiers)
+    {
+        let list = PreParsedIdentifiersInModules.get(identifier);
+        if (list)
+        {
+            let index = list.indexOf(module);
+            if (index != -1)
+                list.splice(index, 1);
+        }
+    }
+    module.preParsedIdentifiers = [];
 }
 
 export function GetSymbolLocation(modulename : string, typename : string, symbolname : string) : Location | null
@@ -2244,6 +2428,7 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
             if (scope.module.isEditingNode(statement, node))
                 hasPotentialCompletions = typedb.HasTypeWithPrefix(node.name.value);
             AddUnknownSymbol(scope, statement, node.name, hasPotentialCompletions);
+            scope.module.markDependencyIdentifier(node.name.value);
             return null;
         }
         else
@@ -2253,8 +2438,9 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
             {
                 if (exists.isEnum)
                     addSymbol.symbol_name = exists.typename;
-                if (exists.declaredModule && !scope.module.isModuleImported(exists.declaredModule))
+                if (exists.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(exists.declaredModule))
                     addSymbol.isUnimported = true;
+                scope.module.markDependencyType(exists);
             }
             return addSymbol;
         }
@@ -3065,7 +3251,7 @@ export function ResolveFunctionOverloadsFromIdentifier(scope : ASScope, identifi
     }
 }
 
-function DetectScopeSymbols(scope : ASScope)
+function DetectScopeSymbols(scope : ASScope) : ASParseContext
 {
     // Look at each statement to see if it has symbols
     let element = scope.element_head;
@@ -3086,6 +3272,7 @@ function DetectScopeSymbols(scope : ASScope)
         }
         element = element.next;
     }
+    return parseContext;
 }
 
 function GetTypeFromSymbol(symbol : typedb.DBSymbol | typedb.DBType)
@@ -3220,6 +3407,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
 
             if (!nsType && !parentType)
             {
+                scope.module.markDependencyIdentifier(node.children[0].value);
                 if (parseContext.allow_errors)
                 {
                     AddUnknownSymbol(scope, statement, node.children[0], false);
@@ -3231,6 +3419,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, null);
             if (nsType)
             {
+                scope.module.markDependencyType(nsType);
                 if (nsType.isShadowedNamespace())
                 {
                     addedSymbol.type = ASSymbolType.Typename;
@@ -3246,11 +3435,12 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     addedSymbol.symbol_name = nsType.typename;
                 }
                 
-                if (nsType.declaredModule && !scope.module.isModuleImported(nsType.declaredModule))
+                if (nsType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(nsType.declaredModule))
                     addedSymbol.isUnimported = true;
             }
             else if (parentType)
             {
+                scope.module.markDependencyType(parentType);
                 addedSymbol.symbol_name = parentType.typename;
             }
 
@@ -3298,19 +3488,21 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 {
                     left_type = enumType;
                     let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, enumType.typename);
-                    if (enumType.declaredModule && !scope.module.isModuleImported(enumType.declaredModule))
+                    if (enumType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(enumType.declaredModule))
                         addedSymbol.isUnimported = true;
+                    scope.module.markDependencyType(enumType);
                 }
                 else
                 {
                     let constrType = typedb.GetType(node.children[0].value);
                     if (constrType)
                     {
+                        scope.module.markDependencyType(constrType);
                         left_symbol = typedb.GetType("__").findFirstSymbol(constrType.typename, typedb.DBAllowSymbol.FunctionOnly);
                         left_type = constrType;
 
                         let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, constrType.typename);
-                        if (constrType.declaredModule && !scope.module.isModuleImported(constrType.declaredModule))
+                        if (constrType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(constrType.declaredModule))
                             addedSymbol.isUnimported = true;
 
                         // If this is a delegate constructor call, mark it for later diagnostics
@@ -3863,7 +4055,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 if (superType)
                 {
                     let superSymbol = AddIdentifierSymbol(scope, statement, node.superclass, ASSymbolType.Typename, null, node.superclass.value);
-                    if (superType.declaredModule && !scope.module.isModuleImported(superType.declaredModule))
+                    if (superType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(superType.declaredModule))
                         superSymbol.isUnimported = true;
                 }
                 else
@@ -3945,7 +4137,9 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                     usedVariable.usages = new Array<ASSymbol>();
                 usedVariable.usages.push(varSymbol);
 
-                return typedb.GetType(usedVariable.typename);
+                let dbType = typedb.GetType(usedVariable.typename);
+                scope.module.markDependencyType(dbType);
+                return dbType;
             }
             checkscope = checkscope.parentscope;
         }
@@ -3961,6 +4155,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             {
                 let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.MemberVariable : ASSymbolType.MemberFunction;
                 AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
+                scope.module.markDependencySymbol(usedSymbol);
                 return usedSymbol;
             }
 
@@ -3970,6 +4165,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 if (getAccessor && getAccessor instanceof typedb.DBMethod)
                 {
                     AddIdentifierSymbol(scope, statement, node, ASSymbolType.MemberAccessor, getAccessor.containingType, getAccessor.name, parseContext.isWriteAccess);
+                    scope.module.markDependencyFunction(getAccessor);
                     return typedb.GetType(getAccessor.returnType);
                 }
 
@@ -3977,6 +4173,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
                 {
                     AddIdentifierSymbol(scope, statement, node, ASSymbolType.MemberAccessor, setAccessor.containingType, setAccessor.name, parseContext.isWriteAccess);
+                    scope.module.markDependencyFunction(setAccessor);
                     return typedb.GetType(setAccessor.args[0].typename);
                 }
             }
@@ -3994,6 +4191,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 symType = ASSymbolType.Typename;
 
             AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
+            scope.module.markDependencySymbol(usedSymbol);
             return usedSymbol;
         }
 
@@ -4003,6 +4201,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             if (getAccessor && getAccessor instanceof typedb.DBMethod && getAccessor.isProperty)
             {
                 AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, getAccessor.containingType, getAccessor.name, parseContext.isWriteAccess);
+                scope.module.markDependencyFunction(getAccessor);
                 return typedb.GetType(getAccessor.returnType);
             }
 
@@ -4010,6 +4209,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
             {
                 AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, setAccessor.containingType, setAccessor.name, parseContext.isWriteAccess);
+                scope.module.markDependencyFunction(setAccessor);
                 return typedb.GetType(setAccessor.args[0].typename);
             }
         }
@@ -4026,13 +4226,17 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 if (usedSymbol.isMixin)
                     continue;
                 let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
-                addedSym.isUnimported = true;
+                if (!ScriptSettings.automaticImports)
+                    addedSym.isUnimported = true;
+                scope.module.markDependencyFunction(usedSymbol);
                 return usedSymbol;
             }
             else if (usedSymbol instanceof typedb.DBProperty && typedb.AllowsProperties(symbol_type))
             {
                 let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalVariable, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
-                addedSym.isUnimported = true;
+                if (!ScriptSettings.automaticImports)
+                    addedSym.isUnimported = true;
+                scope.module.markDependencyProperty(usedSymbol);
                 return usedSymbol;
             }
         }
@@ -4049,7 +4253,9 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isProperty && !usedSymbol.isMixin)
                 {
                     let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
-                    addedSym.isUnimported = true;
+                    if (!ScriptSettings.automaticImports)
+                        addedSym.isUnimported = true;
+                    scope.module.markDependencyFunction(usedSymbol);
                     return typedb.GetType(usedSymbol.returnType);
                 }
             }
@@ -4063,7 +4269,9 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isProperty && usedSymbol.args.length != 0 && !usedSymbol.isMixin)
                 {
                     let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
-                    addedSym.isUnimported = true;
+                    if (!ScriptSettings.automaticImports)
+                        addedSym.isUnimported = true;
+                    scope.module.markDependencyFunction(usedSymbol);
                     return typedb.GetType(usedSymbol.args[0].typename);
                 }
             }
@@ -4088,8 +4296,10 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         if (symType)
         {
             let addedSymbol = AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, symType.typename);
-            if (symType.declaredModule && !scope.module.isModuleImported(symType.declaredModule))
+            if (symType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(symType.declaredModule))
                 addedSymbol.isUnimported = true;
+
+            scope.module.markDependencyType(symType);
 
             // We do not return the symbol here, because we tried to parse a typename as an identifier
             // This should only happen on incomplete statements.
@@ -4102,8 +4312,10 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         {
             let symType = nsType.isEnum ? ASSymbolType.Typename : ASSymbolType.Namespace;
             let addedSymbol = AddIdentifierSymbol(scope, statement, node, symType, null, nsType.typename);
-            if (nsType.declaredModule && !scope.module.isModuleImported(nsType.declaredModule))
+            if (nsType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(nsType.declaredModule))
                 addedSymbol.isUnimported = true;
+
+            scope.module.markDependencyType(nsType);
 
             // We do not return the symbol here, because we tried to parse a namespace as an identifier
             // This should only happen on incomplete statements.
@@ -4129,6 +4341,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         }
 
         AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
+        scope.module.markDependencyIdentifier(node.value);
     }
 
     return null;
@@ -4183,6 +4396,7 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
     {
         let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.GlobalVariable : ASSymbolType.GlobalFunction;
         AddIdentifierSymbol(scope, statement, identifierNode, symType, usedSymbol.containingType, usedSymbol.name);
+        scope.module.markDependencySymbol(usedSymbol);
         return true;
     }
 
@@ -4193,6 +4407,7 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
         if (getAccessor && getAccessor instanceof typedb.DBMethod)
         {
             AddIdentifierSymbol(scope, statement, identifierNode, ASSymbolType.GlobalAccessor, getAccessor.containingType, getAccessor.name);
+            scope.module.markDependencyFunction(getAccessor);
             return true;
         }
 
@@ -4200,6 +4415,7 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
         if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
         {
             AddIdentifierSymbol(scope, statement, identifierNode, ASSymbolType.GlobalAccessor, setAccessor.containingType, setAccessor.name);
+            scope.module.markDependencyFunction(setAccessor);
             return true;
         }
     }
@@ -4215,6 +4431,7 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
         }
 
         AddUnknownSymbol(scope, statement, identifierNode, hasPotentialCompletions);
+        scope.module.markDependencyIdentifier(identifierNode.value);
     }
 
     return true;
@@ -4377,12 +4594,13 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
             symType = isGlobal ? ASSymbolType.GlobalFunction : ASSymbolType.MemberFunction;
 
         let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name);
-        if (isGlobal && usedSymbol.declaredModule != dbtype.declaredModule)
+        if (isGlobal && !ScriptSettings.automaticImports && usedSymbol.declaredModule != dbtype.declaredModule)
         {
             if (!scope.module.isModuleImported(usedSymbol.declaredModule))
                 identifierSym.isUnimported = true;
         }
 
+        scope.module.markDependencySymbol(usedSymbol);
         return usedSymbol;
     }
 
@@ -4394,11 +4612,13 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
         {
             symType = isGlobal ? ASSymbolType.GlobalAccessor : ASSymbolType.MemberAccessor;
             let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, getAccessor.containingType, getAccessor.name);
-            if (isGlobal && getAccessor.declaredModule != dbtype.declaredModule)
+            if (isGlobal && !ScriptSettings.automaticImports && getAccessor.declaredModule != dbtype.declaredModule)
             {
                 if (!scope.module.isModuleImported(getAccessor.declaredModule))
                     identifierSym.isUnimported = true;
             }
+
+            scope.module.markDependencyFunction(getAccessor);
             return typedb.GetType(getAccessor.returnType);
         }
 
@@ -4407,11 +4627,13 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
         {
             symType = isGlobal ? ASSymbolType.GlobalAccessor : ASSymbolType.MemberAccessor;
             let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, setAccessor.containingType, setAccessor.name);
-            if (isGlobal && setAccessor.declaredModule != dbtype.declaredModule)
+            if (isGlobal && !ScriptSettings.automaticImports && setAccessor.declaredModule != dbtype.declaredModule)
             {
                 if (!scope.module.isModuleImported(setAccessor.declaredModule))
                     identifierSym.isUnimported = true;
             }
+
+            scope.module.markDependencyFunction(setAccessor);
             return typedb.GetType(setAccessor.args[0].typename);
         }
     }
@@ -4429,6 +4651,7 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
                 if (usedType.args.length != 0 && dbtype.inheritsFrom(usedType.args[0].typename))
                 {
                     AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, usedType.containingType, usedType.name);
+                    scope.module.markDependencyFunction(usedType);
                     return usedType;
                 }
             }
@@ -4447,7 +4670,9 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
                     if (symbol.args.length != 0 && dbtype.inheritsFrom(symbol.args[0].typename))
                     {
                         let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, symbol.containingType, symbol.name);
-                        addedSym.isUnimported = true;
+                        if (!ScriptSettings.automaticImports)
+                            addedSym.isUnimported = true;
+                        scope.module.markDependencyFunction(symbol);
                         return symbol;
                     }
                 }
@@ -4466,6 +4691,7 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
         }
 
         AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
+        scope.module.markDependencyIdentifier(node.value);
     }
 
     return null;

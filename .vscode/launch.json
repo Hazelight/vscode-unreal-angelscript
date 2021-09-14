@@ -8,7 +8,7 @@
 			"runtimeExecutable": "${execPath}",
 			"args": [
                 "--extensionDevelopmentPath=${workspaceRoot}",
-                "--enable-proposed-api", "Hazelight.unreal-angelscript"
+                //"--enable-proposed-api", "Hazelight.unreal-angelscript"
             ],
 			"outFiles": ["${workspaceRoot}/extension/out/**/*.js"],
 			"preLaunchTask": {

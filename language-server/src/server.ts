@@ -164,6 +164,13 @@ function connect_unreal() {
             else if(msg.type == MessageType.AssetDatabaseFinished)
             {
             }
+            else if(msg.type == MessageType.DebugDatabaseSettings)
+            {
+                let version = msg.readInt();
+
+                let scriptSettings = scriptfiles.GetScriptSettings()
+                scriptSettings.automaticImports = msg.readBool();
+            }
         }
     });
 
@@ -397,7 +404,7 @@ function DirtyAllDiagnostics()
 
 function CanResolveModules()
 {
-    return typedb.HasTypesFromUnreal();
+    return typedb.HasTypesFromUnreal() && LoadQueue.length == 0;
 }
 
 function IsInitialParseDone()
@@ -751,6 +758,10 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
         return null;
     if (!asmodule.resolved)
         return null;
+
+    // When automatic imports are on we never return the symbol at all
+    if (scriptfiles.GetScriptSettings().automaticImports)
+        return "-";
 
     // See if we can find an unimported symbol on this line first
     let unimportedSymbol = scriptsymbols.FindUnimportedSymbolOnLine(asmodule, pos.position);

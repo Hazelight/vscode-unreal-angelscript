@@ -6,7 +6,7 @@
 
 import * as path from 'path';
 
-import { workspace, ExtensionContext, TextDocument, Range, InlayHint } from 'vscode';
+import { workspace, ExtensionContext, TextDocument, Range/*, InlayHint*/ } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, Definition, TransportKind, Diagnostic, RequestType, ExecuteCommandRequest, ExecuteCommandParams, ExecuteCommandRegistrationOptions, TextDocumentPositionParams, ImplementationRequest, TypeDefinitionRequest, TextDocumentItem } from 'vscode-languageclient/node';
 
 import * as vscode from 'vscode';
@@ -220,11 +220,11 @@ export function activate(context: ExtensionContext) {
 	});
 	context.subscriptions.push(completionParen);
 
-    let inlayHintsProvider = new ASInlayHintsProvider();
+    /*let inlayHintsProvider = new ASInlayHintsProvider();
     inlayHintsProvider.lspClient = client;
 
     let inlaySubscription = vscode.languages.registerInlayHintsProvider('angelscript', inlayHintsProvider)
-	context.subscriptions.push(inlaySubscription);
+	context.subscriptions.push(inlaySubscription);*/
 
 	console.log("Done activating angelscript extension");
 }
@@ -281,7 +281,7 @@ class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
 	}
 }
 
-const AngelscriptInlayHintsRequest : RequestType<any, any[], void> = new RequestType<any, any[], void>('angelscript/inlayHints');
+/*const AngelscriptInlayHintsRequest : RequestType<any, any[], void> = new RequestType<any, any[], void>('angelscript/inlayHints');
 
 class ASInlayHintsProvider implements vscode.InlayHintsProvider
 {
@@ -289,15 +289,6 @@ class ASInlayHintsProvider implements vscode.InlayHintsProvider
 
     provideInlayHints(model: TextDocument, range: Range, token: CancellationToken): ProviderResult<InlayHint[]>
     {
-        /*let hints = new Array<InlayHint>();
-        hints.push(<InlayHint> {
-            text: "Test",
-            position: model.positionAt(50),
-            kind: vscode.InlayHintKind.Type,
-            whitespaceAfter: true,
-        });
-        return hints;*/
-
         let params = {
             uri: model.uri.toString(),
             start: range.start,
@@ -305,4 +296,4 @@ class ASInlayHintsProvider implements vscode.InlayHintsProvider
         };
 		return this.lspClient.sendRequest(AngelscriptInlayHintsRequest, params);
     }
-};
+};*/

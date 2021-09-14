@@ -42,6 +42,7 @@ export enum MessageType
     AssetDatabase,
     AssetDatabaseFinished,
     FindAssets,
+    DebugDatabaseSettings,
 }
 
 export class Message
