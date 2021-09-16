@@ -1000,8 +1000,8 @@ argument -> %identifier _ "=" optional_expression {%
 
 # INCOMPLETE: We might be typing a named argument in front of an expression,
 # but we haven't typed the = yet
-argument -> %identifier %WS expression {%
-    function (d) { return Compound(d, n.NamedArgument, [Identifier(d[0]), d[3]]); }
+argument -> %identifier %WS expr_leaf {%
+    function (d) { return Compound(d, n.NamedArgument, [Identifier(d[0]), d[2]]); }
 %}
 
 const_number -> %number {%
