@@ -1023,15 +1023,19 @@ var grammar = {
     {"name": "argumentlist", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)], "postprocess": 
         function(d) { return null; }
         },
+    {"name": "argumentlist$ebnf$1", "symbols": []},
     {"name": "argumentlist$ebnf$1$subexpression$1", "symbols": [(lexer.has("comma") ? {type: "comma"} : comma), "_"]},
-    {"name": "argumentlist$ebnf$1", "symbols": ["argumentlist$ebnf$1$subexpression$1"], "postprocess": id},
-    {"name": "argumentlist$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "argumentlist$ebnf$1", "symbols": ["argumentlist$ebnf$1", "argumentlist$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
     {"name": "argumentlist$ebnf$2", "symbols": []},
-    {"name": "argumentlist$ebnf$2$subexpression$1", "symbols": ["argument", "_", {"literal":","}, "_"]},
+    {"name": "argumentlist$ebnf$2$subexpression$1$ebnf$1$subexpression$1", "symbols": [(lexer.has("comma") ? {type: "comma"} : comma), "_"]},
+    {"name": "argumentlist$ebnf$2$subexpression$1$ebnf$1", "symbols": ["argumentlist$ebnf$2$subexpression$1$ebnf$1$subexpression$1"]},
+    {"name": "argumentlist$ebnf$2$subexpression$1$ebnf$1$subexpression$2", "symbols": [(lexer.has("comma") ? {type: "comma"} : comma), "_"]},
+    {"name": "argumentlist$ebnf$2$subexpression$1$ebnf$1", "symbols": ["argumentlist$ebnf$2$subexpression$1$ebnf$1", "argumentlist$ebnf$2$subexpression$1$ebnf$1$subexpression$2"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
+    {"name": "argumentlist$ebnf$2$subexpression$1", "symbols": ["argument", "_", "argumentlist$ebnf$2$subexpression$1$ebnf$1"]},
     {"name": "argumentlist$ebnf$2", "symbols": ["argumentlist$ebnf$2", "argumentlist$ebnf$2$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
+    {"name": "argumentlist$ebnf$3", "symbols": []},
     {"name": "argumentlist$ebnf$3$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
-    {"name": "argumentlist$ebnf$3", "symbols": ["argumentlist$ebnf$3$subexpression$1"], "postprocess": id},
-    {"name": "argumentlist$ebnf$3", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "argumentlist$ebnf$3", "symbols": ["argumentlist$ebnf$3", "argumentlist$ebnf$3$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
     {"name": "argumentlist", "symbols": ["_", "argumentlist$ebnf$1", "argumentlist$ebnf$2", "argument", "argumentlist$ebnf$3"], "postprocess": 
         function(d) { 
             let args = [];
