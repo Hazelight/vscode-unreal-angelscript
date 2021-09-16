@@ -4057,6 +4057,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     let superSymbol = AddIdentifierSymbol(scope, statement, node.superclass, ASSymbolType.Typename, null, node.superclass.value);
                     if (superType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(superType.declaredModule))
                         superSymbol.isUnimported = true;
+                    scope.module.markDependencyType(superType);
                 }
                 else
                 {
@@ -4064,6 +4065,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     if (scope.module.isEditingNode(statement, node.superclass))
                         hasPotentialCompletions = typedb.HasTypeWithPrefix(node.superclass.value);
                     AddUnknownSymbol(scope, statement, node.superclass, hasPotentialCompletions);
+                    scope.module.markDependencyIdentifier(node.superclass.value);
                     return null;
                 }
             }
