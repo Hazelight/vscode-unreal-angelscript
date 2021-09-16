@@ -456,17 +456,20 @@ function AddSymbolDiagnostics(asmodule : scriptfiles.ASModule, diagnostics : Arr
 
 function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBMethod, diagnostics : Array<Diagnostic>)
 {
-    // Add a diagnostic if we aren't calling the super function
-    if (!dbfunc.hasSuperCall && dbfunc.isEvent && dbfunc.containingType
-        && (!dbfunc.returnType || dbfunc.returnType == "void"))
+    if (dbfunc.containingType)
     {
         let parentType = typedb.GetType(dbfunc.containingType.supertype);
         if (parentType)
         {
             let parentMethod = parentType.findFirstSymbol(dbfunc.name, typedb.DBAllowSymbol.FunctionOnly);
-            if (parentMethod && parentMethod instanceof typedb.DBMethod && parentMethod.declaredModule)
+            if (parentMethod && parentMethod instanceof typedb.DBMethod)
             {
-                if (!parentMethod.isEmpty && !parentMethod.hasMetaData("NoSuperCall") && !dbfunc.hasMetaData("NoSuperCall"))
+                // Add a diagnostic if we aren't calling the super function
+                if (!dbfunc.hasSuperCall && dbfunc.isEvent
+                    && (!dbfunc.returnType || dbfunc.returnType == "void")
+                    && parentMethod.declaredModule
+                    && !parentMethod.isEmpty
+                    && !parentMethod.hasMetaData("NoSuperCall") && !dbfunc.hasMetaData("NoSuperCall"))
                 {
                     diagnostics.push(<Diagnostic> {
                         severity: DiagnosticSeverity.Warning,
@@ -481,6 +484,36 @@ function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBM
                             name: parentMethod.name,
                         },
                     });
+                }
+
+                // Add diagnostic if we're overriding a non-blueprintevent and we aren't using the 'override' specifier
+                if (!dbfunc.isOverride && !dbfunc.isEvent && parentMethod.declaredModule)
+                {
+                    let matchesParentSignature = false;
+                    let allBaseMethods = parentType.findSymbols(dbfunc.name);
+                    for (let baseMethod of allBaseMethods)
+                    {
+                        if (baseMethod instanceof typedb.DBMethod)
+                        {
+                            if (baseMethod.isSignatureEqual(dbfunc))
+                            {
+                                matchesParentSignature = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (matchesParentSignature)
+                    {
+                        diagnostics.push(<Diagnostic> {
+                            severity: DiagnosticSeverity.Warning,
+                            range: scope.module.getRange(
+                                scope.declaration.start_offset + scope.declaration.ast.start,
+                                scope.declaration.start_offset + scope.declaration.ast.end),
+                            message: "Overriding script method "+parentMethod.name+" without `override` keyword",
+                            source: "angelscript",
+                        });
+                    }
                 }
             }
         }
