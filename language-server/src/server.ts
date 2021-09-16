@@ -331,6 +331,7 @@ function TickQueues()
     {
         ParseQueue = [];
         ParseQueueIndex = 0;
+        scriptfiles.SetInitialParseDone();
     }
     else if (PostProcessTypesQueueIndex < PostProcessTypesQueue.length)
     {

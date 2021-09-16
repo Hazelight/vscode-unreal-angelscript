@@ -32,11 +32,17 @@ let ScriptSettings : ASSettings = {
     automaticImports: false,
 };
 
-let PreParsedIdentifiersInModules = new Map<string, Array<ASModule>>();
+let PreParsedIdentifiersInModules = new Map<string, Set<ASModule>>();
+let InitialParseDone = false;
 
 export function GetScriptSettings() : ASSettings
 {
     return ScriptSettings;
+}
+
+export function SetInitialParseDone()
+{
+    InitialParseDone = true;
 }
 
 export let node_types = require("../grammar/node_types.js");
@@ -273,11 +279,11 @@ export class ASModule
         if (dependency.args)
         {
             for (let arg of dependency.args)
-                this.markDependencyType(typedb.GetType(arg.typename));
+                this.markDependencyTypename(arg.typename);
         }
 
         if (dependency.returnType && dependency.returnType != "void")
-            this.markDependencyType(typedb.GetType(dependency.returnType));
+            this.markDependencyTypename(dependency.returnType);
     }
 
     markDependencyProperty(dependency : typedb.DBProperty)
@@ -286,7 +292,16 @@ export class ASModule
             return;
 
         this.moduleDependencies.add(GetModule(dependency.declaredModule));
-        this.markDependencyType(typedb.GetType(dependency.typename));
+        this.markDependencyTypename(dependency.typename);
+    }
+
+    markDependencyTypename(typename : string)
+    {
+        let dependencyType = typedb.GetType(typename);
+        if (dependencyType)
+            this.markDependencyType(dependencyType);
+        else
+            this.markDependencyIdentifier(typename);
     }
 
     markDependencyIdentifier(identifier : string)
@@ -826,6 +841,8 @@ export function ResolveModule(module : ASModule)
 {
     if (!module.parsed)
         return;
+    if (module.resolved)
+        return;
 
     while (!module.resolved)
     {
@@ -861,14 +878,92 @@ export function ResolveModule(module : ASModule)
         {
             for (let dependencyModule of module.moduleDependencies)
             {
+                // If the dependency isn't parsed at all, parse it now
                 if (!dependencyModule.parsed || !dependencyModule.typesPostProcessed)
                 {
                     ParseModuleAndDependencies(dependencyModule);
                     PostProcessModuleTypesAndDependencies(dependencyModule);
                     module.resolved = false;
-                    module.symbols = [];
-                    module.moduleDependencies.clear();
                 }
+
+                // Classes declared in the dependency module must also have their superclasses
+                // (and their superclasses) parsed, so the members show up correctly.
+                // We can skip this check if the module is already resolved, since that guarantees it.
+                if (!dependencyModule.resolved)
+                {
+                    for (let dependencyClass of dependencyModule.types)
+                    {
+                        let superTypeName = dependencyClass.supertype;
+
+                        while (superTypeName)
+                        {
+                            let superType = typedb.GetType(superTypeName);
+                            if (superType)
+                            {
+                                if (superType.declaredModule)
+                                {
+                                    let superModule = GetModule(superType.declaredModule);
+                                    if (superModule.resolved)
+                                    {
+                                        // Super module is already resolved, no need to check further
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        // Super module must already be parsed if the type in it exists,
+                                        // but keep checking supers to make sure they're all parsed.
+                                        superTypeName = superType.supertype;
+                                        continue;
+                                    }
+                                }
+                                else
+                                {
+                                    // C++ type, no need to check further
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                // Super module not parsed yet? Check the preparse lookup
+                                let potentialModules = PreParsedIdentifiersInModules.get(superTypeName);
+                                if (potentialModules)
+                                {
+                                    // Parse all modules that might contain the superclass
+                                    for (let moduleWithSuper of potentialModules)
+                                    {
+                                        ParseModuleAndDependencies(moduleWithSuper);
+                                        PostProcessModuleTypesAndDependencies(moduleWithSuper);
+                                    }
+
+                                    let superType = typedb.GetType(superTypeName);
+                                    if (superType)
+                                    {
+                                        // We found a new supertype, so we need to re-resolve
+                                        module.resolved = false;
+                                        continue;
+                                    }
+                                    else
+                                    {
+                                        // If we still can't find the supertype now, give up
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    // We couldn't find the super type in our preparsed identifiers,
+                                    // just give up now.
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!module.resolved)
+            {
+                module.symbols = [];
+                module.moduleDependencies.clear();
             }
         }
     }
@@ -1074,7 +1169,7 @@ function PreParseImports(module : ASModule)
 }
 
 // Use regex to lift out types, namespaces and global functions so resolve can find them later
-let re_preparse_type = /\s*(class|struct|namespace)\s+([A-Za-z0-9_]+)(\s*:\s*([A-Za-z0-9_]+))?\s*\{/g;
+let re_preparse_type = /\s*(class|struct|namespace|enum)\s+([A-Za-z0-9_]+)(\s*:\s*([A-Za-z0-9_]+))?\s*\{/g;
 let re_preparse_function = /(\n|^)[ \t]*(mixin[ \t]+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)([ \t]*&)?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
 function PreParseTypes(module : ASModule)
 {
@@ -1091,15 +1186,13 @@ function PreParseTypes(module : ASModule)
         module.preParsedIdentifiers.push(identifier);
 
         let list = PreParsedIdentifiersInModules.get(identifier);
-        if (list)
+        if (!list)
         {
-            if (list.indexOf(module) == -1)
-                list.push(module);
+            list = new Set<ASModule>()
+            PreParsedIdentifiersInModules.set(identifier, list);
         }
-        else
-        {
-            PreParsedIdentifiersInModules.set(identifier, [module]);
-        }
+
+        list.add(module);
     }
 
     re_preparse_function.lastIndex = 0;
@@ -1113,15 +1206,13 @@ function PreParseTypes(module : ASModule)
         module.preParsedIdentifiers.push(identifier);
 
         let list = PreParsedIdentifiersInModules.get(identifier);
-        if (list)
+        if (!list)
         {
-            if (list.indexOf(module) == -1)
-                list.push(module);
+            list = new Set<ASModule>()
+            PreParsedIdentifiersInModules.set(identifier, list);
         }
-        else
-        {
-            PreParsedIdentifiersInModules.set(identifier, [module]);
-        }
+
+        list.add(module);
     }
 }
 
@@ -1302,16 +1393,13 @@ function ClearModule(module : ASModule)
     module.rawStatements = [];
     module.loadedFromCacheCount = 0;
     module.parsedStatementCount = 0;
+    module.moduleDependencies.clear();
 
     for (let identifier of module.preParsedIdentifiers)
     {
         let list = PreParsedIdentifiersInModules.get(identifier);
         if (list)
-        {
-            let index = list.indexOf(module);
-            if (index != -1)
-                list.splice(index, 1);
-        }
+            list.delete(module);
     }
     module.preParsedIdentifiers = [];
 }
@@ -1855,6 +1943,8 @@ function GenerateTypeInformation(scope : ASScope)
                         dbfunc.isConst = true;
                     else if (qual == "final")
                         dbfunc.isFinal = true;
+                    else if (qual == "override")
+                        dbfunc.isOverride = true;
                 }
             }
 
@@ -3961,7 +4051,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         }
                         else
                         {
-                            if (!scope.module.isEditingNode(statement, cls.className))
+                            if (!scope.module.isEditingNode(statement, cls.className) && InitialParseDone)
                                 AddUnknownSymbol(scope, statement, cls.className, false);
                         }
                     }

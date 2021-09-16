@@ -168,6 +168,7 @@ export class DBMethod implements DBSymbol
     isConst : boolean = false;
     isFinal : boolean = false;
     isProperty : boolean = false;
+    isOverride : boolean = false;
     isDefaultsOnly : boolean = false;
     id : number = NextMethodId++;
     containingType : DBType = null;
