@@ -583,7 +583,10 @@ function AddScopeNamingConventionDiagnostics(scope : scriptfiles.ASScope, diagno
         {
             if (suggestedName.length >= 1 && suggestedName[0] != 'E')
             {
-                suggestedName = "E"+suggestedName;
+                if (suggestedName[0] == 'U' || suggestedName[0] == 'A' || suggestedName[0] == 'F')
+                    suggestedName = "E"+suggestedName.substring(1);
+                else
+                    suggestedName = "E"+suggestedName;
                 hasSuggestion = true;
             }
         }
@@ -591,7 +594,10 @@ function AddScopeNamingConventionDiagnostics(scope : scriptfiles.ASScope, diagno
         {
             if (suggestedName.length >= 1 && suggestedName[0] != 'F')
             {
-                suggestedName = "F"+suggestedName;
+                if (suggestedName[0] == 'U' || suggestedName[0] == 'A' || suggestedName[0] == 'E')
+                    suggestedName = "F"+suggestedName.substring(1);
+                else
+                    suggestedName = "F"+suggestedName;
                 hasSuggestion = true;
             }
         }
@@ -599,7 +605,10 @@ function AddScopeNamingConventionDiagnostics(scope : scriptfiles.ASScope, diagno
         {
             if (suggestedName.length >= 1 && suggestedName[0] != 'A')
             {
-                suggestedName = "A"+suggestedName;
+                if (suggestedName[0] == 'U' || suggestedName[0] == 'F' || suggestedName[0] == 'E')
+                    suggestedName = "A"+suggestedName.substring(1);
+                else
+                    suggestedName = "A"+suggestedName;
                 hasSuggestion = true;
             }
         }
@@ -607,7 +616,10 @@ function AddScopeNamingConventionDiagnostics(scope : scriptfiles.ASScope, diagno
         {
             if (suggestedName.length >= 1 && suggestedName[0] != 'U')
             {
-                suggestedName = "U"+suggestedName;
+                if (suggestedName[0] == 'A' || suggestedName[0] == 'F' || suggestedName[0] == 'E')
+                    suggestedName = "U"+suggestedName.substring(1);
+                else
+                    suggestedName = "U"+suggestedName;
                 hasSuggestion = true;
             }
         }
