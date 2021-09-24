@@ -330,7 +330,7 @@ function ScoreMethodForArguments(context: CompletionContext, argContext: Complet
     }
 
     // 0-argument constructors are prioritized a little lower so we see the arguments earlier
-    if (func.isConstructor && !func.args || func.args.length == 0)
+    if (func.isConstructor && (!func.args || func.args.length == 0))
         score -= 1;
 
     return [score, activeArg];
