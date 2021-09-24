@@ -2008,6 +2008,12 @@ function GenerateTypeInformation(scope : ASScope)
                 let nsType = scope.getGlobalOrNamespaceParentType();
                 nsType.methods.push(dbfunc);
                 nsType.addSymbol(dbfunc);
+
+                if (nsType.isGlobalScope)
+                {
+                    scope.module.globals.push(dbfunc);
+                    typedb.AddScriptGlobalSymbol(dbfunc);
+                }
             }
 
             ExtendScopeToStatement(scope, scope.previous);

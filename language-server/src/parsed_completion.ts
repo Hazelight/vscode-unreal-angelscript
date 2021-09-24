@@ -329,6 +329,10 @@ function ScoreMethodForArguments(context: CompletionContext, argContext: Complet
         }
     }
 
+    // 0-argument constructors are prioritized a little lower so we see the arguments earlier
+    if (func.isConstructor && !func.args || func.args.length == 0)
+        score -= 1;
+
     return [score, activeArg];
 }
 
@@ -1245,6 +1249,10 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
                 if (context.scope.module.isModuleImported(sym.declaredModule))
                     continue;
                 if (!CanCompleteSymbol(context, sym))
+                    continue;
+
+                // Don't show constructors if we're probably completing the name of a type
+                if (sym.isConstructor && context.maybeTypename)
                     continue;
 
                 let compl = <CompletionItem>{
