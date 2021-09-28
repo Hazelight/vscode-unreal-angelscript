@@ -485,11 +485,12 @@ function AddCompletionsFromCallSignature(context: CompletionContext, completions
                 if (argContext.usedArgumentNames.indexOf(arg.name) != -1)
                     continue;
 
-                let complStr = arg.name+" = ";
+                let complStr = arg.name+" =";
                 if (CanCompleteTo(context, complStr))
                 {
                     completions.push({
                         label: complStr,
+                        insertText: complStr+" ",
                         documentation: <MarkupContent> {
                             kind: MarkupKind.Markdown,
                             value: "```angelscript_snippet\n"+complStr+"\n\n```"
@@ -1673,7 +1674,16 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
                     {
                         let argType = typedb.GetType(arg.typename);
                         if (argType && !context.expectedType)
+                        {
                             context.expectedType = argType;
+
+                            // We no longer treat this is a right expression, because it's
+                            // just the parameter name in front of us
+                            if (context.isRightExpression && context.rightOperator == "=")
+                            {
+                                context.isRightExpression = false;
+                            }
+                        }
                     }
                 }
             }
