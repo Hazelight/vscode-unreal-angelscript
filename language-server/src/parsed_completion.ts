@@ -1878,6 +1878,18 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         }
     }
 
+    // If we're typing all the way at the beginning of a for loop we probably want to write a typename
+    if (context.fullOuterStatement && context.fullOuterStatement.ast
+        && context.fullOuterStatement.ast.type == scriptfiles.node_types.ForLoop)
+    {
+        let outerNode = context.fullOuterStatement.ast;
+        if (outerNode.children[0] && !outerNode.children[1] && !outerNode.children[2] && !outerNode.children[3])
+        {
+            if (outerNode.children[0].type == scriptfiles.node_types.Identifier)
+                context.maybeTypename = true;
+        }
+    }
+
     // Record some data about the statement we parsed
     if (context.completingNode)
     {
