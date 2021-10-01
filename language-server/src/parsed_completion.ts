@@ -106,6 +106,9 @@ class CompletionContext
     leftStatement : scriptfiles.ASStatement = null;
     leftType : typedb.DBType = null;
 
+    completionsMatchingExpected : Array<CompletionItem> = [];
+    havePreselection : boolean = false;
+
     isTypeExpected(typename : string) : boolean
     {
         if (!this.expectedType)
@@ -256,7 +259,71 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
     // Add snippet completion for super call if we can
     AddSuperCallSnippet(context, completions);
 
+    // We sometimes want to pre-select one of the completion items if we're confident the user
+    // wants that specific one over all the others.
+    // This should be done after all comletions are added.
+    if (!context.havePreselection)
+        DeterminePreSelectedCompletion(context);
+
     return completions;
+}
+
+function DeterminePreSelectedCompletion(context: CompletionContext)
+{
+    if (context.havePreselection)
+        return;
+    if (context.completionsMatchingExpected.length == 0)
+        return;
+
+    // If any of our matching completions start with the term we're completing,
+    // then don't consider completions that _don't_ start with it for preselection.
+    if (context.completingSymbol && context.completingSymbol.length != 0)
+    {
+        let startWithCompletions : Array<CompletionItem> = [];
+        for (let compl of context.completionsMatchingExpected)
+        {
+            let complText = compl.filterText ? compl.filterText : compl.label;
+            if (CanCompleteToOnlyStart(context, complText))
+                startWithCompletions.push(compl);
+        }
+
+        if (startWithCompletions.length != 0)
+            context.completionsMatchingExpected = startWithCompletions;
+    }
+
+    // Only trigger preselection if we only have one candidate for preselection,
+    // otherwise we don't preselect to let vscode handle MRU and fuzzy matching.
+    if (context.completionsMatchingExpected.length == 1)
+    {
+        context.completionsMatchingExpected[0].preselect = true;
+        context.havePreselection = true;
+        return;
+    }
+
+    // If all items are actually the same, then preselect them all anyway
+    let completionsIdentical = true;
+    let identicalText : string = null;
+
+    for (let compl of context.completionsMatchingExpected)
+    {
+        let complText = compl.insertText ? compl.insertText : compl.label;
+        if (identicalText == null || complText == identicalText)
+        {
+            identicalText = complText;
+        }
+        else
+        {
+            completionsIdentical = false;
+            break;
+        }
+    }
+
+    if (completionsIdentical)
+    {
+        context.havePreselection = true;
+        for (let compl of context.completionsMatchingExpected)
+            compl.preselect = true;
+    }
 }
 
 function GenerateCompletionArguments(context: CompletionContext): CompletionArguments
@@ -809,6 +876,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
                             {
                                 complItem.preselect = true;
                                 complItem.sortText = Sort.EnumValue_Expected;
+                                context.havePreselection = true;
                             }
                         }
                         else
@@ -851,6 +919,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
                     {
                         complItem.sortText =  Sort.EnumName_Expected;
                         complItem.preselect = true;
+                        context.havePreselection = true;
                     }
 
                     completions.push(complItem);
@@ -880,6 +949,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
                         // If we're expecting a component the namespace is high sort
                         complItem.sortText = Sort.Typename_Expected;
                         complItem.preselect = true;
+                        context.havePreselection = true;
                     }
                 }
 
@@ -969,7 +1039,7 @@ export function AddCompletionsFromLocalVariables(context : CompletionContext, sc
 
             if (context.isTypeExpected(asvar.typename))
             {
-                complItem.preselect = true;
+                context.completionsMatchingExpected.push(complItem);
                 complItem.sortText = Sort.Local_Expected;
             }
 
@@ -1018,7 +1088,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
             if (context.isTypeExpected(prop.typename))
             {
-                compl.preselect = !prop.containingType.isGlobalScope;
+                if (!prop.containingType.isGlobalScope)
+                    context.completionsMatchingExpected.push(compl);
 
                 if (prop.containingType == scopeType)
                     compl.sortText = Sort.MemberProp_Direct_Expected;
@@ -1077,7 +1148,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
                     if (context.isTypeExpected(func.returnType))
                     {
-                        compl.preselect = !func.containingType.isGlobalScope;
+                        if (!func.containingType.isGlobalScope)
+                            context.completionsMatchingExpected.push(compl);
 
                         if (func.containingType == scopeType)
                             compl.sortText = Sort.MemberProp_Direct_Expected;
@@ -1121,7 +1193,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
                     if (context.isTypeExpected(func.args[0].typename))
                     {
-                        compl.preselect = !func.containingType.isGlobalScope;
+                        if (!func.containingType.isGlobalScope)
+                            context.completionsMatchingExpected.push(compl);
 
                         if (func.containingType == scopeType)
                             compl.sortText = Sort.MemberProp_Direct_Expected;
@@ -1169,7 +1242,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
             if (context.isTypeExpected(func.returnType))
             {
-                compl.preselect = !func.containingType.isGlobalScope;
+                if (!func.containingType.isGlobalScope || func.isConstructor)
+                    context.completionsMatchingExpected.push(compl);
 
                 if (func.containingType == scopeType)
                     compl.sortText = Sort.Method_Direct_Expected;
@@ -1177,11 +1251,6 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                     compl.sortText = Sort.Method_Parent_Expected;
                 else
                     compl.sortText = Sort.Global_Expected;
-            }
-
-            if (func.isConstructor && context.isTypeExpected(func.returnType))
-            {
-                compl.preselect = true;
             }
 
             if (context.isIncompleteNamespace)
@@ -3356,6 +3425,7 @@ function AddSuperCallSnippet(context : CompletionContext, completions : Array<Co
     }
     insertText += ");";
 
+    context.havePreselection = true;
     completions.push({
         label: "Super::"+scopeFunction.name+"(...)",
         filterText: scopeFunction.name+"(...)",
