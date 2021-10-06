@@ -1916,25 +1916,28 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         let leftAsType : typedb.DBType = null;
         let isCast = false;
 
-        if (leftNode.type == scriptfiles.node_types.Typename)
+        if (leftNode)
         {
-            leftAsType = typedb.GetType(leftNode.value);
-        }
-        else if (leftNode.type == scriptfiles.node_types.VariableDecl)
-        {
-            if (!leftNode.name)
-                leftAsType = typedb.GetType(leftNode.typename.value);
-        }
-        else if (leftNode.type == scriptfiles.node_types.CastOperation)
-        {
-            // Casts also always contain typenames
-            isCast = true;
-        }
+            if (leftNode.type == scriptfiles.node_types.Typename)
+            {
+                leftAsType = typedb.GetType(leftNode.value);
+            }
+            else if (leftNode.type == scriptfiles.node_types.VariableDecl)
+            {
+                if (!leftNode.name)
+                    leftAsType = typedb.GetType(leftNode.typename.value);
+            }
+            else if (leftNode.type == scriptfiles.node_types.CastOperation)
+            {
+                // Casts also always contain typenames
+                isCast = true;
+            }
 
-        if ((leftAsType && leftAsType.isTemplateType()) || isCast)
-        {
-            context.isRightExpression = false;
-            context.maybeTypename = true;
+            if ((leftAsType && leftAsType.isTemplateType()) || isCast)
+            {
+                context.isRightExpression = false;
+                context.maybeTypename = true;
+            }
         }
     }
 
