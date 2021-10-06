@@ -4362,7 +4362,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         let globalSetAccessors = typedb.FindScriptGlobalSymbols("Set"+node.value);
         if (globalSetAccessors)
         {
-            for (let usedSymbol of globalGetAccessors)
+            for (let usedSymbol of globalSetAccessors)
             {
                 if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isProperty && usedSymbol.args.length != 0 && !usedSymbol.isMixin)
                 {
