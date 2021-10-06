@@ -15,6 +15,9 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
     // Actions for autos
     AddAutoActions(asmodule, range_start, range_end, actions, diagnostics);
 
+    // Actions for members
+    AddMemberActions(asmodule, range_start, range_end, actions, diagnostics);
+
     // Actions for generating delegate bind functions
     AddGenerateDelegateFunctionActions(asmodule, range_start, range_end, actions, diagnostics);
 
@@ -49,6 +52,8 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
         ResolveAutoAction(asmodule, action, data);
     else if (data.type == "variablePromotion")
         ResolveVariablePromotionHelper(asmodule, action, data);
+    else if (data.type == "insertMacro")
+        ResolveInsertMacro(asmodule, action, data);
     return action;
 }
 
@@ -887,6 +892,8 @@ function FindInsertPositionForGeneratedMemberVariable(asmodule : scriptfiles.ASM
         {
             for (let statement of subScope.statements)
             {
+                if (!statement)
+                    continue;
                 if (statement.end_offset >= anchor_offset)
                     continue;
 
@@ -977,5 +984,175 @@ function ResolveVariablePromotionHelper(asmodule : scriptfiles.ASModule, action 
 
     action.edit.changes[asmodule.displayUri] = [
         TextEdit.insert(insertPosition, declarationString)
+    ];
+}
+
+function AddMemberActions(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+{
+    let scope = asmodule.getScopeAt(range_start);
+    if (!scope)
+        return;
+    let statement = asmodule.getStatementAt(range_start);
+    if (!statement)
+        return;
+    if (!statement.ast)
+        return;
+
+    let dbType = scope.getParentType();
+    if (statement.ast.type == scriptfiles.node_types.FunctionDecl
+        && statement.ast.name
+        && !statement.ast.macro)
+    {
+        if (!dbType || dbType.isNamespaceOrGlobalScope() || !dbType.isStruct)
+        {
+            let isOverrideEvent = false;
+            if (dbType)
+            {
+                let superType = typedb.GetType(dbType.supertype);
+                if (superType)
+                {
+                    let superFunc = superType.findFirstSymbol(statement.ast.name.value, typedb.DBAllowSymbol.FunctionOnly);
+                    if (superFunc && superFunc instanceof typedb.DBMethod)
+                    {
+                        if (superFunc.isEvent)
+                            isOverrideEvent = true;
+                    }
+                }
+            }
+
+            if (isOverrideEvent)
+            {
+                actions.push(<CodeAction> {
+                    kind: CodeActionKind.RefactorInline,
+                    title: `Add UFUNCTION(BlueprintOverride)`,
+                    source: "angelscript",
+                    data: {
+                        uri: asmodule.uri,
+                        type: "insertMacro",
+                        macro: "UFUNCTION(BlueprintOverride)",
+                        position: range_start,
+                    }
+                });
+            }
+            else
+            {
+                if (dbType)
+                {
+                    let scopeFunc = dbType.getMethod(statement.ast.name.value);
+                    if (scopeFunc
+                        && scopeFunc.isConst
+                        && scopeFunc.returnType
+                        && scopeFunc.returnType != "void")
+                    {
+                        actions.push(<CodeAction> {
+                            kind: CodeActionKind.RefactorInline,
+                            title: `Add UFUNCTION(BlueprintPure)`,
+                            source: "angelscript",
+                            data: {
+                                uri: asmodule.uri,
+                                type: "insertMacro",
+                                macro: "UFUNCTION(BlueprintPure)",
+                                position: range_start,
+                            }
+                        });
+                    }
+                }
+
+                actions.push(<CodeAction> {
+                    kind: CodeActionKind.RefactorInline,
+                    title: `Add UFUNCTION()`,
+                    source: "angelscript",
+                    data: {
+                        uri: asmodule.uri,
+                        type: "insertMacro",
+                        macro: "UFUNCTION()",
+                        position: range_start,
+                    }
+                });
+            }
+        }
+    }
+    else if (statement.ast.type == scriptfiles.node_types.VariableDecl
+        && statement.ast.name
+        && !statement.ast.macro)
+    {
+        if (dbType && !dbType.isNamespaceOrGlobalScope()
+            && scope.scopetype == scriptfiles.ASScopeType.Class)
+        {
+            let variableName = statement.ast.name.value;
+            let varType = typedb.GetType(statement.ast.typename.value);
+
+            if (varType && varType.inheritsFrom("UActorComponent")
+                && !dbType.isStruct
+                && dbType.inheritsFrom("AActor"))
+            {
+                actions.push(<CodeAction> {
+                    kind: CodeActionKind.RefactorInline,
+                    title: `Add UPROPERTY(DefaultComponent)`,
+                    source: "angelscript",
+                    data: {
+                        uri: asmodule.uri,
+                        type: "insertMacro",
+                        macro: "UPROPERTY(DefaultComponent)",
+                        position: range_start,
+                    }
+                });
+            }
+
+            actions.push(<CodeAction> {
+                kind: CodeActionKind.RefactorInline,
+                title: `Add UPROPERTY()`,
+                source: "angelscript",
+                data: {
+                    uri: asmodule.uri,
+                    type: "insertMacro",
+                    macro: "UPROPERTY()",
+                    position: range_start,
+                }
+            });
+        }
+    }
+}
+
+function ResolveInsertMacro(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
+{
+    let position : number = data.position;
+    let macro : string = data.macro;
+
+    let statement = asmodule.getStatementAt(position);
+    if (!statement)
+        return;
+    if (!statement.ast)
+        return;
+
+    let scope = asmodule.getScopeAt(position);
+    if (!scope)
+        return;
+
+    let classScope = scope.getParentTypeScope();
+    if (!classScope)
+        return;
+
+    let [_, indent] = FindInsertPositionForGeneratedMemberVariable(asmodule, classScope, position);
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+
+    let macroString = `${indent}${macro}\n`;
+
+    let insertPosition : Position = null;
+    if (statement.ast.name)
+    {
+        insertPosition = asmodule.getPosition(statement.start_offset + statement.ast.name.start);
+        insertPosition.character = 0;
+    }
+    else
+    {
+        insertPosition = asmodule.getPosition(position);
+        insertPosition.character = 0;
+    }
+
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(insertPosition, macroString)
     ];
 }
