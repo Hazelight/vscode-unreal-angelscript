@@ -3,37 +3,55 @@ import * as typedb from "./database";
 import * as scriptfiles from "./as_parser";
 import * as scriptsymbols from "./symbols";
 
+class CodeActionContext
+{
+    range_start : number;
+    range_end : number;
+
+    module : scriptfiles.ASModule;
+    scope : scriptfiles.ASScope;
+    statement : scriptfiles.ASStatement;
+
+    diagnostics : Array<Diagnostic>;
+    actions : Array<CodeAction>;
+};
+
 export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, diagnostics : Array<Diagnostic>) : Array<CodeAction>
 {
-    let actions = new Array<CodeAction>();
-    let range_start = asmodule.getOffset(Position.create(range.start.line, 0));
-    let range_end = asmodule.getOffset(Position.create(range.end.line, 10000));
+    let context = new CodeActionContext();
+    context.module = asmodule;
+    context.actions = new Array<CodeAction>();
+    context.range_start = asmodule.getOffset(Position.create(range.start.line, 0));
+    context.range_end = asmodule.getOffset(Position.create(range.end.line, 10000));
+    context.scope = asmodule.getScopeAt(context.range_start);
+    context.statement = asmodule.getStatementAt(context.range_start);
+    context.diagnostics = diagnostics;
 
     // Actions for adding missing imports
-    AddImportActions(asmodule, range_start, range_end, actions, diagnostics);
+    AddImportActions(context);
 
     // Actions for autos
-    AddAutoActions(asmodule, range_start, range_end, actions, diagnostics);
+    AddAutoActions(context);
 
     // Actions for members
-    AddMemberActions(asmodule, range_start, range_end, actions, diagnostics);
+    AddMemberActions(context);
 
     // Actions for generating delegate bind functions
-    AddGenerateDelegateFunctionActions(asmodule, range_start, range_end, actions, diagnostics);
+    AddGenerateDelegateFunctionActions(context);
 
     // Actions for method override snippets
-    AddMethodOverrideSnippets(asmodule, range_start, range_end, actions, diagnostics);
+    AddMethodOverrideSnippets(context);
 
     // Actions for adding casts
-    AddCastHelpers(asmodule, range_start, range_end, actions, diagnostics);
+    AddCastHelpers(context);
 
     // Actions for adding super calls
-    AddSuperCallHelper(asmodule, range_start, range_end, actions, diagnostics);
+    AddSuperCallHelper(context);
 
     // Actions for promoting to member variables
-    AddVariablePromotionHelper(asmodule, range_start, range_end, actions, diagnostics);
+    AddVariablePromotionHelper(context);
 
-    return actions;
+    return context.actions;
 }
 
 export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : CodeAction, data : any) : CodeAction
@@ -57,17 +75,17 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
     return action;
 }
 
-function AddImportActions(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+function AddImportActions(context : CodeActionContext)
 {
-    for (let symbol of asmodule.symbols)
+    for (let symbol of context.module.symbols)
     {
         if (!symbol.isUnimported)
             continue;
-        if (!symbol.overlapsRange(range_start, range_end))
+        if (!symbol.overlapsRange(context.range_start, context.range_end))
             continue;
 
         let appliedTo = new Array<Diagnostic>();
-        for (let diag of diagnostics)
+        for (let diag of context.diagnostics)
         {
             if (diag.data)
             {
@@ -88,14 +106,14 @@ function AddImportActions(asmodule : scriptfiles.ASModule, range_start : number,
         if (symbolDisplayName.startsWith("__"))
             symbolDisplayName = symbolDisplayName.substr(2);
 
-        actions.push(<CodeAction> {
+        context.actions.push(<CodeAction> {
             kind: CodeActionKind.QuickFix,
             title: "Import "+symbolDisplayName,
             source: "angelscript",
             diagnostics: appliedTo,
             isPreferred: true,
             data: {
-                uri: asmodule.uri,
+                uri: context.module.uri,
                 type: "import",
                 symbol: symbol,
             }
@@ -165,21 +183,21 @@ function ResolveImportAction(asmodule : scriptfiles.ASModule, action : CodeActio
     ];
 }
 
-function AddGenerateDelegateFunctionActions(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+function AddGenerateDelegateFunctionActions(context : CodeActionContext)
 {
-    for (let diag of diagnostics)
+    for (let diag of context.diagnostics)
     {
         let data = diag.data as any;
         if (data && data.type == "delegateBind")
         {
-            actions.push(<CodeAction> {
+            context.actions.push(<CodeAction> {
                 kind: CodeActionKind.QuickFix,
                 title: "Generate Method: "+data.name+"()",
                 source: "angelscript",
                 diagnostics: [diag],
                 isPreferred: true,
                 data: {
-                    uri: asmodule.uri,
+                    uri: context.module.uri,
                     type: "delegateBind",
                     delegate: data.delegate,
                     name: data.name,
@@ -360,26 +378,24 @@ function FindInsertPositionForGeneratedMethod(asmodule : scriptfiles.ASModule, a
     return [endOfClass, indent, prefix, suffix];
 }
 
-function AddMethodOverrideSnippets(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+function AddMethodOverrideSnippets(context : CodeActionContext)
 {
-    let scope = asmodule.getScopeAt(range_start);
-    if (!scope)
+    if (!context.scope)
         return;
 
-    let typeOfScope = scope.getParentType();
+    let typeOfScope = context.scope.getParentType();
     if (!typeOfScope || !typeOfScope.supertype)
         return;
 
     let validScope = false;
-    if (scope.scopetype == scriptfiles.ASScopeType.Class)
+    if (context.scope.scopetype == scriptfiles.ASScopeType.Class)
     {
         validScope = true;
     }
     // If we're inside the actual function declaration that's fine too
-    else if (scope.scopetype == scriptfiles.ASScopeType.Function)
+    else if (context.scope.scopetype == scriptfiles.ASScopeType.Function)
     {
-        let statement = scope.parentscope.getStatementAt(range_start);
-        if (statement && statement.ast && statement.ast.type == scriptfiles.node_types.FunctionDecl)
+        if (context.statement && context.statement.ast && context.statement.ast.type == scriptfiles.node_types.FunctionDecl)
         {
             validScope = true;
         }
@@ -412,16 +428,16 @@ function AddMethodOverrideSnippets(asmodule : scriptfiles.ASModule, range_start 
             if (method.isFinal)
                 continue;
 
-            actions.push(<CodeAction> {
+            context.actions.push(<CodeAction> {
                 kind: CodeActionKind.RefactorRewrite,
                 title: "Override: "+method.name+"()",
                 source: "angelscript",
                 data: {
-                    uri: asmodule.uri,
+                    uri: context.module.uri,
                     type: "methodOverride",
                     inside: method.containingType.typename,
                     name: method.name,
-                    position: asmodule.getPosition(range_start),
+                    position: context.module.getPosition(context.range_start),
                 }
             });
         }
@@ -500,17 +516,17 @@ function GetTypeFromExpressionIgnoreNullptr(scope : scriptfiles.ASScope, node : 
     return scriptfiles.ResolveTypeFromExpression(scope, node);
 }
 
-function AddCastHelpers(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+function AddCastHelpers(context : CodeActionContext)
 {
-    let scope = asmodule.getScopeAt(range_start);
-    if (!scope)
+    if (!context.scope)
         return;
-    let statement = asmodule.getStatementAt(range_start);
-    if (!statement)
+    if (!context.statement)
         return;
-    if (!statement.ast)
+    if (!context.statement.ast)
         return;
 
+    let statement = context.statement;
+    let scope = context.scope;
 
     let leftType : typedb.DBType = null;
     let rightType : typedb.DBType = null;
@@ -562,15 +578,15 @@ function AddCastHelpers(asmodule : scriptfiles.ASModule, range_start : number, r
     if (!leftType.inheritsFrom(rightType.typename))
         return;
 
-    actions.push(<CodeAction> {
+    context.actions.push(<CodeAction> {
         kind: CodeActionKind.QuickFix,
         title: "Cast to "+leftType.typename,
         source: "angelscript",
         data: {
-            uri: asmodule.uri,
+            uri: context.module.uri,
             type: "addCast",
             castTo: leftType.typename,
-            position: asmodule.getPosition(range_start),
+            position: context.module.getPosition(context.range_start),
         }
     });
 }
@@ -617,25 +633,25 @@ function ResolveCastHelper(asmodule : scriptfiles.ASModule, action : CodeAction,
     ];
 }
 
-function AddSuperCallHelper(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+function AddSuperCallHelper(context : CodeActionContext)
 {
-    for (let diag of diagnostics)
+    for (let diag of context.diagnostics)
     {
         let data = diag.data as any;
         if (data && data.type == "superCall")
         {
-            actions.push(<CodeAction> {
+            context.actions.push(<CodeAction> {
                 kind: CodeActionKind.QuickFix,
                 title: "Add call to Super::"+data.name+"(...)",
                 source: "angelscript",
                 diagnostics: [diag],
                 isPreferred: true,
                 data: {
-                    uri: asmodule.uri,
+                    uri: context.module.uri,
                     type: "superCall",
                     name: data.name,
                     inType: data.inType,
-                    position: asmodule.getPosition(range_end),
+                    position: context.module.getPosition(context.range_end),
                 }
             });
         }
@@ -742,13 +758,13 @@ function FindInsertPositionFunctionStart(scope : scriptfiles.ASScope) : [Positio
     return [Position.create(headPos.line, 100000), indent, prefix, suffix];
 }
 
-function AddAutoActions(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+function AddAutoActions(context : CodeActionContext)
 {
-    for (let symbol of asmodule.symbols)
+    for (let symbol of context.module.symbols)
     {
         if (!symbol.isAuto)
             continue;
-        if (!symbol.overlapsRange(range_start, range_end))
+        if (!symbol.overlapsRange(context.range_start, context.range_end))
             continue;
 
         let realTypename = symbol.symbol_name;
@@ -759,13 +775,13 @@ function AddAutoActions(asmodule : scriptfiles.ASModule, range_start : number, r
         if (!dbtype)
             continue;
 
-        actions.push(<CodeAction> {
+        context.actions.push(<CodeAction> {
             kind: CodeActionKind.RefactorInline,
             title: "Change auto to "+dbtype.getDisplayName(),
             source: "angelscript",
             isPreferred: true,
             data: {
-                uri: asmodule.uri,
+                uri: context.module.uri,
                 type: "materializeAuto",
                 typename: realTypename,
                 symbol: symbol,
@@ -790,17 +806,14 @@ function ResolveAutoAction(asmodule : scriptfiles.ASModule, action : CodeAction,
     ];
 }
 
-function AddVariablePromotionHelper(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+function AddVariablePromotionHelper(context : CodeActionContext)
 {
-    let scope = asmodule.getScopeAt(range_start);
-    if (!scope)
+    if (!context.scope)
+        return;
+    if (!context.statement)
         return;
 
-    let statement = scope.getStatementAt(range_start);
-    if (!statement)
-        return;
-
-    let codeNode = statement.ast;
+    let codeNode = context.statement.ast;
     if (!codeNode)
         return;
 
@@ -811,28 +824,28 @@ function AddVariablePromotionHelper(asmodule : scriptfiles.ASModule, range_start
             return;
 
         // If the left side is a known variable we can't provide this action
-        let lvalueType = scriptfiles.ResolveTypeFromExpression(scope, leftNode);
+        let lvalueType = scriptfiles.ResolveTypeFromExpression(context.scope, leftNode);
         if (lvalueType)
             return;
 
         // If we don't know what type is on the right we can't provide this action
-        let rvalueType = scriptfiles.ResolveTypeFromExpression(scope, codeNode.children[1]);
+        let rvalueType = scriptfiles.ResolveTypeFromExpression(context.scope, codeNode.children[1]);
         if(!rvalueType)
             return;
 
         let variableName = leftNode.value;
 
-        actions.push(<CodeAction> {
+        context.actions.push(<CodeAction> {
             kind: CodeActionKind.RefactorInline,
             title: `Promote ${variableName} to member variable`,
             source: "angelscript",
             isPreferred: true,
             data: {
-                uri: asmodule.uri,
+                uri: context.module.uri,
                 type: "variablePromotion",
                 variableName: variableName,
                 variableType: rvalueType.typename,
-                position: range_start,
+                position: context.range_start,
             }
         });
     }
@@ -987,21 +1000,19 @@ function ResolveVariablePromotionHelper(asmodule : scriptfiles.ASModule, action 
     ];
 }
 
-function AddMemberActions(asmodule : scriptfiles.ASModule, range_start : number, range_end : number, actions : Array<CodeAction>, diagnostics : Array<Diagnostic>)
+function AddMemberActions(context : CodeActionContext)
 {
-    let scope = asmodule.getScopeAt(range_start);
-    if (!scope)
+    if (!context.scope)
         return;
-    let statement = asmodule.getStatementAt(range_start);
-    if (!statement)
+    if (!context.statement)
         return;
-    if (!statement.ast)
+    if (!context.statement.ast)
         return;
 
-    let dbType = scope.getParentType();
-    if (statement.ast.type == scriptfiles.node_types.FunctionDecl
-        && statement.ast.name
-        && !statement.ast.macro)
+    let dbType = context.scope.getParentType();
+    if (context.statement.ast.type == scriptfiles.node_types.FunctionDecl
+        && context.statement.ast.name
+        && !context.statement.ast.macro)
     {
         if (!dbType || dbType.isNamespaceOrGlobalScope() || !dbType.isStruct)
         {
@@ -1011,7 +1022,7 @@ function AddMemberActions(asmodule : scriptfiles.ASModule, range_start : number,
                 let superType = typedb.GetType(dbType.supertype);
                 if (superType)
                 {
-                    let superFunc = superType.findFirstSymbol(statement.ast.name.value, typedb.DBAllowSymbol.FunctionOnly);
+                    let superFunc = superType.findFirstSymbol(context.statement.ast.name.value, typedb.DBAllowSymbol.FunctionOnly);
                     if (superFunc && superFunc instanceof typedb.DBMethod)
                     {
                         if (superFunc.isEvent)
@@ -1022,15 +1033,15 @@ function AddMemberActions(asmodule : scriptfiles.ASModule, range_start : number,
 
             if (isOverrideEvent)
             {
-                actions.push(<CodeAction> {
+                context.actions.push(<CodeAction> {
                     kind: CodeActionKind.RefactorInline,
                     title: `Add UFUNCTION(BlueprintOverride)`,
                     source: "angelscript",
                     data: {
-                        uri: asmodule.uri,
+                        uri: context.module.uri,
                         type: "insertMacro",
                         macro: "UFUNCTION(BlueprintOverride)",
-                        position: range_start,
+                        position: context.range_start,
                     }
                 });
             }
@@ -1038,76 +1049,76 @@ function AddMemberActions(asmodule : scriptfiles.ASModule, range_start : number,
             {
                 if (dbType)
                 {
-                    let scopeFunc = dbType.getMethod(statement.ast.name.value);
+                    let scopeFunc = dbType.getMethod(context.statement.ast.name.value);
                     if (scopeFunc
                         && scopeFunc.isConst
                         && scopeFunc.returnType
                         && scopeFunc.returnType != "void")
                     {
-                        actions.push(<CodeAction> {
+                        context.actions.push(<CodeAction> {
                             kind: CodeActionKind.RefactorInline,
                             title: `Add UFUNCTION(BlueprintPure)`,
                             source: "angelscript",
                             data: {
-                                uri: asmodule.uri,
+                                uri: context.module.uri,
                                 type: "insertMacro",
                                 macro: "UFUNCTION(BlueprintPure)",
-                                position: range_start,
+                                position: context.range_start,
                             }
                         });
                     }
                 }
 
-                actions.push(<CodeAction> {
+                context.actions.push(<CodeAction> {
                     kind: CodeActionKind.RefactorInline,
                     title: `Add UFUNCTION()`,
                     source: "angelscript",
                     data: {
-                        uri: asmodule.uri,
+                        uri: context.module.uri,
                         type: "insertMacro",
                         macro: "UFUNCTION()",
-                        position: range_start,
+                        position: context.range_start,
                     }
                 });
             }
         }
     }
-    else if (statement.ast.type == scriptfiles.node_types.VariableDecl
-        && statement.ast.name
-        && !statement.ast.macro)
+    else if (context.statement.ast.type == scriptfiles.node_types.VariableDecl
+        && context.statement.ast.name
+        && !context.statement.ast.macro)
     {
         if (dbType && !dbType.isNamespaceOrGlobalScope()
-            && scope.scopetype == scriptfiles.ASScopeType.Class)
+            && context.scope.scopetype == scriptfiles.ASScopeType.Class)
         {
-            let variableName = statement.ast.name.value;
-            let varType = typedb.GetType(statement.ast.typename.value);
+            let variableName = context.statement.ast.name.value;
+            let varType = typedb.GetType(context.statement.ast.typename.value);
 
             if (varType && varType.inheritsFrom("UActorComponent")
                 && !dbType.isStruct
                 && dbType.inheritsFrom("AActor"))
             {
-                actions.push(<CodeAction> {
+                context.actions.push(<CodeAction> {
                     kind: CodeActionKind.RefactorInline,
                     title: `Add UPROPERTY(DefaultComponent)`,
                     source: "angelscript",
                     data: {
-                        uri: asmodule.uri,
+                        uri: context.module.uri,
                         type: "insertMacro",
                         macro: "UPROPERTY(DefaultComponent)",
-                        position: range_start,
+                        position: context.range_start,
                     }
                 });
             }
 
-            actions.push(<CodeAction> {
+            context.actions.push(<CodeAction> {
                 kind: CodeActionKind.RefactorInline,
                 title: `Add UPROPERTY()`,
                 source: "angelscript",
                 data: {
-                    uri: asmodule.uri,
+                    uri: context.module.uri,
                     type: "insertMacro",
                     macro: "UPROPERTY()",
-                    position: range_start,
+                    position: context.range_start,
                 }
             });
         }
