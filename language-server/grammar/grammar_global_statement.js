@@ -576,7 +576,7 @@ var grammar = {
             return {
                 ...Compound( d, n.AccessClass, null),
                 className: Identifier(d[0][0]),
-                mods: d[1] ? d[1][2] : null,
+                mods: d[1] ? d[1][3] : null,
             };
         }
         },
