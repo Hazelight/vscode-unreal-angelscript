@@ -51,6 +51,9 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
     // Actions for promoting to member variables
     AddVariablePromotionHelper(context);
 
+    // Actions for switch blocks
+    AddSwitchCaseActions(context);
+
     return context.actions;
 }
 
@@ -72,6 +75,8 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
         ResolveVariablePromotionHelper(asmodule, action, data);
     else if (data.type == "insertMacro")
         ResolveInsertMacro(asmodule, action, data);
+    else if (data.type == "insertCases")
+        ResolveInsertCases(asmodule, action, data);
     return action;
 }
 
@@ -1166,4 +1171,289 @@ function ResolveInsertMacro(asmodule : scriptfiles.ASModule, action : CodeAction
     action.edit.changes[asmodule.displayUri] = [
         TextEdit.insert(insertPosition, macroString)
     ];
+}
+
+function AddSwitchCaseActions(context : CodeActionContext)
+{
+    if (!context.scope)
+        return;
+
+    // Ensure that this is a switch scope
+    let switchBlock : scriptfiles.ASScope = null;
+    let switchStatement : scriptfiles.ASStatement = null;
+
+    if (context.statement && context.statement.ast && context.statement.ast.type == scriptfiles.node_types.SwitchStatement)
+    {
+        if (context.statement.next && context.statement.next instanceof scriptfiles.ASScope)
+        {
+            switchStatement = context.statement;
+            switchBlock = context.statement.next;
+        }
+    }
+    else if (context.scope.previous && context.scope.previous instanceof scriptfiles.ASStatement)
+    {
+        if (context.scope.previous.ast && context.scope.previous.ast.type == scriptfiles.node_types.SwitchStatement)
+        {
+            switchStatement = context.scope.previous;
+            switchBlock = context.scope;
+        }
+    }
+
+    if (!switchBlock)
+        return;
+    if (!switchBlock.parentscope)
+        return;
+
+    // Figure out what type we're switching on
+    let switchOnType = scriptfiles.ResolveTypeFromExpression(switchBlock.parentscope, switchStatement.ast.children[0]);
+    if (!switchOnType)
+        return;
+    if (!switchOnType.isEnum)
+        return;
+
+    // Find all cases that are implemented
+    let implementedCases = new Array<string>();
+    let defaultStatement : scriptfiles.ASStatement = null;
+    for (let caseStatement of switchBlock.statements)
+    {
+        if (!caseStatement || !caseStatement.ast)
+            continue;
+
+        if (caseStatement.ast.type == scriptfiles.node_types.DefaultCaseStatement)
+        {
+            defaultStatement = caseStatement;
+            continue;
+        }
+        else if (caseStatement.ast.type != scriptfiles.node_types.CaseStatement)
+            continue;
+        
+        let labelNode = caseStatement.ast.children[0];
+        if (!labelNode || labelNode.type != scriptfiles.node_types.NamespaceAccess)
+            continue;
+
+        if (!labelNode.children[0] || !labelNode.children[0].value)
+            continue;
+        if (!labelNode.children[1] || !labelNode.children[1].value)
+            continue;
+
+        let label = labelNode.children[0].value + "::" + labelNode.children[1].value;
+        implementedCases.push(label);
+    }
+
+    // Check if there are any missing cases left
+    let missingCases = new Array<string>();
+    for (let prop of switchOnType.properties)
+    {
+        if (prop.name == "MAX")
+            continue;
+        if (prop.name.endsWith("_MAX"))
+            continue;
+
+        let label = switchOnType.getDisplayName()+"::"+prop.name;
+        if (!implementedCases.includes(label))
+            missingCases.push(label);
+    }
+
+    // Add code action for adding all missing cases
+    if (missingCases.length >= 2)
+    {
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.RefactorInline,
+            title: `Add all missing ${switchOnType.getDisplayName()} cases`,
+            source: "angelscript",
+            data: {
+                uri: context.module.uri,
+                type: "insertCases",
+                cases: missingCases,
+                switchPosition: switchStatement.start_offset,
+                position: context.scope.start_offset,
+                defaultCasePosition: defaultStatement ? defaultStatement.start_offset : -1,
+            }
+        });
+    }
+
+    // Add code action for adding individual missing cases
+    for (let label of missingCases)
+    {
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.RefactorInline,
+            title: `Add case ${label}`,
+            source: "angelscript",
+            data: {
+                uri: context.module.uri,
+                type: "insertCases",
+                cases: [label],
+                switchPosition: switchStatement.start_offset,
+                position: context.scope.start_offset,
+                defaultCasePosition: defaultStatement ? defaultStatement.start_offset : -1,
+            }
+        });
+    }
+}
+
+
+function ResolveInsertCases(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
+{
+    let switchStatement = asmodule.getStatementAt(data.switchPosition);
+    if (!switchStatement)
+        return;
+    if (!switchStatement.next)
+        return;
+    if (!(switchStatement.next instanceof scriptfiles.ASScope))
+        return;
+
+    let switchScope : scriptfiles.ASScope = switchStatement.next;
+    if (!switchScope)
+        return;
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+
+    let switchIndent = GetIndentForStatement(switchStatement);
+    let indent = GetIndentForBlock(switchScope);
+    if (!indent)
+        indent = "";
+
+    let insertString = "";
+    let cases : Array<string> = data.cases;
+    for (let label of cases)
+        insertString += `${indent}case ${label}:\n${indent}break;\n`; 
+
+    let insertPosition : Position = null;
+    if (data.defaultCasePosition != -1)
+    {
+        insertPosition = asmodule.getPosition(data.defaultCasePosition);
+        insertString = "\n" + insertString.substring(0, insertString.length-1);
+    }
+    else
+    {
+        let lastElement = switchScope.element_head;
+        while (lastElement && lastElement.next)
+            lastElement = lastElement.next;
+
+        while (lastElement)
+        {
+            if (lastElement instanceof scriptfiles.ASScope)
+            {
+                insertPosition = asmodule.getPosition(lastElement.end_offset);
+                insertPosition.line += 1;
+                insertPosition.character = 0;
+                break;
+            }
+            else if (lastElement instanceof scriptfiles.ASStatement)
+            {
+                if (lastElement && lastElement.ast)
+                {
+                    insertPosition = asmodule.getPosition(lastElement.end_offset);
+                    insertPosition.line += 1;
+                    insertPosition.character = 0;
+                    break;
+                }
+            }
+
+            lastElement = lastElement.previous;
+        }
+
+        if (!insertPosition)
+        {
+            let scopeStart = asmodule.getPosition(switchScope.start_offset);
+            let scopeEnd = asmodule.getPosition(switchScope.end_offset);
+
+            if (scopeEnd.line == scopeStart.line)
+            {
+                insertPosition = asmodule.getPosition(switchScope.start_offset);
+                insertString = "\n" + insertString + switchIndent;
+            }
+            else if (scopeEnd.line == scopeStart.line + 1)
+            {
+                insertPosition = asmodule.getPosition(switchScope.start_offset);
+                insertString = "\n" + insertString.trimEnd();
+            }
+            else
+            {
+                insertPosition = asmodule.getPosition(switchScope.end_offset);
+                insertPosition.line -= 1;
+                insertPosition.character = 10000;
+                insertString = insertString.substring(0, insertString.length-1).trimStart();
+            }
+        }
+    }
+
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(insertPosition, insertString)
+    ];
+}
+
+function GetIndentForStatement(statement : scriptfiles.ASStatement) : string
+{
+    let indent : string = null;
+    let lines = statement.content.split("\n");
+    for (let line of lines)
+    {
+        if (!/^[ \t\r\n]*$/.test(line))
+        {
+            indent = "";
+            for (let i = 0; i < line.length; ++i)
+            {
+                let curchar = line[i];
+                if (curchar == ' ' || curchar == '\t')
+                {
+                    indent += curchar;
+                }
+                else if (curchar == '\n' || curchar == '\r')
+                {
+                    continue;
+                }
+                else if (curchar == '#')
+                {
+                    indent = null;
+                    break;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            break;
+        }
+    }
+    return indent;
+}
+
+function GetIndentForBlock(scope : scriptfiles.ASScope) : string
+{
+    if (scope.statements.length != 0 && scope.statements[0])
+    {
+        for (let statement of scope.statements)
+        {
+            if (!statement)
+                continue;
+            let statementIndent = GetIndentForStatement(statement);
+            if (statementIndent != null)
+                return statementIndent;
+        }
+    }
+    else
+    {
+        if (scope.previous && scope.previous instanceof scriptfiles.ASStatement)
+        {
+            let statementIndent = GetIndentForStatement(scope.previous);
+            if (statementIndent != null)
+            {
+                return ExtendIndent(statementIndent);
+            }
+        }
+    }
+
+    return null;
+}
+
+function ExtendIndent(indent : string) : string
+{
+    if (!indent || indent.length == 0)
+        return "\t";
+    if (indent.includes("\t"))
+        return indent + "\t";
+    else
+        return indent + "    ";
 }
