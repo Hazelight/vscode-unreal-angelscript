@@ -879,10 +879,9 @@ export function ResolveModule(module : ASModule)
             for (let dependencyModule of module.moduleDependencies)
             {
                 // If the dependency isn't parsed at all, parse it now
-                if (!dependencyModule.parsed || !dependencyModule.typesPostProcessed)
+                if (!dependencyModule.parsed)
                 {
                     ParseModuleAndDependencies(dependencyModule);
-                    PostProcessModuleTypesAndDependencies(dependencyModule);
                     module.resolved = false;
                 }
 
@@ -893,70 +892,17 @@ export function ResolveModule(module : ASModule)
                 {
                     for (let dependencyClass of dependencyModule.types)
                     {
-                        let superTypeName = dependencyClass.supertype;
-
-                        while (superTypeName)
-                        {
-                            let superType = typedb.GetType(superTypeName);
-                            if (superType)
-                            {
-                                if (superType.declaredModule)
-                                {
-                                    let superModule = GetModule(superType.declaredModule);
-                                    if (superModule.resolved)
-                                    {
-                                        // Super module is already resolved, no need to check further
-                                        break;
-                                    }
-                                    else
-                                    {
-                                        // Super module must already be parsed if the type in it exists,
-                                        // but keep checking supers to make sure they're all parsed.
-                                        superTypeName = superType.supertype;
-                                        continue;
-                                    }
-                                }
-                                else
-                                {
-                                    // C++ type, no need to check further
-                                    break;
-                                }
-                            }
-                            else
-                            {
-                                // Super module not parsed yet? Check the preparse lookup
-                                let potentialModules = PreParsedIdentifiersInModules.get(superTypeName);
-                                if (potentialModules)
-                                {
-                                    // Parse all modules that might contain the superclass
-                                    for (let moduleWithSuper of potentialModules)
-                                    {
-                                        ParseModuleAndDependencies(moduleWithSuper);
-                                        PostProcessModuleTypesAndDependencies(moduleWithSuper);
-                                    }
-
-                                    let superType = typedb.GetType(superTypeName);
-                                    if (superType)
-                                    {
-                                        // We found a new supertype, so we need to re-resolve
-                                        module.resolved = false;
-                                        continue;
-                                    }
-                                    else
-                                    {
-                                        // If we still can't find the supertype now, give up
-                                        break;
-                                    }
-                                }
-                                else
-                                {
-                                    // We couldn't find the super type in our preparsed identifiers,
-                                    // just give up now.
-                                    break;
-                                }
-                            }
-                        }
+                        let newTypesLoaded = EnsureTypeHierarchyFullyParsed(dependencyClass);
+                        if (newTypesLoaded)
+                            module.resolved = false;
                     }
+                }
+
+                // Postprocessing needs to occur on the module as well
+                if (!dependencyModule.typesPostProcessed)
+                {
+                    PostProcessModuleTypesAndDependencies(dependencyModule);
+                    module.resolved = false;
                 }
             }
 
@@ -970,6 +916,73 @@ export function ResolveModule(module : ASModule)
 
     // Clear previously cached statements from last parse
     module.cachedStatements = null;
+}
+
+function EnsureTypeHierarchyFullyParsed(dbtype : typedb.DBType) : boolean
+{
+    let newTypesLoaded = false;
+
+    let superTypeName = dbtype.supertype;
+    while (superTypeName)
+    {
+        let superType = typedb.GetType(superTypeName);
+        if (superType)
+        {
+            if (superType.declaredModule)
+            {
+                let superModule = GetModule(superType.declaredModule);
+                if (superModule.resolved)
+                {
+                    // Super module is already resolved, no need to check further
+                    break;
+                }
+                else
+                {
+                    // Super module must already be parsed if the type in it exists,
+                    // but keep checking supers to make sure they're all parsed.
+                    superTypeName = superType.supertype;
+                    continue;
+                }
+            }
+            else
+            {
+                // C++ type, no need to check further
+                break;
+            }
+        }
+        else
+        {
+            // Super module not parsed yet? Check the preparse lookup
+            let potentialModules = PreParsedIdentifiersInModules.get(superTypeName);
+            if (potentialModules)
+            {
+                // Parse all modules that might contain the superclass
+                for (let moduleWithSuper of potentialModules)
+                    ParseModuleAndDependencies(moduleWithSuper);
+
+                let superType = typedb.GetType(superTypeName);
+                if (superType)
+                {
+                    // We found a new supertype, so we need to re-resolve
+                    newTypesLoaded = true;
+                    continue;
+                }
+                else
+                {
+                    // If we still can't find the supertype now, give up
+                    break;
+                }
+            }
+            else
+            {
+                // We couldn't find the super type in our preparsed identifiers,
+                // just give up now.
+                break;
+            }
+        }
+    }
+
+    return newTypesLoaded;
 }
 
 // Update a module with new transient content
