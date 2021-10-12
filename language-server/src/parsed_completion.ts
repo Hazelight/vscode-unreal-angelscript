@@ -1310,6 +1310,10 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
                     filterText: GetSymbolFilterText(context, sym),
                     sortText: Sort.Unimported,
                 };
+
+                if (context.isTypeExpected(sym.typename))
+                    context.completionsMatchingExpected.push(compl);
+
                 completions.push(compl);
             }
             else if (sym instanceof typedb.DBMethod)
@@ -1333,6 +1337,12 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
                     filterText: GetSymbolFilterText(context, sym),
                     sortText: Sort.Unimported,
                 };
+
+                if (context.isTypeExpected(sym.returnType))
+                {
+                    if (!sym.containingType.isGlobalScope || sym.isConstructor)
+                        context.completionsMatchingExpected.push(compl);
+                }
 
                 compl.labelDetails = <CompletionItemLabelDetails>
                 {
@@ -1395,6 +1405,12 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
                         title: "",
                         command: "angelscript.paren",
                     };
+
+                    if (context.isTypeExpected(sym.returnType))
+                    {
+                        if (!sym.containingType.isGlobalScope || sym.isConstructor)
+                            context.completionsMatchingExpected.push(compl);
+                    }
 
                     if (sym.returnType && sym.returnType != "void")
                     {
