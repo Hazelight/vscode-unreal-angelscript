@@ -825,7 +825,7 @@ function AddVariablePromotionHelper(context : CodeActionContext)
     if (codeNode.type == scriptfiles.node_types.Assignment)
     {
         let leftNode = codeNode.children[0];
-        if (leftNode.type != scriptfiles.node_types.Identifier)
+        if (!leftNode || leftNode.type != scriptfiles.node_types.Identifier)
             return;
 
         // If the left side is a known variable we can't provide this action
@@ -911,6 +911,8 @@ function FindInsertPositionForGeneratedMemberVariable(asmodule : scriptfiles.ASM
             for (let statement of subScope.statements)
             {
                 if (!statement)
+                    continue;
+                if (!statement.ast)
                     continue;
                 if (statement.end_offset >= anchor_offset)
                     continue;

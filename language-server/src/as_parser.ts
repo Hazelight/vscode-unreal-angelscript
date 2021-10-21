@@ -1934,6 +1934,8 @@ function GenerateTypeInformation(scope : ASScope)
                 let keywords = dbfunc.macroMeta.get("scriptkeywords");
                 if (keywords)
                     dbfunc.keywords = keywords.split(" ");
+
+                dbfunc.cacheDelegateMeta();
             }
 
             if (funcdef.access)
@@ -3587,7 +3589,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.FunctionCall:
         {
             // This could be a constructor call to a type
-            let isDelegateBind = false;
+            let delegateBind : ASDelegateBind = null;
             let left_type : typedb.DBType = null;
             let left_symbol : typedb.DBSymbol | typedb.DBType = null;
             if (node.children[0] && node.children[0].type == node_types.Identifier)
@@ -3617,7 +3619,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         // If this is a delegate constructor call, mark it for later diagnostics
                         if (left_type.isDelegate && node.children[1])
                         {
-                            let delegateBind = new ASDelegateBind;
+                            delegateBind = new ASDelegateBind;
                             delegateBind.scope = scope;
                             delegateBind.statement = statement;
                             delegateBind.node_expression = node;
@@ -3627,7 +3629,6 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                                 delegateBind.node_name = node.children[1].children[1];
                             delegateBind.delegateType = left_type.typename;
                             scope.module.delegateBinds.push(delegateBind);
-                            isDelegateBind = true;
                         }
                     }
                 }
@@ -3650,7 +3651,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // If this is a delegate bind call, mark it for later diagnostics
             if (left_symbol instanceof typedb.DBMethod && left_symbol.isDelegateBindFunction && node.children[1])
             {
-                let delegateBind = new ASDelegateBind;
+                delegateBind = new ASDelegateBind;
                 delegateBind.scope = scope;
                 delegateBind.statement = statement;
                 delegateBind.node_expression = node;
@@ -3658,55 +3659,72 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     delegateBind.node_object = node.children[1].children[0];
                 if (node.children[1].children[1])
                     delegateBind.node_name = node.children[1].children[1];
-                delegateBind.delegateType = left_symbol.containingType.typename;
+                delegateBind.delegateType = left_symbol.delegateBindType;
                 scope.module.delegateBinds.push(delegateBind);
-                isDelegateBind = true;
             }
 
-            // Add a symbol for the function we're binding if this is a delegate bind
-            if (isDelegateBind && left_symbol
-                && left_symbol instanceof typedb.DBMethod
-                && node.children[1])
+            if (delegateBind && left_symbol
+                && left_symbol instanceof typedb.DBMethod)
             {
-                parseContext.argumentFunction = left_symbol;
-                let objectSymbol = DetectNodeSymbols(scope, statement, node.children[1].children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
-
-                let insideType = GetTypeFromSymbol(objectSymbol);
-                let nameNode = node.children[1].children[1];
-                if (nameNode && nameNode.type == node_types.ConstName && insideType)
+                for (let i = 0; i < node.children[1].children.length; ++i)
                 {
-                    let foundFunc = insideType.findFirstSymbol(
-                        nameNode.value.substring(2, nameNode.value.length-1),
-                        typedb.DBAllowSymbol.FunctionOnly);
+                    let childNode = node.children[1].children[i];
+                    if (!childNode)
+                        continue;
 
-                    if (!foundFunc)
+                    if (childNode == delegateBind.node_name)
                     {
-                        if (!scope.module.isEditingNode(statement, nameNode))
+                        // Add a symbol for the function we're binding if this is a delegate bind
+                        // This allows "Go to Symbol" to work here, even though it's a name
+                        parseContext.argumentFunction = left_symbol;
+                        let objectSymbol = DetectNodeSymbols(scope, statement, node.children[1].children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+
+                        let insideType = GetTypeFromSymbol(objectSymbol);
+                        let nameNode = delegateBind.node_name;
+                        if (nameNode && (nameNode.type == node_types.ConstName || nameNode.type == node_types.ConstString) && insideType)
                         {
-                            AddUnknownSymbol(scope, statement, {
-                                value: nameNode.value.substring(2, nameNode.value.length-1),
-                                start: nameNode.start + 2,
-                                end: nameNode.end - 1,
-                            }, false);
+                            let funcName = nameNode.value;
+                            let symbolOffset = 1;
+                            if (nameNode.type == node_types.ConstName)
+                            {
+                                symbolOffset = 2;
+                                funcName = funcName.substring(2, funcName.length-1);
+                            }
+                            else
+                            {
+                                funcName = funcName.substring(1, funcName.length-1);
+                            }
+
+                            let foundFunc = insideType.findFirstSymbol(funcName, typedb.DBAllowSymbol.FunctionOnly);
+                            if (!foundFunc)
+                            {
+                                if (!scope.module.isEditingNode(statement, nameNode))
+                                {
+                                    AddUnknownSymbol(scope, statement, {
+                                        value: funcName,
+                                        start: nameNode.start + symbolOffset,
+                                        end: nameNode.end - 1,
+                                    }, false);
+                                }
+                            }
+                            else
+                            {
+                                let symbol = AddIdentifierSymbol(scope, statement, nameNode, ASSymbolType.MemberFunction, foundFunc.containingType.typename, foundFunc.name);
+                                if (symbol)
+                                {
+                                    symbol.start += symbolOffset;
+                                    symbol.end -= 1;
+                                    symbol.noColor = true;
+                                }
+                            }
                         }
                     }
                     else
                     {
-                        let symbol = AddIdentifierSymbol(scope, statement, nameNode, ASSymbolType.MemberFunction, foundFunc.containingType.typename, foundFunc.name);
-                        if (symbol)
-                        {
-                            symbol.start += 2;
-                            symbol.end -= 1;
-                            symbol.noColor = true;
-                        }
+                        // Detect symbols for other arguments
+                        parseContext.argumentFunction = left_symbol;
+                        DetectNodeSymbols(scope, statement, node.children[1].children[i], parseContext, typedb.DBAllowSymbol.PropertyOnly);
                     }
-                }
-
-                // Detect symbols for remaining arguments
-                for (let i = 1; i < node.children[1].children.length; ++i)
-                {
-                    parseContext.argumentFunction = left_symbol;
-                    DetectNodeSymbols(scope, statement, node.children[1].children[i], parseContext, typedb.DBAllowSymbol.PropertyOnly);
                 }
             }
             else

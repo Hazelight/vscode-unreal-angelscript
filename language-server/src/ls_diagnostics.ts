@@ -166,13 +166,17 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
         if (asmodule.isEditingNode(delegateBind.statement, delegateBind.node_object))
             continue;
 
-        if (delegateBind.node_name.type != node_types.ConstName)
+        if (delegateBind.node_name.type != node_types.ConstName
+            && delegateBind.node_name.type != node_types.ConstString)
             continue;
 
         let funcName = delegateBind.node_name.value;
 
         // Chop off the n"" part from the function name
-        funcName = funcName.substring(2, funcName.length-1);
+        if (delegateBind.node_name.type == node_types.ConstName)
+            funcName = funcName.substring(2, funcName.length-1);
+        else
+            funcName = funcName.substring(1, funcName.length-1);
 
         let objType = scriptfiles.ResolveTypeFromExpression(delegateBind.scope, delegateBind.node_object);
         if (!objType)
