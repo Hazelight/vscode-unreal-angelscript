@@ -1183,7 +1183,7 @@ function PreParseImports(module : ASModule)
 
 // Use regex to lift out types, namespaces and global functions so resolve can find them later
 let re_preparse_type = /\s*(class|struct|namespace|enum)\s+([A-Za-z0-9_]+)(\s*:\s*([A-Za-z0-9_]+))?\s*\{/g;
-let re_preparse_function = /(\n|^)[ \t]*(mixin[ \t]+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)([ \t]*&)?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
+let re_preparse_function = /(\n|^)[ \t]*((mixin|delegate|event)[ \t]+)?((const[ \t]+)?([A-Za-z_0-9]+(\<[A-Za-z0-9_]+(,\s*[A-Za-z0-9_]+)*\>)?)([ \t]*&)?)[\t ]+([A-Za-z0-9_]+)\(((.|\n|\r)*)\)/g;
 function PreParseTypes(module : ASModule)
 {
     module.preParsedIdentifiers = [];
@@ -1215,7 +1215,7 @@ function PreParseTypes(module : ASModule)
         if (!match)
             break;
 
-        let identifier = match[9];
+        let identifier = match[10];
         module.preParsedIdentifiers.push(identifier);
 
         let list = PreParsedIdentifiersInModules.get(identifier);
