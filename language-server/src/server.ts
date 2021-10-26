@@ -136,7 +136,7 @@ function connect_unreal() {
                 typedb.FinishTypesFromUnreal();
 
                 // Make sure no modules are resolved anymore
-                scriptfiles.ClearAllResolvedModules();
+                ReResolveAllModules();
             }
             else if(msg.type == MessageType.AssetDatabase)
             {
@@ -399,6 +399,37 @@ function DirtyAllDiagnostics()
         let module = moduleList[moduleIndex];
         if (module && module.resolved)
             scriptdiagnostics.UpdateScriptModuleDiagnostics(module);
+        moduleIndex += 1;
+    }
+}
+
+function ReResolveAllModules()
+{
+    if (IsServicingQueues)
+        return;
+    
+    scriptfiles.ClearAllResolvedModules();
+
+    // Update diagnostics on all modules
+    let moduleIndex = 0;
+    let moduleList = scriptfiles.GetAllLoadedModules();
+    let timerHandle = setInterval(ReResolveModules, 1);
+
+    function ReResolveModules()
+    {
+        if (moduleIndex >= moduleList.length)
+        {
+            clearInterval(timerHandle);
+            return;
+        }
+
+        let module = moduleList[moduleIndex];
+        if (module && !module.resolved)
+        {
+            scriptfiles.ResolveModule(module);
+            scriptdiagnostics.UpdateScriptModuleDiagnostics(module);
+        }
+
         moduleIndex += 1;
     }
 }
