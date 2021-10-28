@@ -51,7 +51,7 @@ export let ASKeywords = [
     "for", "if", "enum", "return", "continue", "break", "import", "class", "struct", "default",
     "void", "const", "delegate", "event", "else", "while", "case", "Cast", "namespace",
     "UFUNCTION", "UPROPERTY", "UCLASS", "USTRUCT", "nullptr", "true", "false", "this", "auto",
-    "final", "property", "override", "mixin",
+    "final", "property", "override", "mixin", "switch",
 ];
 
 export enum ASScopeType

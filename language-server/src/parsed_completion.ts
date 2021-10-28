@@ -722,7 +722,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         if (!context.isRightExpression && !context.isSubExpression)
         {
             AddCompletionsFromKeywordList(context, [
-                "if", "else", "while", "for", "break", "continue",
+                "if", "else", "while", "for", "break", "continue", "switch",
             ], completions);
 
             completions.push({
