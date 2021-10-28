@@ -73,6 +73,26 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Show the name of the type as an inlay hint on auto declarations."
+                },
+                "UnrealAngelscript.inlineValues.showInlineValueForLocalVariables": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "When debugging, show an inline value next to local variable declarations."
+                },
+                "UnrealAngelscript.inlineValues.showInlineValueForParameters": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "When debugging, show an inline value for function parameters."
+                },
+                "UnrealAngelscript.inlineValues.showInlineValueForMemberAssignment": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "When debugging, show an inline value next to direct assignments of this member variables."
+                },
+                "UnrealAngelscript.inlineValues.showInlineValueForFunctionThisObject": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "When debugging, show an inline value above the function declaration to display the this pointer and Owner of the object."
                 }
             }
         },

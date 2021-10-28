@@ -1,7 +1,7 @@
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 import { node_types } from './as_parser';
-import { Range, Position, Location, SemanticTokens, SemanticTokensBuilder, SemanticTokensDelta } from "vscode-languageserver";
+import { Range, Position } from "vscode-languageserver";
 
 export interface ASInlayHint
 {

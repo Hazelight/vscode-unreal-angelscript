@@ -31,6 +31,7 @@ import * as scriptlenses from './code_lenses';
 import * as scriptactions from './code_actions';
 import * as assets from './assets';
 import * as inlayhints from './inlay_hints';
+import * as inlinevalues from './inline_values';
 import * as fs from 'fs';
 let glob = require('glob');
 
@@ -828,6 +829,16 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
         return moduleName;
     }
 });
+
+connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any[] => {
+    let pos : TextDocumentPositionParams = params[0];
+    let asmodule = GetAndParseModule(pos.textDocument.uri);
+    if (!asmodule)
+        return null;
+    if (!asmodule.resolved)
+        return null;
+    return inlinevalues.ProvideInlineValues(asmodule, pos.position);
+});
     
  connection.onDidChangeTextDocument((params) => {
     // The content of a text document did change in VSCode.
@@ -917,6 +928,12 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
     inlayHintSettings.parameterReferenceHints = settings.inlayHints.parameterReferenceHints;
     inlayHintSettings.parameterHintsForSingleParameterFunctions = settings.inlayHints.parameterHintsForSingleParameterFunctions;
     inlayHintSettings.typeHintsForAutos = settings.inlayHints.typeHintsForAutos;
+
+    let inlineValueSettings = inlinevalues.GetInlineValueSettings();
+    inlineValueSettings.showInlineValueForFunctionThisObject = settings.inlineValues.showInlineValueForFunctionThisObject;
+    inlineValueSettings.showInlineValueForLocalVariables = settings.inlineValues.showInlineValueForLocalVariables;
+    inlineValueSettings.showInlineValueForParameters = settings.inlineValues.showInlineValueForParameters;
+    inlineValueSettings.showInlineValueForMemberAssignment = settings.inlineValues.showInlineValueForMemberAssignment;
  });
 
 function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : Array<inlayhints.ASInlayHint> | null
