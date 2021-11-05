@@ -3677,53 +3677,13 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         // Add a symbol for the function we're binding if this is a delegate bind
                         // This allows "Go to Symbol" to work here, even though it's a name
                         parseContext.argumentFunction = left_symbol;
-                        let objectSymbol = DetectNodeSymbols(scope, statement, node.children[1].children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
-
-                        let insideType = GetTypeFromSymbol(objectSymbol);
-                        let nameNode = delegateBind.node_name;
-                        if (nameNode && (nameNode.type == node_types.ConstName || nameNode.type == node_types.ConstString) && insideType)
-                        {
-                            let funcName = nameNode.value;
-                            let symbolOffset = 1;
-                            if (nameNode.type == node_types.ConstName)
-                            {
-                                symbolOffset = 2;
-                                funcName = funcName.substring(2, funcName.length-1);
-                            }
-                            else
-                            {
-                                funcName = funcName.substring(1, funcName.length-1);
-                            }
-
-                            let foundFunc = insideType.findFirstSymbol(funcName, typedb.DBAllowSymbol.FunctionOnly);
-                            if (!foundFunc)
-                            {
-                                if (!scope.module.isEditingNode(statement, nameNode))
-                                {
-                                    AddUnknownSymbol(scope, statement, {
-                                        value: funcName,
-                                        start: nameNode.start + symbolOffset,
-                                        end: nameNode.end - 1,
-                                    }, false);
-                                }
-                            }
-                            else
-                            {
-                                let symbol = AddIdentifierSymbol(scope, statement, nameNode, ASSymbolType.MemberFunction, foundFunc.containingType.typename, foundFunc.name);
-                                if (symbol)
-                                {
-                                    symbol.start += symbolOffset;
-                                    symbol.end -= 1;
-                                    symbol.noColor = true;
-                                }
-                            }
-                        }
+                        DetectSymbolFromDelegateBindFunctionName(scope, statement, parseContext, delegateBind);
                     }
                     else
                     {
                         // Detect symbols for other arguments
                         parseContext.argumentFunction = left_symbol;
-                        DetectNodeSymbols(scope, statement, node.children[1].children[i], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                        DetectNodeSymbols(scope, statement, childNode, parseContext, typedb.DBAllowSymbol.PropertyOnly);
                     }
                 }
             }
@@ -3972,8 +3932,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
 
             // Add the typename of the variable
             let typenameSymbol : ASSymbol = null;
+            let variableType : typedb.DBType = null;
             if (node.typename)
             {
+                variableType = typedb.GetType(node.typename.value);
                 if (scope.module.isEditingNode(statement, node.typename))
                 {
                     // This one gets a bit tricky if we are currently editing the typename.
@@ -3984,7 +3946,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     // The above gets detected as a variable declaration, but because the PreviousCa type
                     // doesn't exist, doing AddTypenameSymbol would error.
                     // So if we are editing the typename, we need to _also_ check for a valid identifier!
-                    if (DoesTypenameExist(node.typename.value))
+                    if (variableType || DoesTypenameExist(node.typename.value))
                     {
                         // Easy case, type exists, mark it as a typename
                         typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
@@ -4041,11 +4003,48 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // Detect inside the expression that initializes the variable
             if (node.expression)
             {
-                let expressionType = DetectNodeSymbols(scope, statement, node.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                if (variableType && variableType.isDelegate
+                    && node.expression.type == node_types.ArgumentList)
+                {
+                    // This is an in-place constructor for a delegate, so we should mark it as a delegate bind
+                    let delegateBind = new ASDelegateBind;
+                    delegateBind.scope = scope;
+                    delegateBind.statement = statement;
+                    delegateBind.node_expression = node;
+                    if (node.expression.children[0])
+                        delegateBind.node_object = node.expression.children[0];
+                    if (node.expression.children[1])
+                        delegateBind.node_name = node.expression.children[1];
+                    delegateBind.delegateType = variableType.typename;
+                    scope.module.delegateBinds.push(delegateBind);
 
-                // If this was an auto, we should update the typename symbol to match the expression
-                if (typenameSymbol && typenameSymbol.symbol_name == "auto")
-                    UpdateAutoTypenameSymbol(typenameSymbol, expressionType);
+                    for (let i = 0; i < node.expression.children.length; ++i)
+                    {
+                        let childNode = node.expression.children[i];
+                        if (!childNode)
+                            continue;
+
+                        if (childNode == delegateBind.node_name)
+                        {
+                            // Add a symbol for the function we're binding if this is a delegate bind
+                            // This allows "Go to Symbol" to work here, even though it's a name
+                            DetectSymbolFromDelegateBindFunctionName(scope, statement, parseContext, delegateBind);
+                        }
+                        else
+                        {
+                            // Detect symbols for other arguments
+                            DetectNodeSymbols(scope, statement, childNode, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                        }
+                    }
+                }
+                else
+                {
+                    let expressionType = DetectNodeSymbols(scope, statement, node.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+
+                    // If this was an auto, we should update the typename symbol to match the expression
+                    if (typenameSymbol && typenameSymbol.symbol_name == "auto")
+                        UpdateAutoTypenameSymbol(typenameSymbol, expressionType);
+                }
             }
         }
         break;
@@ -4564,6 +4563,49 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
     }
 
     return true;
+}
+
+function DetectSymbolFromDelegateBindFunctionName(scope : ASScope, statement : ASStatement, parseContext : ASParseContext, delegateBind : ASDelegateBind)
+{
+    let insideType = ResolveTypeFromExpression(scope, delegateBind.node_object);
+    let nameNode = delegateBind.node_name;
+    if (nameNode && (nameNode.type == node_types.ConstName || nameNode.type == node_types.ConstString) && insideType)
+    {
+        let funcName = nameNode.value;
+        let symbolOffset = 1;
+        if (nameNode.type == node_types.ConstName)
+        {
+            symbolOffset = 2;
+            funcName = funcName.substring(2, funcName.length-1);
+        }
+        else
+        {
+            funcName = funcName.substring(1, funcName.length-1);
+        }
+
+        let foundFunc = insideType.findFirstSymbol(funcName, typedb.DBAllowSymbol.FunctionOnly);
+        if (!foundFunc)
+        {
+            if (!scope.module.isEditingNode(statement, nameNode))
+            {
+                AddUnknownSymbol(scope, statement, {
+                    value: funcName,
+                    start: nameNode.start + symbolOffset,
+                    end: nameNode.end - 1,
+                }, false);
+            }
+        }
+        else
+        {
+            let symbol = AddIdentifierSymbol(scope, statement, nameNode, ASSymbolType.MemberFunction, foundFunc.containingType.typename, foundFunc.name);
+            if (symbol)
+            {
+                symbol.start += symbolOffset;
+                symbol.end -= 1;
+                symbol.noColor = true;
+            }
+        }
+    }
 }
 
 function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASStatement, parseContext : ASParseContext, identifierPrefix : string, symbol_type : typedb.DBAllowSymbol) : boolean
