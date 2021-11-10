@@ -360,11 +360,20 @@ function GenerateCompletionArguments(context: CompletionContext): CompletionArgu
 function ScoreMethodForArguments(context: CompletionContext, argContext: CompletionArguments, func: typedb.DBMethod): [number, number]
 {
     let score = 0;
+    let argumentIndex = context.subOuterArgumentIndex;
+    let argumentLength = func.args.length;
+    let argumentOffset = 0;
+
+    if (func.isMixin)
+    {
+        argumentOffset = 1;
+        argumentIndex += 1;
+    }
 
     // Check if we've passed too many arguments
-    if (context.subOuterArgumentIndex >= func.args.length)
+    if (argumentIndex >= argumentLength)
     {
-        if (context.subOuterArgumentIndex > 0 || (context.statement.content && context.statement.content.length > 0))
+        if (argumentIndex > argumentOffset || (context.statement.content && context.statement.content.length > 0))
             score -= 50;
     }
 
@@ -373,7 +382,7 @@ function ScoreMethodForArguments(context: CompletionContext, argContext: Complet
     for (let usedName of argContext.usedArgumentNames)
     {
         let foundArg = -1;
-        for (let argIndex = 0; argIndex < func.args.length; ++argIndex)
+        for (let argIndex = argumentOffset; argIndex < func.args.length; ++argIndex)
         {
             if (func.args[argIndex].name == usedName)
             {
@@ -392,7 +401,7 @@ function ScoreMethodForArguments(context: CompletionContext, argContext: Complet
         else
         {
             if (argContext.currentArgumentName && usedName == argContext.currentArgumentName)
-                activeArg = foundArg;
+                activeArg = foundArg - argumentOffset;
         }
     }
 
@@ -526,9 +535,13 @@ function AddCompletionsFromCallSignature(context: CompletionContext, completions
 
         if (completeDefinition)
         {
-            if (context.subOuterArgumentIndex < activeMethod.args.length)
+            let argumentIndex = context.subOuterArgumentIndex;
+            if (activeMethod.isMixin)
+                argumentIndex += 1;
+            
+            if (argumentIndex < activeMethod.args.length)
             {
-                let arg = activeMethod.args[context.subOuterArgumentIndex];
+                let arg = activeMethod.args[argumentIndex];
                 let complStr = arg.typename + " " + arg.name;
                 if (CanCompleteTo(context, complStr))
                 {
@@ -1773,9 +1786,13 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
                 }
             }
 
-            if (candidateFunction.args.length <= context.subOuterArgumentIndex)
+            let candidateArgumentIndex = context.subOuterArgumentIndex;
+            if (candidateFunction.isMixin)
+                candidateArgumentIndex += 1;
+
+            if (candidateFunction.args.length <= candidateArgumentIndex)
                 continue;
-            let argType = typedb.GetType(candidateFunction.args[context.subOuterArgumentIndex].typename);
+            let argType = typedb.GetType(candidateFunction.args[candidateArgumentIndex].typename);
             if (argType && !context.expectedType)
                 context.expectedType = argType;
         }
