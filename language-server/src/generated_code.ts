@@ -1,15 +1,14 @@
 import { assert } from 'console';
+import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 
 let UseHazeGeneratedCode = true;
 
-export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType, globalType : typedb.DBType) : Array<typedb.DBType>
+export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType, asmodule : scriptfiles.ASModule)
 {
-    let result : Array<typedb.DBType> = [];
-
     // Code that all delegate structs have
     if (dbtype.isEvent || dbtype.isDelegate)
-        AddGeneratedCodeForDelegate(dbtype, globalType);
+        AddGeneratedCodeForDelegate(dbtype, asmodule);
 
     if (!dbtype.isStruct && !dbtype.isNamespace())
     {
@@ -34,10 +33,8 @@ export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType, globalTyp
 
         // Merge namespace into the type database
         nsType = typedb.MergeNamespaceToDB(nsType, false);
-        result.push(nsType);
+        asmodule.namespaces.push(nsType);
     }
-
-    return result;
 }
 
 function AddMethod(dbtype : typedb.DBType, name : string) : typedb.DBMethod
@@ -124,7 +121,7 @@ function AddGeneratedCodeForAActor(dbtype : typedb.DBType, nsType : typedb.DBTyp
     }
 }
 
-function AddGeneratedCodeForDelegate(dbtype : typedb.DBType, globalType : typedb.DBType)
+function AddGeneratedCodeForDelegate(dbtype : typedb.DBType, asmodule : scriptfiles.ASModule)
 {
     {
         let method = AddMethod(dbtype, "IsBound");
@@ -251,7 +248,7 @@ function AddGeneratedCodeForDelegate(dbtype : typedb.DBType, globalType : typedb
         }
 
         {
-            let method = AddMethod(globalType, dbtype.typename);
+            let method = AddMethod(asmodule.global_type, dbtype.typename);
             method.returnType = dbtype.typename;
             method.documentation = dbtype.documentation;
             method.isConstructor = true;
@@ -259,6 +256,9 @@ function AddGeneratedCodeForDelegate(dbtype : typedb.DBType, globalType : typedb
                 new typedb.DBArg().init("UObject", "Object", "nullptr"),
                 new typedb.DBArg().init("FName", "FunctionName", "NAME_None"),
             ];
+
+            asmodule.globals.push(method);
+            typedb.AddScriptGlobalSymbol(method);
         }
     }
 
