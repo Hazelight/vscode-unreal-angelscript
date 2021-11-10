@@ -161,6 +161,9 @@ function AddGeneratedCodeForDelegate(dbtype : typedb.DBType, globalType : typedb
             method.returnType = "void";
             method.documentation = "Add a new binding to this event. Make sure the function you're binding is a UFUNCTION().";
             method.isDelegateBindFunction = true;
+            method.delegateBindType = dbtype.typename;
+            method.delegateObjectParam = 0;
+            method.delegateFunctionParam = 1;
             method.args = [
                 new typedb.DBArg().init("UObject", "Object"),
                 new typedb.DBArg().init("FName", "FunctionName"),
@@ -220,6 +223,9 @@ function AddGeneratedCodeForDelegate(dbtype : typedb.DBType, globalType : typedb
             let method = AddMethod(dbtype, "BindUFunction");
             method.returnType = "void";
             method.documentation = "Set the function that is bound to this delegate. Make sure the function you're binding is a UFUNCTION().";
+            method.delegateBindType = dbtype.typename;
+            method.delegateObjectParam = 0;
+            method.delegateFunctionParam = 1;
             method.isDelegateBindFunction = true;
             method.args = [
                 new typedb.DBArg().init("UObject", "Object"),

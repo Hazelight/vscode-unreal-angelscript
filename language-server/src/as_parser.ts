@@ -3655,10 +3655,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 delegateBind.scope = scope;
                 delegateBind.statement = statement;
                 delegateBind.node_expression = node;
-                if (node.children[1].children[0])
-                    delegateBind.node_object = node.children[1].children[0];
-                if (node.children[1].children[1])
-                    delegateBind.node_name = node.children[1].children[1];
+                if (node.children[1].children[left_symbol.delegateObjectParam])
+                    delegateBind.node_object = node.children[1].children[left_symbol.delegateObjectParam];
+                if (node.children[1].children[left_symbol.delegateFunctionParam])
+                    delegateBind.node_name = node.children[1].children[left_symbol.delegateFunctionParam];
                 delegateBind.delegateType = left_symbol.delegateBindType;
                 scope.module.delegateBinds.push(delegateBind);
             }
