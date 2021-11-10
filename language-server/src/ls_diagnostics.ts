@@ -245,10 +245,19 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                 let signatureArg = delegateType.delegateArgs[i].typename;
                 let boundArg = foundFunc.args[i].typename;
 
-                if (!typedb.TypenameEquals(signatureArg, boundArg))
+                let leftTypename = typedb.CleanTypeName(signatureArg);
+                let rightTypename = typedb.CleanTypeName(boundArg);
+                if (leftTypename != rightTypename)
                 {
-                    signatureMatches = false;
-                    break;
+                    // int and int32 are considered the same type for delegate binds
+                    let isPrimitiveMatch = (leftTypename == "int" && rightTypename == "int32")
+                        || (leftTypename == "int32" && rightTypename == "int");
+
+                    if (!isPrimitiveMatch)
+                    {
+                        signatureMatches = false;
+                        break;
+                    }
                 }
 
                 if (signatureArg.endsWith("&out") != boundArg.endsWith("&out"))
