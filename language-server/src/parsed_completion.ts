@@ -95,8 +95,10 @@ class CompletionContext
     isIncompleteNamespace: boolean = false;
     isFunctionDeclaration: boolean = false;
     isInsideType: boolean = false;
-    maybeTypename: boolean = false;
     expectedType: typedb.DBType = null;
+
+    maybeTypename: boolean = false;
+    typenameExpected : string = null
 
     subOuterStatement: scriptfiles.ASStatement = null;
     subOuterFunctions: Array<typedb.DBMethod> = null;
@@ -692,6 +694,13 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         AddCompletionsFromKeywordList(context, [
             "nullptr", "true", "false",
         ], completions);
+
+        if (context.expectedType && !context.expectedType.isValueType())
+        {
+            AddCompletionsFromKeywordList(context, [
+                "Cast",
+            ], completions);
+        }
     }
     
     if (!context.isRightExpression && !context.isSubExpression)
@@ -964,6 +973,13 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
                         complItem.preselect = true;
                         context.havePreselection = true;
                     }
+                }
+                else if (context.maybeTypename && context.typenameExpected && context.typenameExpected == dbtype.typename)
+                {
+                    // We might be expecting a specific typename, in which case we should preselect it
+                    complItem.sortText = Sort.Typename_Expected;
+                    complItem.preselect = true;
+                    context.havePreselection = true;
                 }
 
                 completions.push(complItem);
@@ -1934,6 +1950,16 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             context.maybeTypename = true;
     }
 
+    // If we're completing a typename inside a Cast<> we should expect the right one
+    if (context.statement.ast && context.statement.ast.type == scriptfiles.node_types.CastOperation)
+    {
+        context.isRightExpression = false;
+        context.maybeTypename = true;
+
+        if (context.expectedType)
+            context.typenameExpected = context.expectedType.typename;
+    }
+
     // Check if we're completing in a type, maybe invalid
     if (context.priorType)
         context.isInsideType = true;
@@ -2257,6 +2283,19 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             }
         }
         break;
+        case scriptfiles.node_types.CastOperation:
+        {
+            if (node.children && node.children[0] && !node.children[1])
+            {
+                context.priorExpression = null;
+                context.completingSymbol = node.children[0].value;
+                context.completingNode = node.children[0];
+                context.priorType = null;
+                context.maybeTypename = true;
+                return true;
+            }
+        }
+        break;
     }
 
     return false;
@@ -2412,7 +2451,20 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
                             c.isRightExpression = true;
                             c.rightOperator = "<";
                         }
-                        endParse = true;
+
+                        if (exprStartOffset >= 4
+                            && content[exprStartOffset-4] == "C"
+                            && content[exprStartOffset-3] == "a"
+                            && content[exprStartOffset-2] == "s"
+                            && content[exprStartOffset-1] == "t")
+                        {
+                            // This is a partial Cast<, keep parsing
+                        }
+                        else
+                        {
+                            // This must be an operator, stop parse
+                            endParse = true;
+                        }
                     }
                     else
                     {
