@@ -74,6 +74,54 @@ export function* FindReferences(uri : string, position : Position) : any
     else
         considerModules = scriptfiles.GetModulesPotentiallyImportingSymbol(asmodule, findSymbol);
 
+    // If we're looking for a method, we should also include any overrides from derived types
+    let searchForTypes = new Set<string>();
+    searchForTypes.add(findSymbol.container_type);
+
+    if (findSymbol.type == scriptfiles.ASSymbolType.MemberFunction
+        || findSymbol.type == scriptfiles.ASSymbolType.MemberAccessor)
+    {
+        // First find the parent-most type that has this method
+        let checkParent = typedb.GetType(findSymbol.container_type);
+        while (checkParent)
+        {
+            let nextParent = typedb.GetType(checkParent.supertype);
+            if (nextParent && nextParent.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.FunctionOnly))
+            {
+                checkParent = nextParent;
+                continue;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        // Update which modules to search in based on our parent
+        if (checkParent && checkParent.typename != findSymbol.container_type)
+        {
+            if (checkParent.declaredModule)
+                considerModules = scriptfiles.GetModulesPotentiallyImporting(checkParent.declaredModule);
+            else
+                considerModules = scriptfiles.GetAllLoadedModules();
+        }
+        searchForTypes.add(checkParent.typename);
+
+        // Types don't have a list of inherited types, so we need to recursively
+        // search for types that have one of our search types as parent. Shouldn't take
+        // more than a few sweeps.
+        let lastTypeCount = 0;
+        while (lastTypeCount != searchForTypes.size)
+        {
+            lastTypeCount = searchForTypes.size;
+            for (let [_, searchType] of typedb.GetAllTypes())
+            {
+                if (searchType && searchForTypes.has(searchType.supertype))
+                    searchForTypes.add(searchType.typename);
+            }
+        }
+    }
+
     // Look in all considered modules (Slow!)
     let parseCount = 0;
     for (let checkmodule of considerModules)
@@ -94,9 +142,9 @@ export function* FindReferences(uri : string, position : Position) : any
         {
             if (symbol.type != findSymbol.type && symbol.type != alternateType)
                 continue;
-            if (symbol.container_type != findSymbol.container_type)
-                continue;
             if (symbol.symbol_name != findSymbol.symbol_name)
+                continue;
+            if (!searchForTypes.has(symbol.container_type))
                 continue;
 
             references.push(checkmodule.getLocationRange(symbol.start, symbol.end));
