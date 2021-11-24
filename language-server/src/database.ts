@@ -1589,8 +1589,11 @@ export function AddPrimitiveTypes()
 {
     for (let primtype of [
         "int",
-        "int8",
         "uint",
+        "int8",
+        "uint8",
+        "int16",
+        "uint16",
         "int32",
         "uint32",
         "int64",
