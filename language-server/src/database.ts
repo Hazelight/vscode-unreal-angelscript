@@ -170,6 +170,7 @@ export class DBMethod implements DBSymbol
     isProperty : boolean = false;
     isOverride : boolean = false;
     isDefaultsOnly : boolean = false;
+    isLocal : boolean = false;
     id : number = NextMethodId++;
     containingType : DBType = null;
     keywords : Array<string> = null;
@@ -412,6 +413,17 @@ export class DBMethod implements DBSymbol
 
         if (this.returnType != otherFunc.returnType)
             return false;
+
+        return true;
+    }
+
+    IsAccessibleFromModule(module : string) : boolean
+    {
+        if (this.isLocal)
+        {
+            if (this.declaredModule && this.declaredModule != module)
+                return false;
+        }
 
         return true;
     }

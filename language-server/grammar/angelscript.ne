@@ -52,6 +52,7 @@ const lexer = moo.compile({
             delegate_token: "delegate",
             property_token: "property",
             mixin_token: "mixin",
+            local_token: "local",
             event_token: "event",
             else_token: "else",
             while_token: "while",
@@ -385,12 +386,12 @@ global_statement -> %import_token _ function_signature _ "from" _ (%dqstring | %
     }
 %}
 
-global_declaration -> ufunction_macro:? (%mixin_token _):? function_signature {%
+global_declaration -> ufunction_macro:? ((%mixin_token | %local_token) _):? function_signature {%
     function (d) {
         return ExtendedCompound(d, {
             ...d[2],
             macro: d[0],
-            mixin: !!d[1],
+            scoping: d[1] ? d[1][0][0].value : undefined,
         });
     }
 %}

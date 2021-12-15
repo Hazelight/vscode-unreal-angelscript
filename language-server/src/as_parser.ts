@@ -1954,8 +1954,13 @@ function GenerateTypeInformation(scope : ASScope)
                 }
             }
 
-            if (funcdef.mixin)
-                dbfunc.isMixin = true;
+            if (funcdef.scoping)
+            {
+                if (funcdef.scoping == "mixin")
+                    dbfunc.isMixin = true;
+                else if (funcdef.scoping == "local")
+                    dbfunc.isLocal = true;
+            }
 
             // Figure out whether there is any code in this function
             if (scope.scopes.length != 0)
@@ -3004,7 +3009,11 @@ function ResolveTypeFromIdentifier(scope : ASScope, identifier : string) : typed
         for (let sym of getSymbols)
         {
             if (sym instanceof typedb.DBMethod && sym.isProperty && sym.returnType && !sym.isMixin)
+            {
+                if (sym.isLocal && !sym.IsAccessibleFromModule(scope.module.modulename))
+                    continue;
                 return typedb.GetType(sym.returnType);
+            }
         }
     }
 
@@ -3015,7 +3024,11 @@ function ResolveTypeFromIdentifier(scope : ASScope, identifier : string) : typed
         for (let sym of setSymbols)
         {
             if (sym instanceof typedb.DBMethod && sym.isProperty && sym.args.length > 0 && !sym.isMixin)
+            {
+                if (sym.isLocal && !sym.IsAccessibleFromModule(scope.module.modulename))
+                    continue;
                 return typedb.GetType(sym.args[0].typename);
+            }
         }
     }
 
@@ -3158,6 +3171,8 @@ function ResolveFunctionFromType(scope : ASScope, dbtype : typedb.DBType, name :
                 {
                     if (!usedSymbol.isMixin)
                         continue;
+                    if (usedSymbol.isLocal && !usedSymbol.IsAccessibleFromModule(scope.module.modulename))
+                        continue;
                     if (usedSymbol.args.length != 0 && dbtype.inheritsFrom(usedSymbol.args[0].typename))
                         return usedSymbol;
                 }
@@ -3196,6 +3211,8 @@ function ResolveFunctionFromIdentifier(scope : ASScope, identifier : string) : t
             if (sym instanceof typedb.DBMethod)
             {
                 if (sym.isMixin)
+                    continue;
+                if (sym.isLocal && !sym.IsAccessibleFromModule(scope.module.modulename))
                     continue;
                 return sym;
             }
@@ -3298,6 +3315,8 @@ function ResolveFunctionOverloadsFromType(scope : ASScope, dbtype : typedb.DBTyp
                 {
                     if (symbol.isMixin)
                         continue;
+                    if (symbol.isLocal && !symbol.IsAccessibleFromModule(scope.module.modulename))
+                        continue;
                     functions.push(symbol);
                 }
             }
@@ -3315,6 +3334,8 @@ function ResolveFunctionOverloadsFromType(scope : ASScope, dbtype : typedb.DBTyp
                 if (symbol instanceof typedb.DBMethod)
                 {
                     if (!symbol.isMixin)
+                        continue;
+                    if (symbol.isLocal && !symbol.IsAccessibleFromModule(scope.module.modulename))
                         continue;
                     if (symbol.args.length != 0 && dbtype.inheritsFrom(symbol.args[0].typename))
                         functions.push(symbol);
@@ -4306,18 +4327,26 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         if (usedSymbol)
         {
             let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.GlobalVariable : ASSymbolType.GlobalFunction;
-            if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isConstructor)
-                symType = ASSymbolType.Typename;
+            if (usedSymbol instanceof typedb.DBMethod)
+            {
+                if (usedSymbol.isConstructor)
+                    symType = ASSymbolType.Typename;
+                if (usedSymbol.isLocal && !usedSymbol.IsAccessibleFromModule(scope.module.modulename))
+                    usedSymbol = null;
+            }
 
-            AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
-            scope.module.markDependencySymbol(usedSymbol);
-            return usedSymbol;
+            if (usedSymbol)
+            {
+                AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
+                scope.module.markDependencySymbol(usedSymbol);
+                return usedSymbol;
+            }
         }
 
         if (typedb.AllowsProperties(symbol_type))
         {
             let getAccessor = globalType.findFirstSymbol("Get"+node.value, typedb.DBAllowSymbol.FunctionOnly);
-            if (getAccessor && getAccessor instanceof typedb.DBMethod && getAccessor.isProperty)
+            if (getAccessor && getAccessor instanceof typedb.DBMethod && getAccessor.isProperty && getAccessor.IsAccessibleFromModule(scope.module.modulename))
             {
                 AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, getAccessor.containingType, getAccessor.name, parseContext.isWriteAccess);
                 scope.module.markDependencyFunction(getAccessor);
@@ -4325,7 +4354,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             }
 
             let setAccessor = globalType.findFirstSymbol("Set"+node.value, typedb.DBAllowSymbol.FunctionOnly);
-            if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
+            if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0 && setAccessor.IsAccessibleFromModule(scope.module.modulename))
             {
                 AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, setAccessor.containingType, setAccessor.name, parseContext.isWriteAccess);
                 scope.module.markDependencyFunction(setAccessor);
@@ -4343,6 +4372,8 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             if (usedSymbol instanceof typedb.DBMethod && typedb.AllowsFunctions(symbol_type))
             {
                 if (usedSymbol.isMixin)
+                    continue;
+                if (usedSymbol.isLocal && !usedSymbol.IsAccessibleFromModule(scope.module.modulename))
                     continue;
                 let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
                 if (!ScriptSettings.automaticImports)
@@ -4371,6 +4402,8 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             {
                 if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isProperty && !usedSymbol.isMixin)
                 {
+                    if (usedSymbol.isLocal && !usedSymbol.IsAccessibleFromModule(scope.module.modulename))
+                        continue;
                     let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
                     if (!ScriptSettings.automaticImports)
                         addedSym.isUnimported = true;
@@ -4387,6 +4420,8 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             {
                 if (usedSymbol instanceof typedb.DBMethod && usedSymbol.isProperty && usedSymbol.args.length != 0 && !usedSymbol.isMixin)
                 {
+                    if (usedSymbol.isLocal && !usedSymbol.IsAccessibleFromModule(scope.module.modulename))
+                        continue;
                     let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
                     if (!ScriptSettings.automaticImports)
                         addedSym.isUnimported = true;
@@ -4693,7 +4728,7 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
         {
             for (let func of prefixed)
             {
-                if (func instanceof typedb.DBMethod && typedb.AllowsFunctions(symbol_type) && !func.isMixin)
+                if (func instanceof typedb.DBMethod && typedb.AllowsFunctions(symbol_type) && !func.isMixin && func.IsAccessibleFromModule(scope.module.modulename))
                     return true;
                 if (func instanceof typedb.DBProperty && typedb.AllowsProperties(symbol_type))
                     return true;
@@ -4709,7 +4744,7 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
         {
             for (let func of getAccessors)
             {
-                if (func instanceof typedb.DBMethod && func.isProperty && !func.isMixin)
+                if (func instanceof typedb.DBMethod && func.isProperty && !func.isMixin && func.IsAccessibleFromModule(scope.module.modulename))
                     return true;
             }
         }
@@ -4719,7 +4754,7 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
         {
             for (let func of setAccessors)
             {
-                if (func instanceof typedb.DBMethod && func.isProperty && !func.isMixin)
+                if (func instanceof typedb.DBMethod && func.isProperty && !func.isMixin && func.IsAccessibleFromModule(scope.module.modulename))
                     return true;
             }
         }
@@ -4892,6 +4927,8 @@ function CheckIdentifierIsPrefixForValidSymbolInType(scope : ASScope, statement 
                 if (usedSymbol instanceof typedb.DBMethod)
                 {
                     if (!usedSymbol.isMixin)
+                        continue;
+                    if (usedSymbol.isLocal && usedSymbol.IsAccessibleFromModule(scope.module.modulename))
                         continue;
                     if (usedSymbol.args.length != 0 && dbtype.inheritsFrom(usedSymbol.args[0].typename))
                     {

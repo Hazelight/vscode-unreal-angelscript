@@ -1353,6 +1353,8 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
                     continue;
                 if (!CanCompleteSymbol(context, sym))
                     continue;
+                if (!sym.IsAccessibleFromModule(context.scope.module.modulename))
+                    continue;
 
                 // Don't show constructors if we're probably completing the name of a type
                 if (sym.isConstructor && context.maybeTypename)

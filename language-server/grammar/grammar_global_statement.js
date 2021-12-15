@@ -56,6 +56,7 @@ const lexer = moo.compile({
             delegate_token: "delegate",
             property_token: "property",
             mixin_token: "mixin",
+            local_token: "local",
             event_token: "event",
             else_token: "else",
             while_token: "while",
@@ -388,7 +389,9 @@ var grammar = {
         },
     {"name": "global_declaration$ebnf$1", "symbols": ["ufunction_macro"], "postprocess": id},
     {"name": "global_declaration$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "global_declaration$ebnf$2$subexpression$1", "symbols": [(lexer.has("mixin_token") ? {type: "mixin_token"} : mixin_token), "_"]},
+    {"name": "global_declaration$ebnf$2$subexpression$1$subexpression$1", "symbols": [(lexer.has("mixin_token") ? {type: "mixin_token"} : mixin_token)]},
+    {"name": "global_declaration$ebnf$2$subexpression$1$subexpression$1", "symbols": [(lexer.has("local_token") ? {type: "local_token"} : local_token)]},
+    {"name": "global_declaration$ebnf$2$subexpression$1", "symbols": ["global_declaration$ebnf$2$subexpression$1$subexpression$1", "_"]},
     {"name": "global_declaration$ebnf$2", "symbols": ["global_declaration$ebnf$2$subexpression$1"], "postprocess": id},
     {"name": "global_declaration$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
     {"name": "global_declaration", "symbols": ["global_declaration$ebnf$1", "global_declaration$ebnf$2", "function_signature"], "postprocess": 
@@ -396,7 +399,7 @@ var grammar = {
             return ExtendedCompound(d, {
                 ...d[2],
                 macro: d[0],
-                mixin: !!d[1],
+                scoping: d[1] ? d[1][0][0].value : undefined,
             });
         }
         },
