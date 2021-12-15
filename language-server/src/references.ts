@@ -202,7 +202,7 @@ export function PrepareRename(uri : string, position : Position) : Range | Respo
             let dbtype = typedb.GetType(findSymbol.container_type);
             if (!dbtype)
                 return null;
-            let dbmethod = dbtype.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.FunctionOnly);
+            let dbmethod = dbtype.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.FunctionsAndMixins);
             if (!(dbmethod instanceof typedb.DBMethod))
                 return null;
             if (!dbmethod.declaredModule)
@@ -273,7 +273,7 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
             let dbtype = typedb.GetType(findSymbol.container_type);
             if (!dbtype)
                 return edits;
-            let dbmethod = dbtype.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.FunctionOnly);
+            let dbmethod = dbtype.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.FunctionsAndMixins);
             if (!(dbmethod instanceof typedb.DBMethod))
                 return edits;
             if (!dbmethod.declaredModule)
