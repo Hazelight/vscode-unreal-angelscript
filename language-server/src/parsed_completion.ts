@@ -1735,11 +1735,19 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             if (context.subOuterStatement.ast.type == scriptfiles.node_types.VariableDecl)
             {
                 let dbVarType = typedb.GetType(context.subOuterStatement.ast.typename.value);
-                if (dbVarType && context.subOuterStatement.ast.name)
+                if (dbVarType
+                    && (i == subCandidates.length-1)
+                    && (!context.baseStatement
+                        || !context.baseStatement.ast
+                        || context.baseStatement.ast.type != scriptfiles.node_types.FunctionDecl
+                        || !(context.baseStatement.next instanceof scriptfiles.ASScope)))
                 {
-                    scriptfiles.ResolveFunctionOverloadsFromIdentifier(context.scope, dbVarType.typename, context.subOuterFunctions);
-                    if (context.subOuterFunctions.length != 0)
-                        break;
+                    if (context.subOuterStatement.ast.name || !context.scope.isInFunctionBody())
+                    {
+                        scriptfiles.ResolveFunctionOverloadsFromIdentifier(context.scope, dbVarType.typename, context.subOuterFunctions);
+                        if (context.subOuterFunctions.length != 0)
+                            break;
+                    }
                 }
             }
         }
