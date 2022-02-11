@@ -1,8 +1,28 @@
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 import * as assets from './assets';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { Range, Position, Location, CodeLens, InitializedNotification, Command } from "vscode-languageserver";
+
+let FileTemplates = new Map<string,string>();
+
+export function LoadFileTemplates(filenames : Array<string>)
+{
+    for (let file of filenames)
+    {
+        try
+        {
+            let content = fs.readFileSync(file, 'utf8');
+            FileTemplates.set(path.basename(file, ".as.template").replace("_", " "), content);
+        }
+        catch (readError)
+        {
+            continue;
+        }
+    }
+}
 
 export function ComputeCodeLenses(asmodule : scriptfiles.ASModule) : Array<CodeLens>
 {
@@ -10,6 +30,24 @@ export function ComputeCodeLenses(asmodule : scriptfiles.ASModule) : Array<CodeL
 
     // Add lenses for each scope in the file
     AddScopeLenses(asmodule.rootscope, lenses);
+
+    // If the file is empty, add lenses for activating templates
+    if (asmodule.rootscope.next == null && FileTemplates.size != 0 && asmodule.content.match(/^[\s\r\n]*$/))
+    {
+        for (let [name, content] of FileTemplates)
+        {
+            lenses.push(<CodeLens> {
+                range: Range.create(Position.create(0, 0), Position.create(0, 10000)),
+                command: <Command> {
+                    title: "Create "+name,
+                    command: "editor.action.insertSnippet",
+                    arguments: [{
+                        "snippet": content
+                    }],
+                }
+            });
+        }
+    }
 
     return lenses;
 }

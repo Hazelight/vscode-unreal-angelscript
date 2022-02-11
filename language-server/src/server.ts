@@ -241,8 +241,13 @@ connection.onInitialize((_params): InitializeResult => {
         }
 
         TickQueues();
-
         setTimeout(DetectUnrealConnectionTimeout, 20000);
+    });
+
+    // Read templates
+    glob(RootPath+"/.vscode/templates/*.as.template", null, function(err : any, files : any)
+    {
+        scriptlenses.LoadFileTemplates(files);
     });
 
     return {
