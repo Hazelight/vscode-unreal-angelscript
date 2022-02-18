@@ -106,7 +106,11 @@
                 "extensions": [
                     ".as"
                 ],
-                "configuration": "./extension/language-configuration.json"
+                "configuration": "./extension/language-configuration.json",
+                "icon": {
+                    "dark": "./resources/file-icon-dark-theme.svg",
+                    "light": "./resources/file-icon-light-theme.svg"
+                }
             },
             {
                 "id": "angelscript_snippet",
