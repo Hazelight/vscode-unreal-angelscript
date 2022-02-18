@@ -1,30 +1,29 @@
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 import { node_types } from './as_parser';
-import { Range, Position } from "vscode-languageserver";
+import { Range, Location, Position, Command, MarkedString } from "vscode-languageserver";
+
+export enum ASInlayKind {
+    Type = 1,
+    Parameter = 2,
+};
+
+export class ASInlayLabelPart {
+    value: string;
+    tooltip?: string | undefined;
+    location?: Location | undefined;
+    command?: Command | undefined;
+};
 
 export interface ASInlayHint
 {
-    /**
-     * The text of the hint.
-     */
-    text: string;
-    /**
-     * The position of this hint.
-     */
     position: Position;
-    /**
-     * The kind of this hint.
-     */
-    kind?: number;
-    /**
-     * Whitespace before the hint.
-     */
-    whitespaceBefore?: boolean;
-    /**
-     * Whitespace after the hint.
-     */
-    whitespaceAfter?: boolean;
+    label: string | ASInlayLabelPart[];
+    tooltip?: string | undefined;
+    command?: Command;
+    kind?: ASInlayKind;
+    paddingLeft?: boolean;
+    paddingRight?: boolean;
 };
 
 export interface InlayHintSettings
@@ -146,10 +145,34 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
 
             if (showAutoHint)
             {
+                let label : string | ASInlayLabelPart[] = null;
+                label = " ["+scopevar.typename+"]";
+
+                let varType = typedb.GetType(scopevar.typename);
+                if (varType && varType.declaredModule)
+                {
+                    let varModule = scriptfiles.GetModule(varType.declaredModule);
+                    if (varModule)
+                    {
+                        label = [
+                            <ASInlayLabelPart> {
+                                value: " [",
+                            },
+                            <ASInlayLabelPart> {
+                                value: scopevar.typename,
+                                location: varModule.getLocation(varType.moduleOffset),
+                            },
+                            <ASInlayLabelPart> {
+                                value: "]",
+                            },
+                        ];
+                    }
+                }
+
                 hints.push(<ASInlayHint> {
-                    text: ": "+scopevar.typename,
-                    position: scope.module.getPosition(scopevar.end_offset_name),
-                    kind: 1,
+                    label: label,
+                    position: scope.module.getPosition(scopevar.start_offset_name-1),
+                    kind: ASInlayKind.Type,
                     whitespaceBefore: true,
                 });
             }
@@ -375,9 +398,9 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                         }
 
                         hints.push(<ASInlayHint> {
-                            text: hintStr,
+                            label: hintStr,
                             position: scope.module.getPosition(argNode.start + statement.start_offset),
-                            kind: 2,
+                            kind: ASInlayKind.Parameter,
                             whitespaceAfter: true,
                         });
                     }

@@ -1,4 +1,4 @@
-import { CodeAction, CodeActionKind, Command, Diagnostic, Position, Range, WorkspaceEdit, TextEdit, SymbolTag } from "vscode-languageserver-types";
+import { CodeAction, CodeActionKind, Command, Diagnostic, Position, Range, WorkspaceEdit, TextEdit, SymbolTag, LSPObject } from "vscode-languageserver-types";
 import * as typedb from "./database";
 import * as scriptfiles from "./as_parser";
 import * as scriptsymbols from "./symbols";
@@ -118,9 +118,18 @@ function AddImportActions(context : CodeActionContext)
             diagnostics: appliedTo,
             isPreferred: true,
             data: {
-                uri: context.module.uri,
-                type: "import",
-                symbol: symbol,
+                "uri": context.module.uri,
+                "type": "import",
+                "symbol": {
+                    "container_type": symbol.container_type,
+                    "symbol_name": symbol.symbol_name,
+                    "start": symbol.start,
+                    "end": symbol.end,
+                    "isWriteAccess": symbol.isWriteAccess,
+                    "isUnimported": symbol.isUnimported,
+                    "isAuto": symbol.isAuto,
+                    "noColor": symbol.noColor,
+                },
             }
         });
     }
@@ -789,7 +798,16 @@ function AddAutoActions(context : CodeActionContext)
                 uri: context.module.uri,
                 type: "materializeAuto",
                 typename: realTypename,
-                symbol: symbol,
+                symbol: {
+                    "container_type": symbol.container_type,
+                    "symbol_name": symbol.symbol_name,
+                    "start": symbol.start,
+                    "end": symbol.end,
+                    "isWriteAccess": symbol.isWriteAccess,
+                    "isUnimported": symbol.isUnimported,
+                    "isAuto": symbol.isAuto,
+                    "noColor": symbol.noColor,
+                },
             }
         });
     }

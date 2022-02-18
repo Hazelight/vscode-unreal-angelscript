@@ -241,7 +241,7 @@ connection.onInitialize((_params): InitializeResult => {
         }
 
         TickQueues();
-        setTimeout(DetectUnrealConnectionTimeout, 20000);
+        setTimeout(DetectUnrealConnectionTimeout, 20000)
     });
 
     // Read templates
@@ -669,7 +669,8 @@ connection.onExecuteCommand(function (params : ExecuteCommandParams)
     {
         if (params.arguments && params.arguments[0])
         {
-            let references = assets.GetAssetsImplementing(params.arguments[0]);
+            let argList = params.arguments as Array<any>;
+            let references = assets.GetAssetsImplementing(argList[0]);
             if (!references || references.length == 0)
                 return;
 
@@ -901,7 +902,8 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
 
  connection.onDidChangeConfiguration(function (change : DidChangeConfigurationParams)
  {
-    let settings = change.settings.UnrealAngelscript;
+    let settingsObject = change.settings as any;
+    let settings : any = settingsObject.UnrealAngelscript;
     if (!settings)
         return;
 

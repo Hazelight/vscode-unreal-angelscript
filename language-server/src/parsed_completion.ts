@@ -3376,8 +3376,10 @@ export function Resolve(item : CompletionItem) : CompletionItem
     if (!item.data)
         return null;
 
-    let kind = item.data[0];
-    let type = typedb.GetType(item.data[1]);
+    let dataArray = item.data as Array<any>;
+    let kind = dataArray[0];
+
+    let type = typedb.GetType(dataArray[1]);
     if (type == null)
         return null;
 
@@ -3389,7 +3391,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
     }
     else if (kind == "enum" || kind == "prop")
     {
-        let prop = type.getProperty(item.data[2]);
+        let prop = type.getProperty(dataArray[2]);
         if (prop)
         {
             item.documentation = <MarkupContent> {
@@ -3410,13 +3412,13 @@ export function Resolve(item : CompletionItem) : CompletionItem
     }
     else if (kind == "accessor")
     {
-        let getFunc = type.getMethod("Get"+item.data[2]);
-        let setFunc = type.getMethod("Set"+item.data[2]);
+        let getFunc = type.getMethod("Get"+dataArray[2]);
+        let setFunc = type.getMethod("Set"+dataArray[2]);
 
         let docStr = "";
         if (getFunc)
         {
-            docStr += "```angelscript_snippet\n"+getFunc.returnType+"\xa0"+item.data[2]+"\n```\n\n";
+            docStr += "```angelscript_snippet\n"+getFunc.returnType+"\xa0"+dataArray[2]+"\n```\n\n";
             item.labelDetails = <CompletionItemLabelDetails>
             {
                 description: getFunc.returnType,
@@ -3424,7 +3426,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
         }
         else if (setFunc && setFunc.args && setFunc.args.length >= 1)
         {
-            docStr += "```angelscript_snippet\n"+setFunc.args[0].typename+"\xa0"+item.data[2]+"\n```\n\n";
+            docStr += "```angelscript_snippet\n"+setFunc.args[0].typename+"\xa0"+dataArray[2]+"\n```\n\n";
             item.labelDetails = <CompletionItemLabelDetails>
             {
                 description: setFunc.args[0].typename,
@@ -3446,7 +3448,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
     }
     else if (kind == "func" || kind == "func_mixin")
     {
-        let func = type.getMethodWithIdHint(item.data[2], item.data[3]);
+        let func = type.getMethodWithIdHint(dataArray[2], dataArray[3]);
         if (func)
         {
             let isMixin = (kind == "func_mixin");
@@ -3476,7 +3478,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
     }
     else if (kind == "decl_snippet")
     {
-        let func = type.getMethodWithIdHint(item.data[2], item.data[3]);
+        let func = type.getMethodWithIdHint(dataArray[2], dataArray[3]);
         if (func)
         {
             let complStr = NoBreakingSpaces(GetDeclarationSnippet(func, null, true));
