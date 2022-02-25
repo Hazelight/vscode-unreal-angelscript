@@ -171,6 +171,10 @@ function AddGeneratedCodeForDelegate(dbtype : typedb.DBType, asmodule : scriptfi
             let method = AddMethod(dbtype, "Unbind");
             method.returnType = "void";
             method.documentation = "Unbind a specific function that was previously added to this event.";
+            method.isDelegateBindFunction = true;
+            method.delegateBindType = dbtype.typename;
+            method.delegateObjectParam = 0;
+            method.delegateFunctionParam = 1;
             method.args = [
                 new typedb.DBArg().init("UObject", "Object"),
                 new typedb.DBArg().init("FName", "FunctionName"),
