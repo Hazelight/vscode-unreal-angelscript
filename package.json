@@ -44,6 +44,11 @@
                     "default": true,
                     "description": "Add completions for functions in the Math:: namespace so they can be completed without typing Math:: first."
                 },
+                "UnrealAngelscript.correctFloatLiteralsWhenExpectingDoublePrecision": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "When a float literal is typed (eg `1.f`) in a context where double-precision is expected, automatically correct it (eg to `1.0`)"
+                },
                 "UnrealAngelscript.inlayHints.inlayHintsEnabled": {
                     "type": "boolean",
                     "default": true,

@@ -1,7 +1,7 @@
 import {
     CompletionItem, CompletionItemKind, Position, MarkupContent, MarkupKind,
     SignatureHelp, SignatureInformation, ParameterInformation, Range, TextEdit,
-    CompletionItemLabelDetails, Command
+    CompletionItemLabelDetails, Command, WorkspaceEdit
 } from 'vscode-languageserver/node';
 import * as typedb from './database';
 import * as scriptfiles from './as_parser';
@@ -17,10 +17,12 @@ let CommonTemplateTypes = new Set<string>(
 export interface CompletionSettings
 {
     mathCompletionShortcuts : boolean,
+    correctFloatLiteralsWhenExpectingDoublePrecision: boolean,
 };
 
 let CompletionSettings : CompletionSettings = {
     mathCompletionShortcuts: true,
+    correctFloatLiteralsWhenExpectingDoublePrecision: false,
 };
 
 export function GetCompletionSettings() : CompletionSettings
@@ -3714,4 +3716,74 @@ function AddCompletionsFromAccessSpecifiers(context : CompletionContext, complet
     {
         return false;
     }
+}
+
+export function HandleFloatLiteralHelper(asmodule : scriptfiles.ASModule) : Promise<WorkspaceEdit>
+{
+    if (asmodule.lastEditStart == -1)
+        return;
+    if (!CompletionSettings.correctFloatLiteralsWhenExpectingDoublePrecision)
+        return;
+
+    // If we've just edited in a float literal we might want to auto-replace it with a
+    // double literal so help people's muscle memory catch up.
+    let areaStart = Math.max(asmodule.lastEditStart - 10, 0);
+    let editedString = asmodule.content.substring(
+        areaStart,
+        Math.min(asmodule.lastEditEnd, asmodule.content.length),
+    );
+
+    let match = /([0-9]+)\.([0-9])*f/.exec(editedString);
+    if (!match)
+        return;
+
+    let matchStart = areaStart + match.index;
+    let matchEnd = matchStart + match[0].length;
+
+    // Don't do anything if we're not actually editing the float literal
+    if (matchEnd < asmodule.lastEditStart)
+        return;
+
+    return new Promise<WorkspaceEdit>(
+        function (resolve, reject)
+        {
+            asmodule.onResolved(() => {
+                // If the float literal has changed, don't do this
+                if (asmodule.content.substring(matchStart, matchEnd) != match[0])
+                {
+                    reject();
+                    return;
+                }
+
+                // Check if the expected value at this position is a double
+                let context = GenerateCompletionContext(asmodule, matchStart);
+                if (context.expectedType && context.expectedType.typename == "double")
+                {
+                    let edit = <WorkspaceEdit> {};
+                    edit.changes = {};
+
+                    if (match[2] && match[2].length != 0)
+                    {
+                        // Remove the f entirely
+                        edit.changes[asmodule.displayUri] = [
+                            TextEdit.del(asmodule.getRange(matchEnd-1, matchEnd))
+                        ];
+                    }
+                    else
+                    {
+                        // Replace the f with a 0
+                        edit.changes[asmodule.displayUri] = [
+                            TextEdit.replace(asmodule.getRange(matchEnd-1, matchEnd), "0")
+                        ];
+                    }
+
+                    resolve(edit);
+                }
+                else
+                {
+                    resolve(null);
+                }
+            });
+        }
+    );
 }

@@ -84,6 +84,7 @@ export class ASModule
     parsed : boolean = false;
     resolved : boolean = false;
     typesPostProcessed : boolean = false;
+    resolveCallbacks : Array<any> = null
 
     rootscope : ASScope = null;
 
@@ -312,6 +313,19 @@ export class ASModule
 
         for (let dependency of moduleList)
             this.moduleDependencies.add(dependency);
+    }
+
+    onResolved(callback : any)
+    {
+        if (this.resolved)
+        {
+            callback();
+            return;
+        }
+
+        if (!this.resolveCallbacks)
+            this.resolveCallbacks = [];
+        this.resolveCallbacks.push(callback);
     }
 };
 
@@ -903,6 +917,16 @@ export function ResolveModule(module : ASModule)
                 module.moduleDependencies.clear();
             }
         }
+    }
+
+    // Trigger anything that wanted to wait for resolve to finish
+    if (module.resolveCallbacks)
+    {
+        let callbacks = module.resolveCallbacks;
+        module.resolveCallbacks = null;
+
+        for (let callback of callbacks)
+            callback();
     }
 
     // Clear previously cached statements from last parse

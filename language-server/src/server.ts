@@ -14,7 +14,7 @@ import {
     CodeAction,
     DidCloseTextDocumentParams,
     FileChangeType,
-    DidChangeConfigurationParams
+    DidChangeConfigurationParams, TextEdit
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -875,6 +875,16 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
             }
         }, 100);
     }
+
+    if (asmodule.lastEditStart != -1 && parsedcompletion.GetCompletionSettings().correctFloatLiteralsWhenExpectingDoublePrecision)
+    {
+        parsedcompletion.HandleFloatLiteralHelper(asmodule).then(
+            function (edit : WorkspaceEdit)
+            {
+                if (edit)
+                    connection.workspace.applyEdit(edit);
+            });
+    }
  });
 
  connection.onDidOpenTextDocument(function (params : DidOpenTextDocumentParams)
@@ -927,6 +937,7 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
 
     let completionSettings = parsedcompletion.GetCompletionSettings();
     completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;
+    completionSettings.correctFloatLiteralsWhenExpectingDoublePrecision = settings.correctFloatLiteralsWhenExpectingDoublePrecision;
 
     let inlayHintSettings = inlayhints.GetInlayHintSettings();
     inlayHintSettings.inlayHintsEnabled = settings.inlayHints.inlayHintsEnabled;
