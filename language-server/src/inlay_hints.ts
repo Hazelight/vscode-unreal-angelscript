@@ -146,7 +146,7 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
             if (showAutoHint)
             {
                 let label : string | ASInlayLabelPart[] = null;
-                label = " ["+scopevar.typename+"]";
+                label = "["+scopevar.typename+"]";
 
                 let varType = typedb.GetType(scopevar.typename);
                 if (varType && varType.declaredModule)
@@ -156,7 +156,7 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
                     {
                         label = [
                             <ASInlayLabelPart> {
-                                value: " [",
+                                value: "[",
                             },
                             <ASInlayLabelPart> {
                                 value: scopevar.typename,
@@ -173,7 +173,7 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
                     label: label,
                     position: scope.module.getPosition(scopevar.start_offset_name-1),
                     kind: ASInlayKind.Type,
-                    whitespaceBefore: true,
+                    paddingLeft: true,
                 });
             }
         }
@@ -401,7 +401,7 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                             label: hintStr,
                             position: scope.module.getPosition(argNode.start + statement.start_offset),
                             kind: ASInlayKind.Parameter,
-                            whitespaceAfter: true,
+                            paddingRight: true,
                         });
                     }
                 }
