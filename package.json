@@ -87,7 +87,7 @@
                     "default": [
                         "Object", "Actor", "FunctionName",
                         "Value", "InValue", "NewValue",
-                        "X", "Y", "Z", "Condition"
+                        "Condition", "Parameters", "Params"
                     ],
                     "description": "Parameters with a name included in this list will be ignored for inlay hints."
                 },

@@ -2644,6 +2644,13 @@ function ResolveAutos(scope : ASScope)
             if (typename.startsWith("__"))
                 typename = typename.substr(2);
             asvar.typename = CopyQualifiersToTypename(asvar.node_typename, typename);
+
+            // Foreach iterators using 'auto' are always references
+            if (asvar.isIterator && resolvedType.isStruct)
+            {
+                if (!asvar.typename.endsWith("&"))
+                    asvar.typename += "&";
+            }
         }
     }
 

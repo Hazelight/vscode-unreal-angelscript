@@ -191,10 +191,6 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
 
 function LabelConstantLiteralNode(node : any, argName : string) : boolean
 {
-    // Argument names we consider 'Generic' don't get labels
-    if (InlayHintSettings.parameterHintsIgnoredParameterNames.has(argName))
-        return false;
-
     switch (node.type)
     {
         case node_types.This:
@@ -218,10 +214,6 @@ function LabelConstantLiteralNode(node : any, argName : string) : boolean
 
 function LabelComplexExpression(node : any, argName : string) : boolean
 {
-    // Argument names we consider 'Generic' don't get labels
-    if (InlayHintSettings.parameterHintsIgnoredParameterNames.has(argName))
-        return false;
-
     switch (node.type)
     {
         case node_types.FunctionCall:
@@ -240,6 +232,20 @@ function LabelComplexExpression(node : any, argName : string) : boolean
     }
 
     return false;
+}
+
+function AreParameterNamesEqual(func : typedb.DBMethod, otherFunc : typedb.DBMethod, checkCount : number) : boolean
+{
+    let funcOffset = func.isMixin ? 1 : 0;
+    let otherFuncOffset = otherFunc.isMixin ? 1 : 0;
+
+    for (let argIndex = 0; argIndex < checkCount; ++argIndex)
+    {
+        if (func.args[argIndex + funcOffset].name != otherFunc.args[argIndex + otherFuncOffset].name)
+            return false;
+    }
+
+    return true;
 }
 
 export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : scriptfiles.ASStatement, node : any, hints : Array<ASInlayHint>)
@@ -307,7 +313,7 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                 {
                     if (!fallbackFunc)
                         fallbackFunc = candidateFunc;
-                    else
+                    else if (!AreParameterNamesEqual(candidateFunc, fallbackFunc, argCount))
                         fallbackAmbiguous = true;
                     continue;
                 }
@@ -318,10 +324,14 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                 }
                 else
                 {
-                    if (!func.isSignatureEqual(candidateFunc))
+                    if (!AreParameterNamesEqual(candidateFunc, func, argCount))
                         ambiguous = true;
                 }
             }
+
+            // If we have a fallback function with different parameter names we can't show them now
+            if (func && fallbackFunc && !AreParameterNamesEqual(func, fallbackFunc, argCount))
+                ambiguous = true;
 
             // Fall back to something we don't have enough arguments for yet
             if (!func && !fallbackAmbiguous)
@@ -384,8 +394,16 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                     }
 
                     // Never show hints if we already have a named parameter
-                    if (argNode.type == node_types.NamedArgument)
+                    if (shouldShowNameHint && argNode.type == node_types.NamedArgument)
                         shouldShowNameHint = false;
+
+                    // Argument names that are 1 character long probably aren't worth showing
+                    if (shouldShowNameHint && dbParam.name.length == 1)
+                        return false;
+
+                    // Argument names we consider 'Generic' don't get labels
+                    if (shouldShowNameHint && InlayHintSettings.parameterHintsIgnoredParameterNames.has(dbParam.name))
+                        return false;
 
                     let shouldShowRefHint = InlayHintSettings.parameterReferenceHints
                         && dbParam.typename.includes("&")
