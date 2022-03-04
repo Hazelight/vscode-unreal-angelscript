@@ -26,10 +26,12 @@ let parser_enum_statement_initial = parser_enum_statement.save();
 export interface ASSettings
 {
     automaticImports : boolean,
+    floatIsFloat64 : boolean,
 };
 
 let ScriptSettings : ASSettings = {
     automaticImports: false,
+    floatIsFloat64: false,
 };
 
 let PreParsedIdentifiersInModules = new Map<string, Set<ASModule>>();

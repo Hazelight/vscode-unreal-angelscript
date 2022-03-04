@@ -24,7 +24,7 @@
         },
         {
             "name": "storage.type.primitive.angelscript",
-            "match": "\\b(int|float|double|bool|int32|int64|int16|int8|uint32|uint64|uint16|uint8)\\b"
+            "match": "\\b(int|float|double|bool|int32|int64|int16|int8|uint32|uint64|uint16|uint8|float32|float64)\\b"
         },
         {
 			"match": "::",

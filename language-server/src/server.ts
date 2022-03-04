@@ -122,7 +122,6 @@ function connect_unreal() {
             {
                 let dbStr = msg.readString();
                 let dbObj = JSON.parse(dbStr);
-                typedb.AddPrimitiveTypes();
                 typedb.AddTypesFromUnreal(dbObj);
 
                 UnrealTypesTimedOut = false;
@@ -135,6 +134,9 @@ function connect_unreal() {
                 if (ReceivingTypesTimeout)
                     clearTimeout(ReceivingTypesTimeout);
                 typedb.FinishTypesFromUnreal();
+
+                let scriptSettings = scriptfiles.GetScriptSettings()
+                typedb.AddPrimitiveTypes(scriptSettings.floatIsFloat64);
 
                 // Make sure no modules are resolved anymore
                 ReResolveAllModules();
@@ -171,6 +173,9 @@ function connect_unreal() {
 
                 let scriptSettings = scriptfiles.GetScriptSettings()
                 scriptSettings.automaticImports = msg.readBool();
+
+                if (version >= 2)
+                    scriptSettings.floatIsFloat64 = msg.readBool();
             }
         }
     });

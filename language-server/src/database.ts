@@ -1597,28 +1597,46 @@ export function HasTypeWithPrefix(typenamePrefix : string, caseSensitive = true)
     return false;
 }
 
-export function AddPrimitiveTypes()
+let DatabaseFloatIsFloat64 = false;
+let PrimitiveAliases = new Map<string, string>();
+
+export function AddPrimitiveTypes(floatIsFloat64 : boolean)
 {
-    for (let primtype of [
-        "int",
-        "uint",
-        "int8",
-        "uint8",
-        "int16",
-        "uint16",
-        "int32",
-        "uint32",
-        "int64",
-        "uint64",
-        "float",
-        "double",
-        "bool",
-    ])
+    DatabaseFloatIsFloat64 = floatIsFloat64;
+
+    PrimitiveAliases.clear();
+    PrimitiveAliases.set("int", "int32");
+    PrimitiveAliases.set("int32", "int32");
+    PrimitiveAliases.set("int64", "int64");
+    PrimitiveAliases.set("uint", "uint32");
+    PrimitiveAliases.set("uint32", "uint32");
+    PrimitiveAliases.set("uint64", "uint64");
+    PrimitiveAliases.set("int8", "int8");
+    PrimitiveAliases.set("uint8", "uint8");
+    PrimitiveAliases.set("int16", "int16");
+    PrimitiveAliases.set("uint16", "uint16");
+    PrimitiveAliases.set("bool", "bool");
+
+    if (floatIsFloat64)
+        PrimitiveAliases.set("float", "float64");
+    else
+        PrimitiveAliases.set("float", "float32");
+
+    PrimitiveAliases.set("float32", "float32");
+    PrimitiveAliases.set("float64", "float64");
+    PrimitiveAliases.set("double", "float64");
+
+    for (let [primtype, alias] of PrimitiveAliases)
     {
         let dbtype = new DBType().initEmpty(primtype);
         dbtype.isPrimitive = true;
         AddTypeToDatabase(dbtype);
     }
+}
+
+export function ArePrimitiveTypesEquivalent(typenameA : string, typenameB : string) : boolean
+{
+    return (PrimitiveAliases.get(typenameA) == PrimitiveAliases.get(typenameB));
 }
 
 export function AddTypesFromUnreal(input : any)

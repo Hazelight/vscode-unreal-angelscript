@@ -249,11 +249,7 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                 let rightTypename = typedb.CleanTypeName(boundArg);
                 if (leftTypename != rightTypename)
                 {
-                    // int and int32 are considered the same type for delegate binds
-                    let isPrimitiveMatch = (leftTypename == "int" && rightTypename == "int32")
-                        || (leftTypename == "int32" && rightTypename == "int");
-
-                    if (!isPrimitiveMatch)
+                    if (!typedb.ArePrimitiveTypesEquivalent(leftTypename, rightTypename))
                     {
                         signatureMatches = false;
                         break;

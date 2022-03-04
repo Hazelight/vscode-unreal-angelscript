@@ -688,7 +688,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
     let inFunctionBody = !context.scope || context.scope.isInFunctionBody();
 
     AddCompletionsFromKeywordList(context, [
-        "float", "bool", "int", "double", "auto",
+        "float", "bool", "int", "double", "auto"
     ], completions);
 
     if (context.isRightExpression || context.isSubExpression)
@@ -3757,7 +3757,7 @@ export function HandleFloatLiteralHelper(asmodule : scriptfiles.ASModule) : Prom
 
                 // Check if the expected value at this position is a double
                 let context = GenerateCompletionContext(asmodule, matchStart);
-                if (context.expectedType && context.expectedType.typename == "double")
+                if (context.expectedType && typedb.ArePrimitiveTypesEquivalent(context.expectedType.typename, "float64"))
                 {
                     let edit = <WorkspaceEdit> {};
                     edit.changes = {};
