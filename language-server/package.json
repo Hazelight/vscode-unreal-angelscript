@@ -21,7 +21,7 @@
 		"vscode-languageserver-textdocument": "^1.0.1"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.64.0",
+		"@types/vscode": "^1.65.0",
 		"typescript": "^4.5.5",
 		"vscode-test": "^1.3.0"
 	},

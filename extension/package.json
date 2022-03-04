@@ -13,7 +13,7 @@
 		"vscode-languageclient": "^8.0.0-next.12"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.64.0",
+		"@types/vscode": "^1.65.0",
 		"typescript": "^4.5.5",
 		"vscode-test": "^1.3.0"
 	}

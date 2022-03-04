@@ -331,8 +331,8 @@
         "moo": "^0.5.1",
         "nearley": "^2.20.1",
         "npm": "^6.14.6",
-        "vscode-languageclient": "^8.0.0-next.12",
-        "vscode-languageserver": "^8.0.0-next.8",
+        "vscode-languageclient": "^8.0.0-next.13",
+        "vscode-languageserver": "^8.0.0-next.9",
         "vscode-languageserver-textdocument": "^1.0.1"
     },
     "scripts": {
@@ -349,6 +349,6 @@
         "@typescript-eslint/parser": "^4.21.0",
         "eslint": "^7.23.0",
         "mocha": "^8.3.2",
-        "typescript": "^4.5.5"
+        "typescript": "^4.6.2"
     }
 }
