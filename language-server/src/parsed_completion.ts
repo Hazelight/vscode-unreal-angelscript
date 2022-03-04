@@ -143,6 +143,7 @@ class CompletionArguments
     isAfterNamedArgument: boolean = false;
     currentArgumentName: string = null;
     usedArgumentNames: Array<string> = [];
+    nodesForPositionalArguments: Array<any> = [];
 };
 
 export function Complete(asmodule: scriptfiles.ASModule, position: Position): Array<CompletionItem>
@@ -354,6 +355,10 @@ function GenerateCompletionArguments(context: CompletionContext): CompletionArgu
                         if (i == context.subOuterArgumentIndex && argnode.children[0])
                             args.currentArgumentName = argnode.children[0].value;
                     }
+                    else
+                    {
+                        args.nodesForPositionalArguments.push(argnode);
+                    }
                 }
             }
         }
@@ -361,7 +366,29 @@ function GenerateCompletionArguments(context: CompletionContext): CompletionArgu
     return args;
 }
 
-function ScoreMethodForArguments(context: CompletionContext, argContext: CompletionArguments, func: typedb.DBMethod): [number, number]
+function ScoreTypeMatch(wantedType : typedb.DBType, providedType : typedb.DBType) : number
+{
+    if (wantedType == providedType)
+        return 2;
+
+    if (wantedType.isPrimitive && providedType.isPrimitive)
+    {
+        if (typedb.ArePrimitiveTypesEquivalent(wantedType.typename, providedType.typename))
+            return 2;
+
+        let wantedFloat = typedb.IsPrimitiveFloatType(wantedType.typename);
+        let providedFloat = typedb.IsPrimitiveFloatType(providedType.typename);
+
+        if (wantedFloat && !providedFloat)
+            return 1;
+        if (providedFloat && !wantedFloat)
+            return 0;
+    }
+
+    return -2;
+}
+
+function ScoreMethodOverload(context: CompletionContext, func: typedb.DBMethod, argContext: CompletionArguments) : [number, number]
 {
     let score = 0;
     let argumentIndex = context.subOuterArgumentIndex;
@@ -413,7 +440,49 @@ function ScoreMethodForArguments(context: CompletionContext, argContext: Complet
     if (func.isConstructor && (!func.args || func.args.length == 0))
         score -= 1;
 
+    // See if we can match the types of all the arguments
+    let posArgCount = Math.min(argContext.nodesForPositionalArguments.length, argumentLength - argumentOffset);
+    for (let posArg = 0; posArg < posArgCount; ++posArg)
+    {
+        let argnode = argContext.nodesForPositionalArguments[posArg];
+        let argType = scriptfiles.ResolveTypeFromExpression(context.scope, argnode);
+        if (!argType)
+            continue;
+
+        let wantedType = typedb.GetType(func.args[posArg].typename);
+        if (!wantedType)
+            continue;
+
+        score += ScoreTypeMatch(wantedType, argType);
+    }
+
     return [score, activeArg];
+}
+
+export function SortMethodsBasedOnArgumentTypes(methods: Array<typedb.DBMethod>, asmodule: scriptfiles.ASModule, offset: number)
+{
+    let context = GenerateCompletionContext(asmodule, offset - 1);
+    let argContext = GenerateCompletionArguments(context);
+    
+    let scoredFunctions = new Array<[typedb.DBMethod, number]>();
+
+    for (let func of methods)
+        scoredFunctions.push([func, ScoreMethodOverload(context, func, argContext)[0]]);
+
+    scoredFunctions.sort(
+        (first, second) => {
+            if (first[1] > second[1])
+                return -1;
+            else if (first[1] < second[1])
+                return 1;
+            else
+                return 0;
+        }
+    );
+
+    methods.splice(0, methods.length);
+    for (let [func, score] of scoredFunctions)
+        methods.push(func);
 }
 
 export function Signature(asmodule: scriptfiles.ASModule, position: Position): SignatureHelp
@@ -447,7 +516,7 @@ export function Signature(asmodule: scriptfiles.ASModule, position: Position): S
         let func = context.subOuterFunctions[i];
 
         // Keep track of the best function
-        let [score, activeArg] = ScoreMethodForArguments(context, argContext, func);
+        let [score, activeArg] = ScoreMethodOverload(context, func, argContext);
         if (score > bestFunctionScore || bestFunction == -1)
         {
             bestFunctionScore = score;
@@ -509,7 +578,7 @@ function AddCompletionsFromCallSignature(context: CompletionContext, completions
     let bestScore = 0;
     for (let func of context.subOuterFunctions)
     {
-        let [score, activeArg] = ScoreMethodForArguments(context, argContext, func);
+        let [score, activeArg] = ScoreMethodOverload(context, func, argContext);
         if (score > bestScore || !activeMethod)
         {
             activeMethod = func;
@@ -1779,6 +1848,31 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             if (!context.fullOuterStatement.ast)
                 scriptfiles.ParseStatement(scriptfiles.ASScopeType.Code, context.fullOuterStatement);
         }
+    }
+
+    // If we have multiple functions that we could be completing inside, sort them based on overloads
+    if (context.subOuterFunctions && context.subOuterFunctions.length > 1 && context.fullOuterStatement)
+    {
+        let argContext = GenerateCompletionArguments(context);
+        let scoredFunctions = new Array<[typedb.DBMethod, number]>();
+
+        for (let func of context.subOuterFunctions)
+            scoredFunctions.push([func, ScoreMethodOverload(context, func, argContext)[0]]);
+
+        scoredFunctions.sort(
+            (first, second) => {
+                if (first[1] > second[1])
+                    return -1;
+                else if (first[1] < second[1])
+                    return 1;
+                else
+                    return 0;
+            }
+        );
+
+        context.subOuterFunctions = [];
+        for (let [func, score] of scoredFunctions)
+            context.subOuterFunctions.push(func);
     }
 
     // If we're typing an argument to a function, record the most likely expected type

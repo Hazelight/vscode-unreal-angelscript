@@ -6,6 +6,7 @@ import {
 } from 'vscode-languageserver';
 
 import * as scriptfiles from './as_parser';
+import * as parsedcompletion from './parsed_completion';
 import * as typedb from './database';
 import * as specifiers from './specifiers';
 
@@ -333,11 +334,20 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
             if (!insideType)
                 return null;
             
-            let sym = insideType.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.FunctionsAndMixins);
-            if (sym instanceof typedb.DBMethod)
+            let symbols = insideType.findSymbols(findSymbol.symbol_name);
+            let methods = [];
+
+            for (let func of symbols)
             {
-                return GetHoverForFunction(insideType, sym, false);
+                if (func instanceof typedb.DBMethod)
+                    methods.push(func);
             }
+
+            if (methods.length > 1)
+                parsedcompletion.SortMethodsBasedOnArgumentTypes(methods, asmodule, findSymbol.end + 2);
+
+            if (methods.length != 0)
+                return GetHoverForFunction(insideType, methods[0], false);
         }
         break;
         case scriptfiles.ASSymbolType.MemberVariable:

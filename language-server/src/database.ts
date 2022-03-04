@@ -1639,6 +1639,12 @@ export function ArePrimitiveTypesEquivalent(typenameA : string, typenameB : stri
     return (PrimitiveAliases.get(typenameA) == PrimitiveAliases.get(typenameB));
 }
 
+export function IsPrimitiveFloatType(typename : string) : boolean
+{
+    let realType = PrimitiveAliases.get(typename);
+    return realType == "float32" || realType == "float64";
+}
+
 export function AddTypesFromUnreal(input : any)
 {
     for (let key in input)
