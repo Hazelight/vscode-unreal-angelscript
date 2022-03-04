@@ -669,6 +669,7 @@ export class ASStatement extends ASElement
 
     ast : any = null;
     parsed : boolean = false;
+    endsWithSemicolon : boolean = false;
     parseError : boolean = false;
     parsedType : ASScopeType = ASScopeType.Code;
 
@@ -5094,7 +5095,7 @@ function ParseScopeIntoStatements(scope : ASScope)
         cur_element = element;
     }
 
-    function finishStatement()
+    function finishStatement(endsWithSemicolon : boolean)
     {
         if (statement_start != cur_offset)
         {
@@ -5105,6 +5106,7 @@ function ParseScopeIntoStatements(scope : ASScope)
                 statement.content = content;
                 statement.start_offset = statement_start;
                 statement.end_offset = cur_offset;
+                statement.endsWithSemicolon = endsWithSemicolon;
 
                 scope.statements.push(statement);
                 statement.rawIndex = scope.module.rawStatements.length;
@@ -5218,7 +5220,7 @@ function ParseScopeIntoStatements(scope : ASScope)
         {
             if (depth_brace == 0)
             {
-                finishStatement();
+                finishStatement(false);
                 scope_start = cur_offset;
 
                 // Reset paren depth, must be an error if we still have parens open
@@ -5283,17 +5285,17 @@ function ParseScopeIntoStatements(scope : ASScope)
             if (nextchar == '\r' || nextchar == '\n')
             {
                 cur_offset += 1;
-                finishStatement();
+                finishStatement(false);
             }
         }
 
 
         // Detect semicolons to delimit statements
         if (curchar == ';' && depth_paren == 0)
-            finishStatement();
+            finishStatement(true);
     }
 
-    finishStatement();
+    finishStatement(false);
 
     // Also parse any subscopes we detected
     for (let subscope of scope.scopes)
@@ -5691,14 +5693,15 @@ function SplitStatementBasedOnEdit(content : string, editOffset : number, allowN
     return null;
 }
 
-function DisambiguateStatement(ast : any) : any
+function DisambiguateStatement(statement : ASStatement,  ast : any) : any
 {
-    // We always prefer a function declaration parse over a variable declaration one.
+    // Sometimes in a class body we have ambiguous parsing between functions and variables.
     // This can happen in class bodies because "FVector Test()" can be either a function or a variable with a constructor.
+    // We disambiguate based on whether the statement ends in a ';'
     if (ast[0].type == node_types.VariableDecl && ast[1].type == node_types.FunctionDecl)
-        return ast[1];
+        return statement.endsWithSemicolon ? ast[0] : ast[1];
     if (ast[1].type == node_types.VariableDecl && ast[0].type == node_types.FunctionDecl)
-        return ast[0];
+        return statement.endsWithSemicolon ? ast[1] : ast[0];
 
     // We prefer a variable declaration parse over a binary operation parse
     // This can happen when declaring variables of template types
@@ -5777,7 +5780,7 @@ export function ParseStatement(scopetype : ASScopeType, statement : ASStatement,
         else
         {
             // We have some simple disambiguation rules to apply first
-            statement.ast = DisambiguateStatement(parser.results);
+            statement.ast = DisambiguateStatement(statement, parser.results);
             statement.parseError = false;
 
             // If the disambiguation failed, take the first one anyway
