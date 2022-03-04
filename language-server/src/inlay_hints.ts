@@ -34,6 +34,8 @@ export interface InlayHintSettings
     parameterHintsForSingleParameterFunctions : boolean;
     parameterHintsForComplexExpressions : boolean;
     typeHintsForAutos : boolean;
+    parameterHintsIgnoredParameterNames : Set<string>;
+    parameterHintsIgnoredFunctionNames : Set<string>;
 };
 
 let InlayHintSettings : InlayHintSettings = {
@@ -43,13 +45,9 @@ let InlayHintSettings : InlayHintSettings = {
     parameterHintsForSingleParameterFunctions : false,
     parameterHintsForComplexExpressions : true,
     typeHintsForAutos : true,
+    parameterHintsIgnoredParameterNames : new Set<string>(),
+    parameterHintsIgnoredFunctionNames : new Set<string>(),
 };
-
-let GenericParameterNames = new Set<string>([
-    "Object", "Actor", "FunctionName",
-    "Value", "InValue", "NewValue",
-    "X", "Y", "Z",
-]);
 
 export function GetInlayHintSettings() : InlayHintSettings
 {
@@ -194,7 +192,7 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
 function LabelConstantLiteralNode(node : any, argName : string) : boolean
 {
     // Argument names we consider 'Generic' don't get labels
-    if (GenericParameterNames.has(argName))
+    if (InlayHintSettings.parameterHintsIgnoredParameterNames.has(argName))
         return false;
 
     switch (node.type)
@@ -221,7 +219,7 @@ function LabelConstantLiteralNode(node : any, argName : string) : boolean
 function LabelComplexExpression(node : any, argName : string) : boolean
 {
     // Argument names we consider 'Generic' don't get labels
-    if (GenericParameterNames.has(argName))
+    if (InlayHintSettings.parameterHintsIgnoredParameterNames.has(argName))
         return false;
 
     switch (node.type)
@@ -294,11 +292,11 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
             let fallbackAmbiguous = false;
             for (let candidateFunc of overloads)
             {
-                let argCount = candidateFunc.args.length;
+                let candidateArgCount = candidateFunc.args.length;
                 if (candidateFunc.isMixin)
-                    argCount -= 1;
+                    candidateArgCount -= 1;
 
-                if (argCount < argCount)
+                if (candidateArgCount < argCount)
                     continue;
                 
                 let requiredArgs = candidateFunc.getRequiredArgumentCount();
@@ -332,6 +330,15 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
             // If this is ambiguous based on argument types, don't show hints
             if (ambiguous)
                 func = null;
+
+            // Check if this function is ignored or not
+            if (func)
+            {
+                if (InlayHintSettings.parameterHintsIgnoredFunctionNames.has(func.name))
+                    func = null;
+                else if (func.containingType && InlayHintSettings.parameterHintsIgnoredFunctionNames.has(func.containingType.getDisplayName()+"::"+func.name))
+                    func = null;
+            }
 
             for (let i = 0; i < argCount; ++i)
             {

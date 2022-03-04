@@ -951,6 +951,8 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
     inlayHintSettings.parameterReferenceHints = settings.inlayHints.parameterReferenceHints;
     inlayHintSettings.parameterHintsForSingleParameterFunctions = settings.inlayHints.parameterHintsForSingleParameterFunctions;
     inlayHintSettings.typeHintsForAutos = settings.inlayHints.typeHintsForAutos;
+    inlayHintSettings.parameterHintsIgnoredParameterNames = new Set<string>(settings.inlayHints.parameterHintsIgnoredParameterNames as Array<string>);
+    inlayHintSettings.parameterHintsIgnoredFunctionNames = new Set<string>(settings.inlayHints.parameterHintsIgnoredFunctionNames as Array<string>);
 
     let inlineValueSettings = inlinevalues.GetInlineValueSettings();
     inlineValueSettings.showInlineValueForFunctionThisObject = settings.inlineValues.showInlineValueForFunctionThisObject;

@@ -72,12 +72,32 @@
                 "UnrealAngelscript.inlayHints.parameterHintsForSingleParameterFunctions": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Whether to enable parameter name hints for functions that are only passed a single argument."
+                    "description": "Enable parameter name hints for functions that are only passed a single argument."
                 },
                 "UnrealAngelscript.inlayHints.typeHintsForAutos": {
                     "type": "boolean",
                     "default": true,
                     "description": "Show the name of the type as an inlay hint on auto declarations."
+                },
+                "UnrealAngelscript.inlayHints.parameterHintsIgnoredParameterNames": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "Object", "Actor", "FunctionName",
+                        "Value", "InValue", "NewValue",
+                        "X", "Y", "Z", "Condition"
+                    ],
+                    "description": "Parameters with a name included in this list will be ignored for inlay hints."
+                },
+                "UnrealAngelscript.inlayHints.parameterHintsIgnoredFunctionNames": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Functions with a name included in this list will be ignored for inlay hints"
                 },
                 "UnrealAngelscript.inlineValues.showInlineValueForLocalVariables": {
                     "type": "boolean",
