@@ -618,19 +618,22 @@ export class DBType
             this.delegateArgs = delegateSignatureMethod.args;
             this.delegateReturn = delegateSignatureMethod.returnType;
 
-            // Mark the Add/Bind function so diagnostics can see them
-            let bindFunc : DBSymbol = null;
+            // Mark the Add/Bind/Unbind functions so diagnostics can see them
+            let bindFuncs: DBSymbol[] = [];
             if (this.isEvent)
-                bindFunc = this.findFirstSymbol("AddUFunction");
+                bindFuncs = [this.findFirstSymbol("AddUFunction"), this.findFirstSymbol("Unbind")];
             else
-                bindFunc = this.findFirstSymbol("BindUFunction");
-            if (bindFunc instanceof DBMethod)
-            {
-                bindFunc.isDelegateBindFunction = true;
-                bindFunc.delegateBindType = this.typename;
-                bindFunc.delegateObjectParam = 0;
-                bindFunc.delegateFunctionParam = 1;
-            }
+                bindFuncs = [this.findFirstSymbol("BindUFunction")];
+
+            bindFuncs.forEach((bindFunc: DBSymbol) => {
+                if (bindFunc instanceof DBMethod)
+                {
+                    bindFunc.isDelegateBindFunction = true;
+                    bindFunc.delegateBindType = this.typename;
+                    bindFunc.delegateObjectParam = 0;
+                    bindFunc.delegateFunctionParam = 1;
+                }
+            });
         }
     }
 
