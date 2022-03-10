@@ -883,12 +883,16 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
 
     if (asmodule.lastEditStart != -1 && parsedcompletion.GetCompletionSettings().correctFloatLiteralsWhenExpectingDoublePrecision)
     {
-        parsedcompletion.HandleFloatLiteralHelper(asmodule).then(
-            function (edit : WorkspaceEdit)
-            {
-                if (edit)
-                    connection.workspace.applyEdit(edit);
-            });
+        let floatPromise = parsedcompletion.HandleFloatLiteralHelper(asmodule);
+        if (floatPromise)
+        {
+            floatPromise.then(
+                function (edit : WorkspaceEdit)
+                {
+                    if (edit)
+                        connection.workspace.applyEdit(edit);
+                });
+        }
     }
  });
 
