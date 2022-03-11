@@ -189,8 +189,26 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
     }
 }
 
-function LabelConstantLiteralNode(node : any, argName : string) : boolean
+let GlobalConstantNames = new Set<string>([
+    "MIN_uint8", "MIN_uint16", "MIN_uint32", "MIN_uint64",
+    "MIN_int8", "MIN_int16", "MIN_int32", "MIN_int64",
+
+    "MAX_uint8", "MAX_uint16", "MAX_uint32", "MAX_uint64",
+    "MAX_int8", "MAX_int16", "MAX_int32", "MAX_int64",
+
+    "MIN_flt", "MAX_flt", "NAN_flt",
+    "MIN_dbl", "MAX_dbl", "NAN_dbl",
+
+    "EULERS_NUMBER", "PI", "HALF_PI", "TWO_PI",
+    "TAU", "SMALL_NUMBER", "KINDA_SMALL_NUMBER", "BIG_NUMBER",
+
+    "NAME_None"
+]);
+
+function ShouldLabelConstantNode(node : any, argName : string) : boolean
 {
+    if (!node)
+        return false;
     switch (node.type)
     {
         case node_types.This:
@@ -202,17 +220,46 @@ function LabelConstantLiteralNode(node : any, argName : string) : boolean
         case node_types.ConstNullptr:
             return true;
 
+        case node_types.UnaryOperation:
+            // This could be a - in front of a number literal
+            return ShouldLabelConstantNode(node.children[0], argName);
+
         case node_types.ConstName:
             // If the name of the argument ends with 'name' we probably don't care what it is
             if (argName.endsWith("Name"))
                 return false;
             return true;
+
+        case node_types.NamespaceAccess:
+        {
+            // If this is a variable inside a namespace, and the namespace is
+            // a struct, then this is a default constant such as FVector::ZeroVector,
+            // and we should label it as a constant
+            if (node.children[0] && node.children[0].type == node_types.Identifier)
+            {
+                let nsType = typedb.GetType(node.children[0].value);
+                if (nsType.isStruct)
+                    return true;
+            }
+
+            return false;
+        }
+        break;
+
+        case node_types.Identifier:
+        {
+            // If this is a math constant such as MAX_flt,
+            // we should also hint it as if it was a typed literal.
+            if (GlobalConstantNames.has(node.value))
+                return true;
+        }
+        break;
     }
 
     return false;
 }
 
-function LabelComplexExpression(node : any, argName : string) : boolean
+function ShouldLabelComplexExpressionNode(node : any, argName : string) : boolean
 {
     switch (node.type)
     {
@@ -375,14 +422,14 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                     // Show hints when the argument is a literal constant
                     if (InlayHintSettings.parameterHintsForConstants)
                     {
-                        if (LabelConstantLiteralNode(argNode, dbParam.name))
+                        if (ShouldLabelConstantNode(argNode, dbParam.name))
                             shouldShowNameHint = true;
                     }
 
                     // Show hints if the expression is complex 
                     if (InlayHintSettings.parameterHintsForComplexExpressions)
                     {
-                        if (LabelComplexExpression(argNode, dbParam.name))
+                        if (ShouldLabelComplexExpressionNode(argNode, dbParam.name))
                             shouldShowNameHint = true;
                     }
 
