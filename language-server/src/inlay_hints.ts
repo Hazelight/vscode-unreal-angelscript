@@ -338,63 +338,13 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                 argCount = argListNode.children.length;
             }
 
-            // Filter so we only select overloads that support the argument count
-            let ambiguous = false;
-            let func : typedb.DBMethod = null;
-            let fallbackFunc : typedb.DBMethod = null;
-            let fallbackAmbiguous = false;
-            for (let candidateFunc of overloads)
-            {
-                let candidateArgCount = candidateFunc.args.length;
-                if (candidateFunc.isMixin)
-                    candidateArgCount -= 1;
-
-                if (candidateArgCount < argCount)
-                    continue;
-                
-                let requiredArgs = candidateFunc.getRequiredArgumentCount();
-                if (candidateFunc.isMixin)
-                    requiredArgs -= 1;
-
-                if (requiredArgs > argCount)
-                {
-                    if (!fallbackFunc)
-                        fallbackFunc = candidateFunc;
-                    else if (!AreParameterNamesEqual(candidateFunc, fallbackFunc, argCount))
-                        fallbackAmbiguous = true;
-                    continue;
-                }
-
-                if (!func)
-                {
-                    func = candidateFunc;
-                }
-                else
-                {
-                    if (!AreParameterNamesEqual(candidateFunc, func, argCount))
-                        ambiguous = true;
-                }
-            }
-
-            // If we have a fallback function with different parameter names we can't show them now
-            if (func && fallbackFunc && !AreParameterNamesEqual(func, fallbackFunc, argCount))
-                ambiguous = true;
-
-            // Fall back to something we don't have enough arguments for yet
-            if (!func && !fallbackAmbiguous)
-                func = fallbackFunc;
-
-            // If this is ambiguous based on argument types, don't show hints
-            if (ambiguous)
-                func = null;
-
             // Check if this function is ignored or not
-            if (func)
+            if (overloads.length != 0)
             {
-                if (InlayHintSettings.parameterHintsIgnoredFunctionNames.has(func.name))
-                    func = null;
-                else if (func.containingType && InlayHintSettings.parameterHintsIgnoredFunctionNames.has(func.containingType.getDisplayName()+"::"+func.name))
-                    func = null;
+                if (InlayHintSettings.parameterHintsIgnoredFunctionNames.has(overloads[0].name))
+                    overloads = [];
+                else if (overloads[0].containingType && InlayHintSettings.parameterHintsIgnoredFunctionNames.has(overloads[0].containingType.getDisplayName()+"::"+overloads[0].name))
+                    overloads = [];
             }
 
             for (let i = 0; i < argCount; ++i)
@@ -410,47 +360,68 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                     && i == argCount-1)
                     continue;
 
-                let paramIndex = i;
-                if (func && func.isMixin)
-                    paramIndex += 1;
-
-                if (func != null && func.args.length > paramIndex)
+                if (overloads.length != 0)
                 {
-                    let dbParam = func.args[paramIndex];
+                    let dbParam : typedb.DBArg = null;
+                    let matchFunc : typedb.DBMethod = null;
+
+                    let paramNameAmbiguous = false;
+                    let paramIsFallback = false;
+
+                    for (let func of overloads)
+                    {
+                        if (i >= func.args.length)
+                            continue;
+                        
+                        let isFallback = func.args.length < argCount;
+                        if (dbParam && dbParam.name != func.args[i].name && (!isFallback || paramIsFallback))
+                            paramNameAmbiguous = true;
+
+                        if (!dbParam || (paramIsFallback && !isFallback))
+                        {
+                            dbParam = func.args[i];
+                            paramIsFallback = isFallback;
+                            if (!isFallback)
+                                paramNameAmbiguous = false;
+                        }
+                    }
+
                     let shouldShowNameHint = false;
-
-                    // Show hints when the argument is a literal constant
-                    if (InlayHintSettings.parameterHintsForConstants)
+                    if (!paramNameAmbiguous)
                     {
-                        if (ShouldLabelConstantNode(argNode, dbParam.name))
-                            shouldShowNameHint = true;
-                    }
+                        // Show hints when the argument is a literal constant
+                        if (InlayHintSettings.parameterHintsForConstants)
+                        {
+                            if (ShouldLabelConstantNode(argNode, dbParam.name))
+                                shouldShowNameHint = true;
+                        }
 
-                    // Show hints if the expression is complex 
-                    if (InlayHintSettings.parameterHintsForComplexExpressions)
-                    {
-                        if (ShouldLabelComplexExpressionNode(argNode, dbParam.name))
-                            shouldShowNameHint = true;
-                    }
+                        // Show hints if the expression is complex
+                        if (InlayHintSettings.parameterHintsForComplexExpressions)
+                        {
+                            if (ShouldLabelComplexExpressionNode(argNode, dbParam.name))
+                                shouldShowNameHint = true;
+                        }
 
-                    // Never show hints for single argument functions if turned off
-                    if (!InlayHintSettings.parameterHintsForSingleParameterFunctions)
-                    {
-                        if (argCount == 1)
+                        // Never show hints for single argument functions if turned off
+                        if (!InlayHintSettings.parameterHintsForSingleParameterFunctions)
+                        {
+                            if (argCount == 1)
+                                shouldShowNameHint = false;
+                        }
+
+                        // Never show hints if we already have a named parameter
+                        if (shouldShowNameHint && argNode.type == node_types.NamedArgument)
+                            shouldShowNameHint = false;
+
+                        // Argument names that are 1 character long probably aren't worth showing
+                        if (shouldShowNameHint && dbParam.name.length == 1)
+                            shouldShowNameHint = false;
+
+                        // Argument names we consider 'Generic' don't get labels
+                        if (shouldShowNameHint && InlayHintSettings.parameterHintsIgnoredParameterNames.has(dbParam.name))
                             shouldShowNameHint = false;
                     }
-
-                    // Never show hints if we already have a named parameter
-                    if (shouldShowNameHint && argNode.type == node_types.NamedArgument)
-                        shouldShowNameHint = false;
-
-                    // Argument names that are 1 character long probably aren't worth showing
-                    if (shouldShowNameHint && dbParam.name.length == 1)
-                        return false;
-
-                    // Argument names we consider 'Generic' don't get labels
-                    if (shouldShowNameHint && InlayHintSettings.parameterHintsIgnoredParameterNames.has(dbParam.name))
-                        return false;
 
                     let shouldShowRefHint = InlayHintSettings.parameterReferenceHints
                         && dbParam.typename.includes("&")
