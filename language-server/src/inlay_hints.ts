@@ -238,7 +238,7 @@ function ShouldLabelConstantNode(node : any, argName : string) : boolean
             if (node.children[0] && node.children[0].type == node_types.Identifier)
             {
                 let nsType = typedb.GetType(node.children[0].value);
-                if (nsType.isStruct)
+                if (nsType && nsType.isStruct)
                     return true;
             }
 
