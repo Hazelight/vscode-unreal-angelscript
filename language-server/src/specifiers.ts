@@ -44,6 +44,8 @@ export let ASClassSpecifiers : any = {
     "NotBlueprintable": "Blueprints cannot be choose this as a parent class",
     "Blueprintable": "Blueprints can be created with this as a parent class",
     "Abstract": "Cannot be instantiated on its own, must have a child class to spawn",
+    "Transient": "All instances of this class will be transient",
+    "HideDropdown": "This class will be hidden from property combo boxes in Editor",
     "Config": "Allow properties in this class to be saved and loaded to the specified ini",
     "Deprecated": "This class is deprecated and should not be used",
     "HideCategories": "Properties in these categories are not editable on this class",
