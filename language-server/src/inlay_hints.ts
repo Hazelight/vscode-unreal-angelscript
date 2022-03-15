@@ -49,6 +49,17 @@ let InlayHintSettings : InlayHintSettings = {
     parameterHintsIgnoredFunctionNames : new Set<string>(),
 };
 
+let HintIgnoredMathFunctions = new Set<string>(
+[
+    "Math::Clamp",
+    "Math::Wrap",
+    "Math::IsWithin",
+    "Math::Lerp",
+    "Math::VLerp",
+    "Math::LogX",
+    "Math::Pow",
+]);
+
 export function GetInlayHintSettings() : InlayHintSettings
 {
     return InlayHintSettings;
@@ -339,12 +350,20 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
             }
 
             // Check if this function is ignored or not
+            let functionIsIgnored = false;
             if (overloads.length != 0)
             {
-                if (InlayHintSettings.parameterHintsIgnoredFunctionNames.has(overloads[0].name))
-                    overloads = [];
-                else if (overloads[0].containingType && InlayHintSettings.parameterHintsIgnoredFunctionNames.has(overloads[0].containingType.getDisplayName()+"::"+overloads[0].name))
-                    overloads = [];
+                let functionName = overloads[0].name;
+                let qualifiedFunctionName : string = null;
+                if (overloads[0].containingType)
+                    qualifiedFunctionName = overloads[0].containingType.getDisplayName()+"::"+functionName;
+
+                if (InlayHintSettings.parameterHintsIgnoredFunctionNames.has(functionName))
+                    functionIsIgnored = true;
+                else if (qualifiedFunctionName && InlayHintSettings.parameterHintsIgnoredFunctionNames.has(qualifiedFunctionName))
+                    functionIsIgnored = true;
+                else if (qualifiedFunctionName && HintIgnoredMathFunctions.has(qualifiedFunctionName))
+                    functionIsIgnored = true;
             }
 
             for (let i = 0; i < argCount; ++i)
@@ -387,7 +406,7 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                     }
 
                     let shouldShowNameHint = false;
-                    if (!paramNameAmbiguous)
+                    if (!paramNameAmbiguous && !functionIsIgnored)
                     {
                         // Show hints when the argument is a literal constant
                         if (InlayHintSettings.parameterHintsForConstants)
