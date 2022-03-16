@@ -104,6 +104,9 @@ function connect_unreal() {
                             continue;
                     }
 
+                    if (line <= 0)
+                        line = 1;
+
                     let diagnosic: Diagnostic = {
                         severity: isInfo ? DiagnosticSeverity.Information : (isError ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning),
                         range: {
