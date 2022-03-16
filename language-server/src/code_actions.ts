@@ -121,6 +121,7 @@ function AddImportActions(context : CodeActionContext)
                 "uri": context.module.uri,
                 "type": "import",
                 "symbol": {
+                    "type": symbol.type,
                     "container_type": symbol.container_type,
                     "symbol_name": symbol.symbol_name,
                     "start": symbol.start,
@@ -799,6 +800,7 @@ function AddAutoActions(context : CodeActionContext)
                 type: "materializeAuto",
                 typename: realTypename,
                 symbol: {
+                    "type": symbol.type,
                     "container_type": symbol.container_type,
                     "symbol_name": symbol.symbol_name,
                     "start": symbol.start,
