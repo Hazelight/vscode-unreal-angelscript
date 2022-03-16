@@ -389,16 +389,20 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
 
                     for (let func of overloads)
                     {
-                        if (i >= func.args.length)
+                        let paramIndex = i;
+                        if (func.isMixin)
+                            paramIndex += 1;
+
+                        if (paramIndex >= func.args.length)
                             continue;
                         
                         let isFallback = func.args.length < argCount;
-                        if (dbParam && dbParam.name != func.args[i].name && (!isFallback || paramIsFallback))
+                        if (dbParam && dbParam.name != func.args[paramIndex].name && (!isFallback || paramIsFallback))
                             paramNameAmbiguous = true;
 
                         if (!dbParam || (paramIsFallback && !isFallback))
                         {
-                            dbParam = func.args[i];
+                            dbParam = func.args[paramIndex];
                             paramIsFallback = isFallback;
                             if (!isFallback)
                                 paramNameAmbiguous = false;
