@@ -3879,7 +3879,17 @@ export function HandleFloatLiteralHelper(asmodule : scriptfiles.ASModule) : Prom
 
                 // Check if the expected value at this position is a double
                 let context = GenerateCompletionContext(asmodule, matchStart);
-                if (context.expectedType && typedb.ArePrimitiveTypesEquivalent(context.expectedType.typename, "float64"))
+
+                let expectingDoubleFloat = false;
+                if (context.expectedType)
+                {
+                    if (typedb.ArePrimitiveTypesEquivalent(context.expectedType.typename, "float64"))
+                        expectingDoubleFloat = true;
+                    else if (context.expectedType.typename == "FVector")
+                        expectingDoubleFloat = true;
+                }
+
+                if (expectingDoubleFloat)
                 {
                     let edit = <WorkspaceEdit> {};
                     edit.changes = {};
