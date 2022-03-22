@@ -2658,6 +2658,24 @@ function ResolveAutos(scope : ASScope)
         ResolveAutos(subscope);
 }
 
+export function IsPrimitiveLiteralNode(node : any) : boolean
+{
+    if (!node)
+        return false;
+
+    switch (node.type)
+    {
+        case node_types.ConstBool:
+        case node_types.ConstDouble:
+        case node_types.ConstInteger:
+        case node_types.ConstHexInteger:
+        case node_types.ConstFloat:
+            return true;
+    }
+
+    return false;
+}
+
 export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.DBType
 {
     if (!node)

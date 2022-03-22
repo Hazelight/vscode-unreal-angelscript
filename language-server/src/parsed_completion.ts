@@ -2230,6 +2230,18 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             return ExtractPriorExpressionAndSymbol(context, node.children[1]);
         break;
         case scriptfiles.node_types.UnaryOperation:
+            if (scriptfiles.IsPrimitiveLiteralNode(node.children[0]))
+            {
+                // Unary operations on literals are not considered right-expressions
+                context.isRightExpression = false;
+                context.rightOperator = null;
+            }
+            else
+            {
+                context.isRightExpression = true;
+                context.rightOperator = node.operator;
+            }
+            return ExtractPriorExpressionAndSymbol(context, node.children[0]);
         case scriptfiles.node_types.PostfixOperation:
             context.isRightExpression = true;
             context.rightOperator = node.operator;
@@ -2660,6 +2672,7 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
                         c.isRightExpression = true;
                         c.rightOperator = char;
 
+                        // Could be a compound operator
                         if (exprStartOffset > 0)
                         {
                             let prevChar = content[exprStartOffset-1];
@@ -2680,6 +2693,20 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
                                     c.rightOperator = prevChar + c.rightOperator;
                                 break;
                             }
+                        }
+
+                        // Could be a unary operator as well
+                        switch (c.rightOperator)
+                        {
+                            case '+':
+                            case '-':
+                            {
+                                lastExprStartOffset += 1;
+                                let unary = addCandidate(0);
+                                unary.isRightExpression = true;
+                                unary.rightOperator = c.rightOperator;
+                            }
+                            break;
                         }
                     }
                     endParse = true;
@@ -3827,10 +3854,11 @@ export function HandleFloatLiteralHelper(asmodule : scriptfiles.ASModule) : Prom
         Math.min(asmodule.lastEditEnd, asmodule.content.length),
     );
 
-    let match = /([0-9]+)\.([0-9])*f/.exec(editedString);
-    if (!match)
+    let matches = Array.from(editedString.matchAll(/([0-9]+)\.([0-9])*f/g));
+    if (!matches || matches.length == 0)
         return;
 
+    let match = matches[matches.length - 1];
     let matchStart = areaStart + match.index;
     let matchEnd = matchStart + match[0].length;
 
