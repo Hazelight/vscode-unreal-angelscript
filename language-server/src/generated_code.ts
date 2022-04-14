@@ -28,6 +28,10 @@ export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType, asmodule 
         if (dbtype.inheritsFrom("AActor"))
             AddGeneratedCodeForAActor(dbtype, nsType);
 
+        // Code that only subsystems have
+        if (dbtype.inheritsFrom("USubsystem"))
+            AddGeneratedCodeForSubsystem(dbtype, nsType);
+
         if (UseHazeGeneratedCode)
             AddHazeGeneratedCode(dbtype, nsType);
 
@@ -118,6 +122,37 @@ function AddGeneratedCodeForAActor(dbtype : typedb.DBType, nsType : typedb.DBTyp
             new typedb.DBArg().init("ULevel", "Level", "nullptr"),
         ];
         dbtype.methods.push(method);
+    }
+}
+
+function AddGeneratedCodeForSubsystem(dbtype : typedb.DBType, nsType : typedb.DBType)
+{
+    if (dbtype.inheritsFrom("ULocalPlayerSubsystem"))
+    {
+        {
+            let method = AddMethod(nsType, "Get");
+            method.returnType = dbtype.typename;
+            method.documentation = "Get the "+dbtype.getDisplayName()+" subsystem for this local player.";
+            method.args = [
+                new typedb.DBArg().init("ULocalPlayer", "LocalPlayer"),
+            ];
+        }
+
+        {
+            let method = AddMethod(nsType, "Get");
+            method.returnType = dbtype.typename;
+            method.documentation = "Get the "+dbtype.getDisplayName()+" subsystem for this player controller.";
+            method.args = [
+                new typedb.DBArg().init("APlayerController", "PlayerController"),
+            ];
+        }
+    }
+    else
+    {
+        let method = AddMethod(nsType, "Get");
+        method.returnType = dbtype.typename;
+        method.documentation = "Get the relevant "+dbtype.getDisplayName()+" subsystem.";
+        method.args = [];
     }
 }
 
