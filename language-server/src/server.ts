@@ -18,6 +18,7 @@ import {
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
+import { URI } from 'vscode-uri'
 
 import * as scriptfiles from './as_parser';
 import * as parsedcompletion from './parsed_completion';
@@ -225,38 +226,56 @@ connect_unreal();
 // for open, change and close text document events
 
 let shouldSendDiagnosticRelatedInformation: boolean = false;
-let RootPath : string = "";
-let RootUri : string = "";
+let RootUris : string[] = [];
 
 // After the server has started the client sends an initialize request. The server receives
 // in the passed params the rootPath of the workspace plus the client capabilities.
 connection.onInitialize((_params): InitializeResult => {
-    RootPath = _params.rootPath;
-    RootUri = decodeURIComponent(_params.rootUri);
     shouldSendDiagnosticRelatedInformation = _params.capabilities && _params.capabilities.textDocument && _params.capabilities.textDocument.publishDiagnostics && _params.capabilities.textDocument.publishDiagnostics.relatedInformation;
 
+    let Roots = [];
+
+    if (_params.workspaceFolders == null) {
+        Roots.push(_params.rootPath);
+        RootUris.push(decodeURIComponent(_params.rootUri));
+    } else {
+        for (let Workspace of _params.workspaceFolders) {
+            Roots.push(URI.parse(Workspace.uri).fsPath);
+            RootUris.push(decodeURIComponent(Workspace.uri));
+        }
+    }
+    
+    
+    connection.console.log("Workspace roots: " + Roots);
+
+    
+    
     //connection.console.log("RootPath: "+RootPath);
     //connection.console.log("RootUri: "+RootUri+" from "+_params.rootUri);
 
     // Initially read and parse all angelscript files in the workspace
-    glob(RootPath+"/**/*.as", null, function(err : any, files : any)
-    {
-        for (let file of files)
+    for (let RootPath of Roots) {
+            
+        glob(RootPath + "/**/*.as", null, function (err: any, files: any) {
+            for (let file of files) {
+                let uri = getFileUri(file);
+                let asmodule = scriptfiles.GetOrCreateModule(getModuleName(uri), file, uri);
+                LoadQueue.push(asmodule);
+            }
+
+        });
+
+        // Read templates
+        glob(RootPath+"/.vscode/templates/*.as.template", null, function(err : any, files : any)
         {
-            let uri = getFileUri(file);
-            let asmodule = scriptfiles.GetOrCreateModule(getModuleName(uri), file, uri);
-            LoadQueue.push(asmodule);
-        }
+            scriptlenses.LoadFileTemplates(files);
+        });
+    }
 
-        TickQueues();
-        setTimeout(DetectUnrealConnectionTimeout, 20000)
-    });
+    TickQueues();
+    setTimeout(DetectUnrealConnectionTimeout, 20000)
 
-    // Read templates
-    glob(RootPath+"/.vscode/templates/*.as.template", null, function(err : any, files : any)
-    {
-        scriptlenses.LoadFileTemplates(files);
-    });
+
 
     return {
         capabilities: {
@@ -788,7 +807,14 @@ function getFileUri(pathname : string) : string
 function getModuleName(uri : string) : string
 {
     let modulename = decodeURIComponent(uri);
-    modulename = modulename.replace(RootUri, "");
+
+    // This assumes all relative paths are globally unique.
+    for (let rootUri of RootUris) {
+        if (modulename.startsWith(rootUri)) {
+            modulename = modulename.replace(rootUri, "");
+            break;            
+        }
+    }
     modulename = modulename.replace(".as", "");
     modulename = modulename.replace(/\//g, ".");
 

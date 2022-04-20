@@ -85,9 +85,15 @@
                         "type": "string"
                     },
                     "default": [
-                        "Object", "Actor", "FunctionName",
-                        "Value", "InValue", "NewValue",
-                        "Condition", "Parameters", "Params"
+                        "Object",
+                        "Actor",
+                        "FunctionName",
+                        "Value",
+                        "InValue",
+                        "NewValue",
+                        "Condition",
+                        "Parameters",
+                        "Params"
                     ],
                     "description": "Parameters with a name included in this list will be ignored for inlay hints."
                 },
