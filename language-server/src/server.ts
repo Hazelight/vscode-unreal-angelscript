@@ -247,22 +247,26 @@ connection.onInitialize((_params): InitializeResult => {
     
     
     connection.console.log("Workspace roots: " + Roots);
-
-    
     
     //connection.console.log("RootPath: "+RootPath);
     //connection.console.log("RootUri: "+RootUri+" from "+_params.rootUri);
 
     // Initially read and parse all angelscript files in the workspace
-    for (let RootPath of Roots) {
-            
-        glob(RootPath + "/**/*.as", null, function (err: any, files: any) {
-            for (let file of files) {
+    let GlobsRemaining = Roots.length;
+    for (let RootPath of Roots)
+    {
+        glob(RootPath + "/**/*.as", null, function (err: any, files: any)
+        {
+            for (let file of files)
+            {
                 let uri = getFileUri(file);
                 let asmodule = scriptfiles.GetOrCreateModule(getModuleName(uri), file, uri);
                 LoadQueue.push(asmodule);
             }
 
+            GlobsRemaining -= 1;
+            if (GlobsRemaining <= 0)
+                TickQueues();
         });
 
         // Read templates
@@ -272,10 +276,7 @@ connection.onInitialize((_params): InitializeResult => {
         });
     }
 
-    TickQueues();
     setTimeout(DetectUnrealConnectionTimeout, 20000)
-
-
 
     return {
         capabilities: {
