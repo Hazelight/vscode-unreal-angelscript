@@ -236,7 +236,7 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
         AddUnimportedCompletions(context, completions);
 
     // Add completions for mixin calls to global functions
-    if (context.priorType)
+    if (context.priorType || (!context.isInsideType && context.scope.getParentType()))
     {
         AddMixinCompletions(context, completions);
     }
@@ -1475,6 +1475,10 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
         return;
 
     // Not yet imported mixin functions
+    let mixinsForType = context.priorType;
+    if (!mixinsForType)
+        mixinsForType = context.scope.getParentType();
+    
     for (let [name, globalSymbols] of typedb.ScriptGlobals)
     {
         for (let sym of globalSymbols)
@@ -1487,7 +1491,7 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
                     continue;
                 if (!CanCompleteSymbol(context, sym))
                     continue;
-                if (sym.args && sym.args.length != 0 && context.priorType.inheritsFrom(sym.args[0].typename))
+                if (sym.args && sym.args.length != 0 && mixinsForType.inheritsFrom(sym.args[0].typename))
                 {
                     let compl = <CompletionItem>{
                         label: sym.name,
