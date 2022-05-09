@@ -3353,26 +3353,6 @@ export function ResolveFunctionOverloadsFromExpression(scope : ASScope, node : a
         {
             if (!node.children[0] || !node.children[1] || !node.children[0].value)
                 return;
-            if (node.children[0].value == "Super" && scope.getParentType())
-            {
-                let superType = typedb.GetType(scope.getParentType().supertype);
-                if (!superType)
-                    return;
-                ResolveFunctionOverloadsFromType(scope, superType, node.children[1].value, false, functions);
-            }
-            else
-            {
-                let nsType = typedb.GetType("__"+node.children[0].value);
-                if (!nsType)
-                    return;
-                ResolveFunctionOverloadsFromType(scope, nsType, node.children[1].value, false, functions);
-            }
-        }
-        break;
-        case node_types.NamespaceAccess:
-        {
-            if (!node.children[0] || !node.children[1] || !node.children[0].value)
-                return;
 
             let insideType = scope.getParentType();
             if (insideType)
