@@ -2279,6 +2279,46 @@ function GenerateTypeInformation(scope : ASScope)
     // If this was a namespace, merge it after we've generated everything and update the dbtype
     if (scope.scopetype == ASScopeType.Namespace && scope.dbtype)
         scope.dbtype = typedb.MergeNamespaceToDB(scope.dbtype, false);
+
+    // If this was a struct and we haven't generated a default constructor, generate it now
+    if (scope.scopetype == ASScopeType.Class && scope.dbtype && scope.dbtype.isStruct)
+    {
+        let nsType = scope.getGlobalOrNamespaceParentType();
+        let hasDefaultConstructor = false;
+        
+        let constructors = nsType.findSymbols(scope.dbtype.typename);
+        for (let constr of constructors)
+        {
+            if (constr instanceof typedb.DBMethod)
+            {
+                if (constr.args.length == 0 && constr.returnType == scope.dbtype.typename)
+                {
+                    hasDefaultConstructor = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasDefaultConstructor)
+        {
+            let dbfunc = AddDBMethod(scope, scope.dbtype.typename);
+            dbfunc.moduleOffset = scope.start_offset;
+            dbfunc.moduleOffsetEnd = scope.end_offset;
+            dbfunc.isConstructor = true;
+
+            dbfunc.documentation = scope.dbtype.documentation;
+            dbfunc.returnType = scope.dbtype.typename;
+
+            nsType.methods.push(dbfunc);
+            nsType.addSymbol(dbfunc);
+
+            if (nsType.isGlobalScope)
+            {
+                scope.module.globals.push(dbfunc);
+                typedb.AddScriptGlobalSymbol(dbfunc);
+            }
+        }
+    }
 }
 
 function AddAccessSpecifierToType(scope : ASScope, statement : ASStatement, node : any)
