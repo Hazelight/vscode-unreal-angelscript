@@ -23,6 +23,8 @@ module.exports = {
 
     ConstInteger: indexed ? i++ : "ConstInteger",
     ConstHexInteger: indexed ? i++ : "ConstHexInteger",
+    ConstOctalInteger: indexed ? i++ : "ConstOctalInteger",
+    ConstBinaryInteger: indexed ? i++ : "ConstBinaryInteger",
     ConstFloat: indexed ? i++ : "ConstFloat",
     ConstDouble: indexed ? i++ : "ConstDouble",
     ConstString: indexed ? i++ : "ConstString",

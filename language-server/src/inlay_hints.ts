@@ -227,6 +227,8 @@ function ShouldLabelConstantNode(node : any, argName : string) : boolean
         case node_types.ConstDouble:
         case node_types.ConstInteger:
         case node_types.ConstHexInteger:
+        case node_types.ConstOctalInteger:
+        case node_types.ConstBinaryInteger:
         case node_types.ConstFloat:
         case node_types.ConstNullptr:
             return true;

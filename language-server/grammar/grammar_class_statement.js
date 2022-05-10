@@ -37,7 +37,9 @@ const lexer = moo.compile({
     },
     dqstring:  /"(?:\\["\\A-Za-z0-9]|[^\n"\\])*"/,
     sqstring:  /'(?:\\['\\A-Za-z0-9]|[^\n'\\])*'/,
-    hex_number: /0x[0-9A-Fa-f]+/,
+    hex_number: /0[xX][0-9A-Fa-f]+/,
+    octal_number: /0[oO][0-8]+/,
+    binary_number: /0[bB][01]+/,
     identifier: { match: /[A-Za-z_][A-Za-z0-9_]*/, 
         type: moo.keywords({
             if_token: "if",
@@ -1063,6 +1065,12 @@ var grammar = {
         },
     {"name": "const_number", "symbols": [(lexer.has("hex_number") ? {type: "hex_number"} : hex_number)], "postprocess": 
         function(d) { return Literal(n.ConstHexInteger, d[0]); }
+        },
+    {"name": "const_number", "symbols": [(lexer.has("binary_number") ? {type: "binary_number"} : binary_number)], "postprocess": 
+        function(d) { return Literal(n.ConstBinaryInteger, d[0]); }
+        },
+    {"name": "const_number", "symbols": [(lexer.has("octal_number") ? {type: "octal_number"} : octal_number)], "postprocess": 
+        function(d) { return Literal(n.ConstOctalInteger, d[0]); }
         },
     {"name": "const_number", "symbols": [(lexer.has("number") ? {type: "number"} : number), {"literal":"."}, (lexer.has("number") ? {type: "number"} : number), {"literal":"f"}], "postprocess": 
         function(d) { return CompoundLiteral(n.ConstFloat, d, null); }

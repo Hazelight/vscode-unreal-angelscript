@@ -2709,6 +2709,8 @@ export function IsPrimitiveLiteralNode(node : any) : boolean
         case node_types.ConstDouble:
         case node_types.ConstInteger:
         case node_types.ConstHexInteger:
+        case node_types.ConstOctalInteger:
+        case node_types.ConstBinaryInteger:
         case node_types.ConstFloat:
             return true;
     }
@@ -2743,6 +2745,8 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
         // 0
         case node_types.ConstInteger:
         case node_types.ConstHexInteger:
+        case node_types.ConstOctalInteger:
+        case node_types.ConstBinaryInteger:
         {
             return typedb.GetType("int");
         }
@@ -3517,8 +3521,12 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.This: return scope.getParentType(); break;
         case node_types.ConstBool: return typedb.GetType("bool"); break;
         case node_types.ConstDouble: return typedb.GetType("double"); break;
-        case node_types.ConstInteger: return typedb.GetType("int"); break;
-        case node_types.ConstHexInteger: return typedb.GetType("int"); break;
+        case node_types.ConstInteger:
+        case node_types.ConstHexInteger:
+        case node_types.ConstOctalInteger:
+        case node_types.ConstBinaryInteger:
+            return typedb.GetType("int");
+        break;
         case node_types.ConstFloat: return typedb.GetType("float"); break;
         case node_types.ConstName: return typedb.GetType("FName"); break;
         case node_types.ConstString: return typedb.GetType("FString"); break;

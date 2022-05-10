@@ -163,18 +163,18 @@
 					"name": "keyword.operator.quantifier.regexp"
 				}
 			},
-			"name": "string.quoted.double.c",
+			"name": "string.quoted.double.angelscript",
 			"patterns": [
 				{
 					"include": "#string_escaped_char"
 				},
 				{
 					"match": "{{",
-					"name": "string.quoted.double.c"
+					"name": "string.quoted.double.angelscript"
 				},
 				{
 					"match": "}}",
-					"name": "string.quoted.double.c"
+					"name": "string.quoted.double.angelscript"
 				},
 				{
 					"begin": "{",
@@ -315,7 +315,7 @@
 									"match": "(\\G(?=[0-9.])(?!0[xXbB]))([0-9](?:[0-9]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)?((?:(?<=[0-9])\\.|\\.(?=[0-9])))([0-9](?:[0-9]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)?((?<!')([eE])(\\+?)(\\-?)((?:[0-9](?:[0-9]|(?:(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)))?([lLfF](?!\\w))?$",
 									"captures": {
 										"2": {
-											"name": "constant.numeric.decimal.c",
+											"name": "constant.numeric.decimal.angelscript",
 											"patterns": [
 												{
 													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
@@ -361,6 +361,93 @@
 										},
 										"12": {
 											"name": "keyword.other.unit.suffix.floating-point.angelscript"
+										}
+									}
+								},
+								{
+									"match": "(\\G0[bB])([01](?:[01]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
+									"captures": {
+										"1": {
+											"name": "keyword.other.unit.binary.angelscript"
+										},
+										"2": {
+											"name": "constant.numeric.binary.angelscript",
+											"patterns": [
+												{
+													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+													"name": "punctuation.separator.constant.numeric"
+												}
+											]
+										},
+										"3": {
+											"name": "punctuation.separator.constant.numeric"
+										},
+										"4": {
+											"name": "keyword.other.unit.suffix.integer.angelscript"
+										}
+									}
+								},
+								{
+									"match": "(\\G0[oO])((?:[0-7]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))+)((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
+									"captures": {
+										"1": {
+											"name": "keyword.other.unit.octal.angelscript"
+										},
+										"2": {
+											"name": "constant.numeric.octal.angelscript",
+											"patterns": [
+												{
+													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+													"name": "punctuation.separator.constant.numeric"
+												}
+											]
+										},
+										"3": {
+											"name": "punctuation.separator.constant.numeric"
+										},
+										"4": {
+											"name": "keyword.other.unit.suffix.integer.angelscript"
+										}
+									}
+								},
+								{
+									"match": "(\\G0[xX])([0-9a-fA-F](?:[0-9a-fA-F]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)((?<!')([pP])(\\+?)(\\-?)((?:[0-9](?:[0-9]|(?:(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)))?((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
+									"captures": {
+										"1": {
+											"name": "keyword.other.unit.hexadecimal.angelscript"
+										},
+										"2": {
+											"name": "constant.numeric.hexadecimal.angelscript",
+											"patterns": [
+												{
+													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+													"name": "punctuation.separator.constant.numeric"
+												}
+											]
+										},
+										"3": {
+											"name": "punctuation.separator.constant.numeric"
+										},
+										"5": {
+											"name": "keyword.other.unit.exponent.hexadecimal.angelscript"
+										},
+										"6": {
+											"name": "keyword.operator.plus.exponent.hexadecimal.angelscript"
+										},
+										"7": {
+											"name": "keyword.operator.minus.exponent.hexadecimal.angelscript"
+										},
+										"8": {
+											"name": "constant.numeric.exponent.hexadecimal.angelscript",
+											"patterns": [
+												{
+													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+													"name": "punctuation.separator.constant.numeric"
+												}
+											]
+										},
+										"9": {
+											"name": "keyword.other.unit.suffix.integer.angelscript"
 										}
 									}
 								},
@@ -430,7 +517,7 @@
                     "match": "(\\\\)\\n",
                     "captures": {
                         "1": {
-                            "name": "constant.character.escape.line-continuation.c"
+                            "name": "constant.character.escape.line-continuation.angelscript"
                         }
                     }
                 }
@@ -451,7 +538,7 @@
 							"name": "punctuation.definition.string.end.angelscript"
 						}
 					},
-					"name": "string.quoted.double.c",
+					"name": "string.quoted.double.angelscript",
 					"patterns": [
 						{
 							"include": "#string_escaped_char"
