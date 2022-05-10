@@ -1796,6 +1796,14 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
 
         scope.dbtype.properties.push(dbprop);
         scope.dbtype.addSymbol(dbprop);
+
+        // Make the variable globally accessible if we need to
+        if (scope.dbtype.isGlobalScope
+            && vardecl.type == node_types.AssetDefinition)
+        {
+            scope.module.globals.push(dbprop);
+            typedb.AddScriptGlobalSymbol(dbprop);
+        }
     }
 
     return asvar;
@@ -4202,7 +4210,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         {
             // Symbol for the global variable that holds the asset
             let insideType = scope.dbtype ? scope.dbtype.typename : null;
-            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.GlobalVariable, null, insideType);
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.GlobalVariable, insideType, node.name.value);
 
             // Symbol for the typename of the asset
             if (node.typename)
