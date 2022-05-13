@@ -1826,6 +1826,9 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
                 }
             }
         }
+
+        // Disambiguate if we have overloads available for the base method and the child override both
+        scriptfiles.DisambiguateFunctionOverloadsFromOverriddenFunctions(context.subOuterFunctions);
     }
 
     // Try to parse the entire function statement we've found

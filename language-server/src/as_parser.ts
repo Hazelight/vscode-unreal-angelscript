@@ -3336,6 +3336,47 @@ function ResolveFunctionFromIdentifier(scope : ASScope, identifier : string) : t
     return null;
 }
 
+export function DisambiguateFunctionOverloadsFromOverriddenFunctions(functions : Array<typedb.DBMethod>)
+{
+    // Remove any function from the list that are from a base class that already has a child class' function in it
+    if (!functions)
+        return;
+    for (let i = 0; i < functions.length; ++i)
+    {
+        let insideType = functions[i].containingType;
+        if (!insideType)
+            continue;
+        if (insideType.isNamespaceOrGlobalScope())
+            continue;
+
+        let hasOverriddenFunction = false;
+        for (let j = 0; j < functions.length; ++j)
+        {
+            let compareType = functions[j].containingType;
+            if (i == j)
+                continue;
+            if (!compareType)
+                continue;
+            if (compareType.isNamespaceOrGlobalScope())
+                continue;
+            if (!functions[i].isSignatureEqual(functions[j]))
+                continue;
+
+            if (compareType.inheritsFrom(insideType.typename))
+            {
+                hasOverriddenFunction = true;
+                break;
+            }
+        }
+
+        if (hasOverriddenFunction)
+        {
+            functions.splice(i, 1);
+            i -= 1;
+        }
+    }
+}
+
 export function ResolveFunctionOverloadsFromExpression(scope : ASScope, node : any, functions : Array<typedb.DBMethod>)
 {
     if (!node)
