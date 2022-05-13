@@ -29,6 +29,17 @@ export function ProvideInlineValues(asmodule : scriptfiles.ASModule, position : 
     if (!scope)
         return null;
 
+    // If we're in a class and just at the end of a function, still consider it inside that function
+    if (scope.scopetype == scriptfiles.ASScopeType.Class)
+    {
+        let funcScope = asmodule.getScopeAt(offset-1);
+        if (funcScope && funcScope.scopetype == scriptfiles.ASScopeType.Function)
+        {
+            scope = funcScope;
+            offset -= 1;
+        }
+    }
+
     let context = new InlineValueContext;
     context.values = new Array<any>();
     context.offset = offset;
