@@ -754,6 +754,7 @@ function FindInsertPositionFunctionStart(scope : scriptfiles.ASScope) : [Positio
             if (indent != null)
                 break;
         }
+        curLine += 1;
     }
 
     if(indent == null)
