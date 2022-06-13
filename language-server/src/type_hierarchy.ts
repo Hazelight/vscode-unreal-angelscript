@@ -70,7 +70,7 @@ function GetTypeHierarchyItem(dbtype : typedb.DBType) : TypeHierarchyItem
         let asmodule = scriptfiles.GetModule(dbtype.declaredModule);
         if (asmodule)
         {
-            uri = asmodule.uri;
+            uri = asmodule.displayUri;
             range = asmodule.getRange(dbtype.moduleScopeStart, dbtype.moduleScopeEnd);
             selectionRange = asmodule.getRange(dbtype.moduleOffset, dbtype.moduleOffsetEnd);
         }
