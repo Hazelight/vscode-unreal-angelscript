@@ -16,7 +16,7 @@ import {
     FileChangeType,
     DidChangeConfigurationParams, TextEdit,
     DocumentColorRegistrationOptions, DocumentColorParams, ColorInformation,
-    ColorPresentationParams, ColorPresentation,
+    ColorPresentationParams, ColorPresentation, TypeHierarchyItem
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
