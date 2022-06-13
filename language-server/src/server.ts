@@ -1,7 +1,7 @@
 'use strict';
 
 import {
-    IPCMessageReader, IPCMessageWriter, createConnection, Connection, TextDocuments, TextDocument,
+    IPCMessageReader, IPCMessageWriter, createConnection, Connection, TextDocuments,
     Diagnostic, DiagnosticSeverity, InitializeResult, TextDocumentPositionParams, CompletionItem,
     CompletionItemKind, SignatureHelp, Hover, DocumentSymbolParams, SymbolInformation,
     WorkspaceSymbolParams, Definition, ExecuteCommandParams, VersionedTextDocumentIdentifier, Location,
@@ -20,6 +20,7 @@ import {
     TypeHierarchyItem, TypeHierarchyPrepareParams,
     TypeHierarchySupertypesParams, TypeHierarchySubtypesParams,
 } from 'vscode-languageserver/node';
+import { TextDocument, TextDocumentContentChangeEvent } from 'vscode-languageserver-textdocument';
 
 import { Socket } from 'net';
 import { URI } from 'vscode-uri'
@@ -287,7 +288,10 @@ connection.onInitialize((_params): InitializeResult => {
     return {
         capabilities: {
             // Tell the client that the server works in FULL text document sync mode
-            textDocumentSync: TextDocumentSyncKind.Full,
+            textDocumentSync: {
+                openClose: true,
+                change: TextDocumentSyncKind.Incremental,
+            },
             // Tell the client that the server support code complete
             completionProvider: {
                 resolveProvider: true,
@@ -898,12 +902,11 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
     if (params.contentChanges.length == 0)
         return;
 
-    let content = params.contentChanges[0].text;
     let uri = params.textDocument.uri;
     let modulename = getModuleName(uri);
     
     let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
-    scriptfiles.UpdateModuleFromContent(asmodule, content);
+    scriptfiles.UpdateModuleFromContentChanges(asmodule, params.contentChanges);
 
     if (!asmodule.queuedParse)
     {

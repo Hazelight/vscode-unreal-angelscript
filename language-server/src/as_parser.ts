@@ -1,4 +1,4 @@
-import { TextDocument, } from "vscode-languageserver-textdocument";
+import { TextDocument, TextDocumentContentChangeEvent } from "vscode-languageserver-textdocument";
 import { Range, Position, Location, MarkupContent, } from "vscode-languageserver";
 
 import * as fs from 'fs';
@@ -1141,6 +1141,39 @@ export function UpdateModuleFromContent(module : ASModule, content : string)
     ClearModule(module);
     module.content = content;
     module.exists = true;
+    LoadModule(module);
+}
+
+export function UpdateModuleFromContentChanges(module : ASModule, contentChanges : TextDocumentContentChangeEvent[])
+{
+    let textDocument = module.textDocument;
+    ClearModule(module);
+
+    TextDocument.update(textDocument, contentChanges, textDocument.version+1);
+    module.textDocument = textDocument;
+    module.content = textDocument.getText();
+    module.exists = true;
+    module.loaded = true;
+
+    // Update where the last edit took place
+    for (let change of contentChanges)
+    {
+        if ('range' in change)
+        {
+            if (change.text.length == 0)
+            {
+                // Deletes also dirty the character before them 
+                module.lastEditStart = textDocument.offsetAt(change.range.start) - 1;
+                module.lastEditEnd = textDocument.offsetAt(change.range.start) + change.text.length;
+            }
+            else
+            {
+                module.lastEditStart = textDocument.offsetAt(change.range.start);
+                module.lastEditEnd = textDocument.offsetAt(change.range.start) + change.text.length;
+            }
+        }
+    }
+
     LoadModule(module);
 }
 
