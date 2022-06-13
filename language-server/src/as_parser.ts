@@ -100,6 +100,7 @@ export class ASModule
 
     importedModules : Array<ASModule> = [];
     delegateBinds : Array<ASDelegateBind> = [];
+    annotatedFunctionCalls : Array<ASAnnotatedCall> = [];
     moduleDependencies = new Set<ASModule>();
 
     flatImportList = new Set<string>();
@@ -686,6 +687,14 @@ export class ASDelegateBind
     node_name : any = null;
 };
 
+export class ASAnnotatedCall
+{
+    statement : ASStatement = null;
+    scope : ASScope = null;
+    method : typedb.DBMethod = null;
+    node_call : any = null;
+};
+
 export let ModuleDatabase = new Map<string, ASModule>();
 let ModulesByUri = new Map<string, ASModule>();
 
@@ -1170,6 +1179,7 @@ export function ClearAllResolvedModules()
             asmodule.resolved = false;
             asmodule.symbols = [];
             asmodule.delegateBinds = [];
+            asmodule.annotatedFunctionCalls = [];
         }
     }
 }
@@ -1409,6 +1419,7 @@ function ClearModule(module : ASModule)
     module.symbols = [];
     module.types = [];
     module.delegateBinds = [];
+    module.annotatedFunctionCalls = [];
     module.namespaces = [];
     module.globals = [];
     module.resolved = false;
@@ -3551,6 +3562,30 @@ class ASParseContext
     argumentFunction : typedb.DBMethod = null;
 };
 
+export function GetConstantNumberFromNode(node : any) : [boolean, number]
+{
+    if (!node)
+        return [false, 0.0];
+
+    switch (node.type)
+    {
+        case node_types.ConstDouble:
+            return [true, parseFloat(node.value)];
+        case node_types.ConstFloat:
+            return [true, parseFloat(node.value.substring(0, node.value.length - 1))];
+        case node_types.ConstInteger:
+            return [true, parseInt(node.value)];
+        case node_types.ConstHexInteger:
+            return [true, parseInt(node.value.substring(2), 16)];
+        case node_types.ConstOctalInteger:
+            return [true, parseInt(node.value.substring(2), 8)];
+        case node_types.ConstBinaryInteger:
+            return [true, parseInt(node.value.substring(2), 2)];
+        break;
+    }
+    return [false, 0.0];
+}
+
 function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any, parseContext : ASParseContext, symbol_type : typedb.DBAllowSymbol = typedb.DBAllowSymbol.PropertyOnly) : typedb.DBSymbol | typedb.DBType
 {
     if (!node)
@@ -3799,19 +3834,32 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             else
                 parseContext.argumentFunction = null;
 
-            // If this is a delegate bind call, mark it for later diagnostics
-            if (left_symbol instanceof typedb.DBMethod && left_symbol.isDelegateBindFunction && node.children[1])
+            if (left_symbol instanceof typedb.DBMethod)
             {
-                delegateBind = new ASDelegateBind;
-                delegateBind.scope = scope;
-                delegateBind.statement = statement;
-                delegateBind.node_expression = node;
-                if (node.children[1].children[left_symbol.delegateObjectParam])
-                    delegateBind.node_object = node.children[1].children[left_symbol.delegateObjectParam];
-                if (node.children[1].children[left_symbol.delegateFunctionParam])
-                    delegateBind.node_name = node.children[1].children[left_symbol.delegateFunctionParam];
-                delegateBind.delegateType = left_symbol.delegateBindType;
-                scope.module.delegateBinds.push(delegateBind);
+                if (left_symbol.isDelegateBindFunction && node.children[1])
+                {
+                    // If this is a delegate bind call, mark it for later diagnostics
+                    delegateBind = new ASDelegateBind;
+                    delegateBind.scope = scope;
+                    delegateBind.statement = statement;
+                    delegateBind.node_expression = node;
+                    if (node.children[1].children[left_symbol.delegateObjectParam])
+                        delegateBind.node_object = node.children[1].children[left_symbol.delegateObjectParam];
+                    if (node.children[1].children[left_symbol.delegateFunctionParam])
+                        delegateBind.node_name = node.children[1].children[left_symbol.delegateFunctionParam];
+                    delegateBind.delegateType = left_symbol.delegateBindType;
+                    scope.module.delegateBinds.push(delegateBind);
+                }
+                else if (left_symbol.methodAnnotation != typedb.DBMethodAnnotation.None)
+                {
+                    // Any call no an annotated method is stored so we can look them up again later
+                    let annotation = new ASAnnotatedCall;
+                    annotation.scope = scope;
+                    annotation.statement = statement;
+                    annotation.node_call = node;
+                    annotation.method = left_symbol;
+                    scope.module.annotatedFunctionCalls.push(annotation);
+                }
             }
 
             if (delegateBind && left_symbol

@@ -14,7 +14,9 @@ import {
     CodeAction,
     DidCloseTextDocumentParams,
     FileChangeType,
-    DidChangeConfigurationParams, TextEdit
+    DidChangeConfigurationParams, TextEdit,
+    DocumentColorRegistrationOptions, DocumentColorParams, ColorInformation,
+    ColorPresentationParams, ColorPresentation,
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -33,6 +35,7 @@ import * as scriptactions from './code_actions';
 import * as assets from './assets';
 import * as inlayhints from './inlay_hints';
 import * as inlinevalues from './inline_values';
+import * as colorpicker from './color_picker';
 import * as fs from 'fs';
 let glob = require('glob');
 
@@ -319,6 +322,9 @@ connection.onInitialize((_params): InitializeResult => {
                 full: {
                     delta: true,
                 },
+            },
+            colorProvider : <DocumentColorRegistrationOptions> {
+                documentSelector: null,
             },
         }
     }
@@ -1037,6 +1043,28 @@ connection.onRequest("angelscript/inlayHints", (...params: any[]) : Array<inlayh
     let start : Position = params[0].start;
     let end : Position = params[0].end;
     return WaitForInlayHints(uri, Range.create(start, end));
+});
+
+connection.onDocumentColor(function (params : DocumentColorParams) : ColorInformation[]
+{
+    let asmodule = GetAndParseModule(params.textDocument.uri);
+    if (!asmodule)
+        return null;
+    if (!asmodule.resolved)
+        return null;
+
+    return colorpicker.ProvideDocumentColors(asmodule);
+});
+
+connection.onColorPresentation(function(params : ColorPresentationParams) : ColorPresentation[]
+{
+    let asmodule = GetAndParseModule(params.textDocument.uri);
+    if (!asmodule)
+        return null;
+    if (!asmodule.resolved)
+        return null;
+
+    return colorpicker.ProvideColorPresentations(asmodule, params.range, params.color);
 });
 
 // Listen on the connection

@@ -37,9 +37,9 @@ const lexer = moo.compile({
     },
     dqstring:  /"(?:\\["\\A-Za-z0-9]|[^\n"\\])*"/,
     sqstring:  /'(?:\\['\\A-Za-z0-9]|[^\n'\\])*'/,
-    hex_number: /0[xX][0-9A-Fa-f]+/,
-    octal_number: /0[oO][0-8]+/,
-    binary_number: /0[bB][01]+/,
+    hex_number: /0[xX][0-9A-Fa-f]*/,
+    octal_number: /0[oO][0-8]*/,
+    binary_number: /0[bB][01]*/,
     identifier: { match: /[A-Za-z_][A-Za-z0-9_]*/, 
         type: moo.keywords({
             if_token: "if",

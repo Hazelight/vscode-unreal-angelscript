@@ -154,6 +154,13 @@ export class DBArg
     }
 };
 
+export enum DBMethodAnnotation
+{
+    None,
+    IsHexColor,
+    IsLinearColor,
+};
+
 export class DBMethod implements DBSymbol
 {
     name : string;
@@ -189,6 +196,8 @@ export class DBMethod implements DBSymbol
     delegateBindType : string = null;
     delegateObjectParam : number = -1;
     delegateFunctionParam : number = -1;
+
+    methodAnnotation : DBMethodAnnotation = DBMethodAnnotation.None;
 
     declaredModule : string;
     moduleOffset : number;
@@ -1689,6 +1698,26 @@ export function FinishTypesFromUnreal()
                 timerFunc.delegateObjectParam = 0;
                 timerFunc.delegateFunctionParam = 1;
             }
+        }
+    }
+
+    // Annotate linear color creation functions
+    let globalNS = GetType("__");
+    if (globalNS)
+    {
+        let linearColorConstructors = globalNS.findSymbols("FLinearColor");
+        for (let method of linearColorConstructors)
+        {
+            if (method instanceof DBMethod)
+                method.methodAnnotation = DBMethodAnnotation.IsLinearColor;
+        }
+
+        let linearColorNS = GetType("__FLinearColor");
+        if (linearColorNS)
+        {
+            let fromHexFunction = linearColorNS.findFirstSymbol("MakeFromHex", DBAllowSymbol.FunctionOnly);
+            if (fromHexFunction instanceof DBMethod)
+                fromHexFunction.methodAnnotation = DBMethodAnnotation.IsHexColor;
         }
     }
 }

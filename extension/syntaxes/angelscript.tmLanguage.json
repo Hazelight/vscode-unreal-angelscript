@@ -491,7 +491,7 @@
 								},
 								{
 									"match": "(?:(?:[0-9a-zA-Z_\\.]|')|(?<=[eEpP])[+-])+",
-									"name": "invalid.illegal.constant.numeric"
+                                    "name": "constant.numeric.decimal.angelscript"
 								}
 							]
 						}
