@@ -16,7 +16,9 @@ import {
     FileChangeType,
     DidChangeConfigurationParams, TextEdit,
     DocumentColorRegistrationOptions, DocumentColorParams, ColorInformation,
-    ColorPresentationParams, ColorPresentation, TypeHierarchyItem
+    ColorPresentationParams, ColorPresentation,
+    TypeHierarchyItem, TypeHierarchyPrepareParams,
+    TypeHierarchySupertypesParams, TypeHierarchySubtypesParams,
 } from 'vscode-languageserver/node';
 
 import { Socket } from 'net';
@@ -36,6 +38,7 @@ import * as assets from './assets';
 import * as inlayhints from './inlay_hints';
 import * as inlinevalues from './inline_values';
 import * as colorpicker from './color_picker';
+import * as typehierarchy from './type_hierarchy';
 import * as fs from 'fs';
 let glob = require('glob');
 
@@ -326,6 +329,7 @@ connection.onInitialize((_params): InitializeResult => {
             colorProvider : <DocumentColorRegistrationOptions> {
                 documentSelector: null,
             },
+            typeHierarchyProvider: true,
         }
     }
 });
@@ -1065,6 +1069,27 @@ connection.onColorPresentation(function(params : ColorPresentationParams) : Colo
         return null;
 
     return colorpicker.ProvideColorPresentations(asmodule, params.range, params.color);
+});
+
+connection.languages.typeHierarchy.onPrepare(function (params : TypeHierarchyPrepareParams) : TypeHierarchyItem[]
+{
+    let asmodule = GetAndParseModule(params.textDocument.uri);
+    if (!asmodule)
+        return null;
+    if (!asmodule.resolved)
+        return null;
+
+    return typehierarchy.PrepareTypeHierarchy(asmodule, params.position);
+});
+
+connection.languages.typeHierarchy.onSupertypes(function (params : TypeHierarchySupertypesParams) : TypeHierarchyItem[]
+{
+    return typehierarchy.GetTypeHierarchySupertypes(params.item);
+});
+
+connection.languages.typeHierarchy.onSubtypes(function (params : TypeHierarchySubtypesParams) : TypeHierarchyItem[]
+{
+    return typehierarchy.GetTypeHierarchySubtypes(params.item);
 });
 
 // Listen on the connection
