@@ -2,6 +2,7 @@ import { CodeAction, CodeActionKind, Command, Diagnostic, Position, Range, Works
 import * as typedb from "./database";
 import * as scriptfiles from "./as_parser";
 import * as scriptsymbols from "./symbols";
+import * as completion from "./parsed_completion";
 
 class CodeActionContext
 {
@@ -14,6 +15,9 @@ class CodeActionContext
 
     diagnostics : Array<Diagnostic>;
     actions : Array<CodeAction>;
+
+    first_symbol : number = 0;
+    last_symbol : number = 0;
 };
 
 export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, diagnostics : Array<Diagnostic>) : Array<CodeAction>
@@ -27,8 +31,28 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
     context.statement = asmodule.getStatementAt(context.range_start);
     context.diagnostics = diagnostics;
 
+    // Determine which symbols overlap the range
+    let foundSymbol = false;
+    for (let i = 0, count = context.module.symbols.length; i < count; ++i)
+    {
+        let symbol = context.module.symbols[i];
+        if (symbol.end < context.range_start)
+            continue;
+        if (symbol.start > context.range_end)
+        {
+            context.last_symbol = i;
+            break;
+        }
+        if (!foundSymbol)
+        {
+            context.first_symbol = i;
+            foundSymbol = true;
+        }
+    }
+
     // Actions for adding missing imports
-    AddImportActions(context);
+    if (!scriptfiles.GetScriptSettings().automaticImports)
+        AddImportActions(context);
 
     // Actions for autos
     AddAutoActions(context);
@@ -53,6 +77,9 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
 
     // Actions for switch blocks
     AddSwitchCaseActions(context);
+    
+    // Actions to generate a method by usage
+    AddGenerateMethodActions(context);
 
     return context.actions;
 }
@@ -77,6 +104,8 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
         ResolveInsertMacro(asmodule, action, data);
     else if (data.type == "insertCases")
         ResolveInsertCases(asmodule, action, data);
+    else if (data.type == "methodFromUsage")
+        ResolveGenerateMethod(asmodule, action, data);
     return action;
 }
 
@@ -776,11 +805,10 @@ function FindInsertPositionFunctionStart(scope : scriptfiles.ASScope) : [Positio
 
 function AddAutoActions(context : CodeActionContext)
 {
-    for (let symbol of context.module.symbols)
+    for (let i = context.first_symbol; i < context.last_symbol; ++i)
     {
+        let symbol = context.module.symbols[i];
         if (!symbol.isAuto)
-            continue;
-        if (!symbol.overlapsRange(context.range_start, context.range_end))
             continue;
 
         let realTypename = symbol.symbol_name;
@@ -1479,4 +1507,214 @@ function ExtendIndent(indent : string) : string
         return indent + "\t";
     else
         return indent + "    ";
+}
+
+function AddGenerateMethodActions(context : CodeActionContext)
+{
+    if (!context.statement || !context.scope)
+        return;
+    let dbtype = context.scope.getParentType();
+    if (!dbtype || dbtype.isEnum || dbtype.isNamespaceOrGlobalScope())
+        return;
+
+    // Find unknown symbols that are in this line before we start parsing more to find unknown functions
+    for (let i = context.first_symbol; i < context.last_symbol; ++i)
+    {
+        let symbol = context.module.symbols[i];
+        if (symbol.type != scriptfiles.ASSymbolType.UnknownError)
+            continue;
+
+        let callNode = FindFunctionCallNodeForSymbol(context.statement.ast, context.statement, symbol);
+        if (!callNode || !callNode.children)
+            continue;
+
+        let functionName = callNode.children[0].value;
+
+        let args = "";
+        let usedArgNames : Array<string> = [];
+        if (callNode.children[1] && callNode.children[1].children)
+        {
+            for (let argNode of callNode.children[1].children)
+            {
+                if (args.length != 0)
+                    args += ", ";
+
+                let argTypename = "int";
+                let argType = scriptfiles.ResolveTypeFromExpression(context.scope, argNode);
+                if (argType)
+                    argTypename = argType.getDisplayName();
+                if (argTypename == "float32")
+                    argTypename = "float";
+
+                args += argTypename;
+                args += " ";
+                
+                let argName = FindUsableIdentifierInExpression(argNode);
+                if (argName)
+                {
+                    if (argName.length >= 4 && argName.startsWith("Get") && argName[3].toUpperCase() == argName[3])
+                        argName = argName.substring(3);
+                    if (argTypename == "bool")
+                    {
+                        if (argName.length >= 4 && argName.startsWith("Has") && argName[3].toUpperCase() == argName[3])
+                            argName = "b"+argName.substring(3);
+                        else if (argName.length >= 7 && argName.startsWith("Should") && argName[6].toUpperCase() == argName[6])
+                            argName = "b"+argName.substring(6);
+                        else if (argName.length >= 3 && argName.startsWith("Is") && argName[2].toUpperCase() == argName[2])
+                            argName = "b"+argName.substring(2);
+                        else if (argName.length >= 1 && argName[0] != 'b')
+                            argName = "b"+argName;
+                    }
+                }
+                if (!argName || argName.length == 0)
+                {
+                    if (argType)
+                    {
+                        if (argType.isPrimitive)
+                            argName = argType.typename[0].toUpperCase() + argType.typename.substring(1);
+                        else
+                            argName = argType.typename.substring(1);
+                    }
+                    else
+                    {
+                        argName = "Param";
+                    }
+                }
+
+                // Make sure the argument name is unique
+                let index = 1;
+                let baseArgName = argName;
+                while (usedArgNames.indexOf(argName) != -1)
+                {
+                    index += 1;
+                    argName = baseArgName+index;
+                }
+                usedArgNames.push(argName);
+                args += argName;
+            }
+        }
+
+        let returnType = "void";
+        let expectedType = completion.GetExpectedTypeAtOffset(context.module, symbol.start);
+        if (expectedType)
+            returnType = expectedType.getDisplayName();
+        if (returnType == "float32")
+            returnType = "float";
+
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.RefactorInline,
+            title: `Generate method: ${returnType} ${functionName}(${args})`,
+            source: "angelscript",
+            data: {
+                uri: context.module.uri,
+                type: "methodFromUsage",
+                name: functionName,
+                returnType: returnType,
+                args: args,
+                const: false,
+                position: context.module.getPosition(symbol.start),
+            }
+        });
+
+        if (expectedType)
+        {
+            context.actions.push(<CodeAction> {
+                kind: CodeActionKind.RefactorInline,
+                title: `Generate method: ${returnType} ${functionName}(${args}) const`,
+                source: "angelscript",
+                data: {
+                    uri: context.module.uri,
+                    type: "methodFromUsage",
+                    name: functionName,
+                    returnType: returnType,
+                    args: args,
+                    const: true,
+                    position: context.module.getPosition(symbol.start),
+                }
+            });
+        }
+    }
+}
+
+function FindFunctionCallNodeForSymbol(node : any, statement : scriptfiles.ASStatement, symbol : scriptfiles.ASSymbol) : any
+{
+    if (!node)
+        return null;
+
+    if (node.type == scriptfiles.node_types.FunctionCall)
+    {
+        if (node.children && node.children[0] && node.children[0].type == scriptfiles.node_types.Identifier)
+        {
+            let name_start = statement.start_offset + node.children[0].start;
+            let name_end = statement.start_offset + node.children[0].end;
+
+            if (symbol.start >= name_start && symbol.end <= name_end)
+                return node;
+        }
+    }
+
+    if (node.children)
+    {
+        for (let child of node.children)
+        {
+            let callNode = FindFunctionCallNodeForSymbol(child, statement, symbol);
+            if (callNode)
+                return callNode;
+        }
+    }
+
+    if ("expression" in node)
+    {
+        let callNode = FindFunctionCallNodeForSymbol(node.expression, statement, symbol);
+        if (callNode)
+            return callNode;
+    }
+
+    return null;
+}
+
+function FindUsableIdentifierInExpression(node : any) : string
+{
+    if (!node)
+        return null;
+
+    if (node.type == scriptfiles.node_types.Identifier)
+    {
+        return node.value;
+    }
+    else if (node.type == scriptfiles.node_types.FunctionCall)
+    {
+        return FindUsableIdentifierInExpression(node.children[0]);
+    }
+    else if (node.children)
+    {
+        for (let i = node.children.length - 1; i >= 0; --i)
+        {
+            let child = node.children[i];
+            let nodeIdentifier = FindUsableIdentifierInExpression(child);
+            if (nodeIdentifier)
+                return nodeIdentifier;
+        }
+    }
+
+    return null;
+}
+
+function ResolveGenerateMethod(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
+{
+    let [insertPosition, indent, prefix, suffix] = FindInsertPositionForGeneratedMethod(asmodule, data.position);
+    let snippet = prefix;
+    snippet += `${indent}${data.returnType} ${data.name}(${data.args})`;
+    if(data.const)
+        snippet += " const";
+    snippet += "\n";
+    snippet += indent+"{\n";
+    snippet += indent+"}\n";
+    snippet += suffix;
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(insertPosition, snippet)
+    ];
 }

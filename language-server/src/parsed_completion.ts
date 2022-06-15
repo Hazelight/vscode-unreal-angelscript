@@ -3926,3 +3926,12 @@ export function HandleFloatLiteralHelper(asmodule : scriptfiles.ASModule) : Prom
         }
     );
 }
+
+export function GetExpectedTypeAtOffset(asmodule : scriptfiles.ASModule, offset : number) : typedb.DBType
+{
+    if (!asmodule)
+        return null;
+
+    let context = GenerateCompletionContext(asmodule, offset);
+    return context.expectedType;
+}

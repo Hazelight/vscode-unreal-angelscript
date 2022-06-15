@@ -365,8 +365,9 @@
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -b",
         "watch": "tsc -b -w",
-        "postinstall": "cd extension && npm install && cd ../language-server && npm install && cd ..",
-        "grammar:compile": "cd language-server/grammar && nearleyc angelscript.ne -o angelscript.js && nearleyc grammar_statement.ne -o grammar_statement.js && nearleyc grammar_class_statement.ne -o grammar_class_statement.js && nearleyc grammar_global_statement.ne -o grammar_global_statement.js && nearleyc grammar_enum_statement.ne -o grammar_enum_statement.js"
+        "postinstall": "cd extension && npm ci && cd ../language-server && npm ci && cd ..",
+        "grammar:compile": "cd language-server/grammar && nearleyc angelscript.ne -o angelscript.js && nearleyc grammar_statement.ne -o grammar_statement.js && nearleyc grammar_class_statement.ne -o grammar_class_statement.js && nearleyc grammar_global_statement.ne -o grammar_global_statement.js && nearleyc grammar_enum_statement.ne -o grammar_enum_statement.js",
+        "grammar:test": "nearley-test language-server/grammar/grammar_statement.js -q <test.as"
     },
     "devDependencies": {
         "@types/mocha": "^8.2.2",
