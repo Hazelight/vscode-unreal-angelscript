@@ -1518,17 +1518,33 @@ function AddGenerateMethodActions(context : CodeActionContext)
         return;
 
     // Find unknown symbols that are in this line before we start parsing more to find unknown functions
-    for (let i = context.first_symbol; i < context.last_symbol; ++i)
-    {
-        let symbol = context.module.symbols[i];
-        if (symbol.type != scriptfiles.ASSymbolType.UnknownError)
-            continue;
+    let functionCallNodes : Array<any> = [];
+    FindMemberFunctionCallNodes(context.statement.ast, context.statement, functionCallNodes);
 
-        let callNode = FindFunctionCallNodeForSymbol(context.statement.ast, context.statement, symbol);
+    for (let callNode of functionCallNodes)
+    {
         if (!callNode || !callNode.children)
             continue;
 
         let functionName = callNode.children[0].value;
+        if (dbtype.findFirstSymbol(functionName, typedb.DBAllowSymbol.FunctionOnly))
+            continue;
+
+        let globalSyms = typedb.FindScriptGlobalSymbols(functionName);
+        if (globalSyms && globalSyms.length != 0)
+            continue;
+
+        let foundGlobalFunction = false;
+        for (let scopeGlobalType of context.scope.getAvailableGlobalTypes())
+        {
+            if (scopeGlobalType.findFirstSymbol(functionName, typedb.DBAllowSymbol.FunctionOnly))
+            {
+                foundGlobalFunction = true;
+                break;
+            }
+        }
+        if (foundGlobalFunction)
+            continue;
 
         let args = "";
         let usedArgNames : Array<string> = [];
@@ -1594,8 +1610,11 @@ function AddGenerateMethodActions(context : CodeActionContext)
             }
         }
 
+        let callOffset = context.statement.start_offset + callNode.children[0].start;
+        let callPosition = context.module.getPosition(callOffset);
+
         let returnType = "void";
-        let expectedType = completion.GetExpectedTypeAtOffset(context.module, symbol.start);
+        let expectedType = completion.GetExpectedTypeAtOffset(context.module, callOffset);
         if (expectedType)
             returnType = expectedType.getDisplayName();
         if (returnType == "float32")
@@ -1612,7 +1631,7 @@ function AddGenerateMethodActions(context : CodeActionContext)
                 returnType: returnType,
                 args: args,
                 const: false,
-                position: context.module.getPosition(symbol.start),
+                position: callPosition,
             }
         });
 
@@ -1629,48 +1648,36 @@ function AddGenerateMethodActions(context : CodeActionContext)
                     returnType: returnType,
                     args: args,
                     const: true,
-                    position: context.module.getPosition(symbol.start),
+                    position: callPosition,
                 }
             });
         }
     }
 }
 
-function FindFunctionCallNodeForSymbol(node : any, statement : scriptfiles.ASStatement, symbol : scriptfiles.ASSymbol) : any
+function FindMemberFunctionCallNodes(node : any, statement : scriptfiles.ASStatement, callNodes : Array<any>)
 {
     if (!node)
-        return null;
+        return;
 
     if (node.type == scriptfiles.node_types.FunctionCall)
     {
         if (node.children && node.children[0] && node.children[0].type == scriptfiles.node_types.Identifier)
         {
-            let name_start = statement.start_offset + node.children[0].start;
-            let name_end = statement.start_offset + node.children[0].end;
-
-            if (symbol.start >= name_start && symbol.end <= name_end)
-                return node;
+            callNodes.push(node);
         }
     }
 
     if (node.children)
     {
         for (let child of node.children)
-        {
-            let callNode = FindFunctionCallNodeForSymbol(child, statement, symbol);
-            if (callNode)
-                return callNode;
-        }
+            FindMemberFunctionCallNodes(child, statement, callNodes);
     }
 
     if ("expression" in node)
     {
-        let callNode = FindFunctionCallNodeForSymbol(node.expression, statement, symbol);
-        if (callNode)
-            return callNode;
+        FindMemberFunctionCallNodes(node.expression, statement, callNodes);
     }
-
-    return null;
 }
 
 function FindUsableIdentifierInExpression(node : any) : string
