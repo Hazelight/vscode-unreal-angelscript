@@ -40,13 +40,14 @@ namespace Sort
     export const EnumValue_Max_Expected = "2";
     export const Local_Expected = "2";
     export const Local = "4";
-    export const Keyword = "8";
-    export const ImportModule = "8";
+    export const Keyword = "8b";
+    export const Keyword_Expected = "8a";
+    export const ImportModule = "8c";
     export const MemberProp_Direct = "a";
     export const MemberProp_Parent = "c";
     export const MemberProp_Direct_Expected = "6";
     export const MemberProp_Parent_Expected = "7";
-    export const Method_Direct_Expected = "8";
+    export const Method_Direct_Expected = "8a";
     export const Method_Parent_Expected = "9";
     export const Method_Direct = "b";
     export const Method_Parent = "d";
@@ -657,7 +658,7 @@ function AddCompletionsFromCallSignature(context: CompletionContext, completions
     }
 }
 
-function AddCompletionsFromKeywordList(context : CompletionContext, keywords : Array<string>, completions : Array<CompletionItem>)
+function AddCompletionsFromKeywordList(context : CompletionContext, keywords : Array<string>, completions : Array<CompletionItem>, expectedIf : string = null)
 {
     for(let kw of keywords)
     {
@@ -666,7 +667,7 @@ function AddCompletionsFromKeywordList(context : CompletionContext, keywords : A
             completions.push({
                 label: kw,
                 kind: CompletionItemKind.Keyword,
-                sortText: Sort.Keyword,
+                sortText: context.isTypeExpected(expectedIf) ? Sort.Keyword_Expected : Sort.Keyword,
             });
         }
     }
@@ -763,8 +764,12 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
     if (context.isRightExpression || context.isSubExpression)
     {
         AddCompletionsFromKeywordList(context, [
-            "nullptr", "true", "false",
-        ], completions);
+            "true", "false",
+        ], completions, "bool");
+
+        AddCompletionsFromKeywordList(context, [
+            "nullptr",
+        ], completions, "UObject");
 
         if (context.expectedType && !context.expectedType.isValueType())
         {
@@ -1096,7 +1101,7 @@ export function AddCompletionsFromClassKeywords(context : CompletionContext, com
                 },
                 kind : CompletionItemKind.Keyword,
                 commitCharacters: [".", ";", ","],
-                sortText: Sort.Keyword,
+                sortText: context.isTypeExpected(insideType.typename) ? Sort.Keyword_Expected : Sort.Keyword,
         });
     }
 
