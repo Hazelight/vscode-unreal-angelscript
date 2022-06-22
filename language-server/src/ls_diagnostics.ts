@@ -474,7 +474,7 @@ function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBM
             if (parentMethod && parentMethod instanceof typedb.DBMethod)
             {
                 // Add a diagnostic if we aren't calling the super function
-                if (!dbfunc.hasSuperCall && dbfunc.isEvent
+                if (!dbfunc.hasSuperCall && dbfunc.isBlueprintEvent
                     && (!dbfunc.returnType || dbfunc.returnType == "void")
                     && parentMethod.declaredModule
                     && !parentMethod.isEmpty
@@ -496,7 +496,7 @@ function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBM
                 }
 
                 // Add diagnostic if we're overriding a non-blueprintevent and we aren't using the 'override' specifier
-                if (!dbfunc.isOverride && !dbfunc.isEvent && parentMethod.declaredModule)
+                if (!dbfunc.isOverride && !dbfunc.isBlueprintEvent && parentMethod.declaredModule)
                 {
                     let matchesParentSignature = false;
                     let allBaseMethods = parentType.findSymbols(dbfunc.name);

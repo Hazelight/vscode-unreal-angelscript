@@ -308,6 +308,8 @@ function AddHazeGeneratedCode(dbtype : typedb.DBType, nsType : typedb.DBType)
 {
     if (dbtype.inheritsFrom("UHazeComposableSettings"))
         AddGeneratedCodeForUHazeComposableSettings(dbtype, nsType);
+    else if (dbtype.inheritsFrom("UHazeEffectEventHandler"))
+        AddGeneratedCodeForUHazeEffectEventHandler(dbtype, nsType);
 }
 
 function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsType : typedb.DBType)
@@ -345,7 +347,9 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
 
         let setName = dbprop.name;
         if (setName[0] == 'b' && setName.length >= 2 && setName[1] == setName[1].toUpperCase())
-            setName = setName.substr(1);
+            setName = setName.substring(1);
+
+        dbprop.auxiliarySymbols = [];
 
         {
             let method = AddMethod(nsType, "Set"+setName);
@@ -358,6 +362,9 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
                 new typedb.DBArg().init("FInstigator", "Instigator"),
                 new typedb.DBArg().init("EHazeSettingsPriority", "Priority", "EHazeSettingsPriority::Script"),
             ];
+
+            method.auxiliarySymbols = [{symbol_name: dbprop.name, container_type: dbtype.typename}, {symbol_name: "Clear"+dbprop.name, container_type: nsType.typename}];
+            dbprop.auxiliarySymbols.push({symbol_name: method.name, container_type: nsType.typename});
         }
 
         {
@@ -370,6 +377,54 @@ function AddGeneratedCodeForUHazeComposableSettings(dbtype : typedb.DBType, nsTy
                 new typedb.DBArg().init("FInstigator", "Instigator"),
                 new typedb.DBArg().init("EHazeSettingsPriority", "Priority", "EHazeSettingsPriority::Script"),
             ];
+
+            method.auxiliarySymbols = [{symbol_name: dbprop.name, container_type: dbtype.typename}, {symbol_name: "Set"+dbprop.name, container_type: nsType.typename}];
+            dbprop.auxiliarySymbols.push({symbol_name: method.name, container_type: nsType.typename});
+        }
+    }
+}
+
+function AddGeneratedCodeForUHazeEffectEventHandler(dbtype : typedb.DBType, nsType : typedb.DBType)
+{
+    for (let dbfunc of dbtype.methods)
+    {
+        if (!dbfunc.isUFunction)
+            continue;
+        if (!dbfunc.isBlueprintEvent)
+            continue;
+        if (dbfunc.isBlueprintOverride)
+            continue;
+        if (dbfunc.args && dbfunc.args.length > 1)
+            continue;
+        if (dbfunc.returnType && dbfunc.returnType != "void")
+            continue;
+
+        {
+            let method = AddMethod(nsType, "Trigger_"+dbfunc.name);
+            method.returnType = "void";
+            if (dbfunc.documentation)
+                method.documentation = dbfunc.documentation;
+            else
+                method.documentation = `Trigger the effect event ${dbfunc.name} on all handlers for ${dbtype.getDisplayName()}`;
+            method.moduleOffset = dbfunc.moduleOffset;
+
+            let actorType = "AHazeActor";
+            if (dbtype.macroMeta && dbtype.macroMeta.has("requireactortype"))
+                actorType = dbtype.macroMeta.get("requireactortype");
+
+            method.args = [
+                new typedb.DBArg().init(actorType, "Actor"),
+            ];
+
+            if (dbfunc.args && dbfunc.args.length == 1)
+            {
+                method.args.push(
+                    new typedb.DBArg().init(dbfunc.args[0].typename, dbfunc.args[0].name)
+                );
+            }
+
+            method.auxiliarySymbols = [{symbol_name: dbfunc.name, container_type: dbtype.typename}];
+            dbfunc.auxiliarySymbols = [{symbol_name: method.name, container_type: nsType.typename}];
         }
     }
 }

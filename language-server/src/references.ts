@@ -122,6 +122,24 @@ export function* FindReferences(uri : string, position : Position) : any
         }
     }
 
+    // See if there's any auxiliary symbols we need to check for
+    let auxSymbols : Array<typedb.DBAuxiliarySymbol> = null;
+    {
+        let insideType = typedb.GetType(findSymbol.container_type);
+        if (insideType)
+        {
+            let findDbSym = insideType.findFirstSymbol(findSymbol.symbol_name);
+            if (findDbSym)
+                auxSymbols = findDbSym.auxiliarySymbols;
+        }
+
+        if (auxSymbols)
+        {
+            for (let auxSym of auxSymbols)
+                searchForTypes.add(auxSym.container_type);
+        }
+    }
+
     // Look in all considered modules (Slow!)
     let parseCount = 0;
     for (let checkmodule of considerModules)
@@ -138,16 +156,52 @@ export function* FindReferences(uri : string, position : Position) : any
         scriptfiles.ResolveModule(checkmodule);
 
         // Find symbols that match the symbol we're trying to find
-        for (let symbol of checkmodule.symbols)
+        if (auxSymbols)
         {
-            if (symbol.type != findSymbol.type && symbol.type != alternateType)
-                continue;
-            if (symbol.symbol_name != findSymbol.symbol_name)
-                continue;
-            if (!searchForTypes.has(symbol.container_type))
-                continue;
+            for (let symbol of checkmodule.symbols)
+            {
+                if (!searchForTypes.has(symbol.container_type))
+                    continue;
 
-            references.push(checkmodule.getLocationRange(symbol.start, symbol.end));
+                let matchesSymbol = false;
+                if ((symbol.type == findSymbol.type || symbol.type == alternateType)
+                    && symbol.symbol_name == findSymbol.symbol_name
+                    && searchForTypes.has(symbol.container_type))
+                {
+                    matchesSymbol = true;
+                }
+                else
+                {
+                    for (let auxSym of auxSymbols)
+                    {
+                        if (symbol.symbol_name == auxSym.symbol_name
+                            && symbol.container_type == auxSym.container_type)
+                        {
+                            matchesSymbol = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!matchesSymbol)
+                    continue;
+
+                references.push(checkmodule.getLocationRange(symbol.start, symbol.end));
+            }
+        }
+        else
+        {
+            for (let symbol of checkmodule.symbols)
+            {
+                if (symbol.type != findSymbol.type && symbol.type != alternateType)
+                    continue;
+                if (symbol.symbol_name != findSymbol.symbol_name)
+                    continue;
+                if (!searchForTypes.has(symbol.container_type))
+                    continue;
+
+                references.push(checkmodule.getLocationRange(symbol.start, symbol.end));
+            }
         }
 
         // Yield out after we've done some amount of parse work

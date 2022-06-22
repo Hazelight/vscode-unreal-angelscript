@@ -19,6 +19,7 @@ import {
     ColorPresentationParams, ColorPresentation,
     TypeHierarchyItem, TypeHierarchyPrepareParams,
     TypeHierarchySupertypesParams, TypeHierarchySubtypesParams,
+    NotificationType,
 } from 'vscode-languageserver/node';
 import { TextDocument, TextDocumentContentChangeEvent } from 'vscode-languageserver-textdocument';
 
@@ -716,7 +717,10 @@ connection.onExecuteCommand(function (params : ExecuteCommandParams)
             if (!references || references.length == 0)
                 return;
 
-            unreal.write(buildOpenAssets(references));
+            if (unreal)
+                unreal.write(buildOpenAssets(references));
+            else
+                connection.window.showErrorMessage("Cannot open asset: not connected to unreal editor.");
         }
     }
 });

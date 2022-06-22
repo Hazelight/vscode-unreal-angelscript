@@ -1318,7 +1318,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 //continue;
         }
 
-        if(!func.name.startsWith("op") && (!func.isEvent || showEvents))
+        if(!func.name.startsWith("op") && (!func.isBlueprintEvent || showEvents))
         {
             let commitChars = ["("];
             if (func.isConstructor)
@@ -1326,7 +1326,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
             let compl = <CompletionItem>{
                     label: func.name,
-                    kind: func.isEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
+                    kind: func.isBlueprintEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
                     data: ["func", curtype.typename, func.name, func.id],
                     commitCharacters: commitChars,
                     filterText: GetSymbolFilterText(context, func),
@@ -1433,7 +1433,7 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
 
                 let compl = <CompletionItem>{
                     label: sym.name,
-                    kind: sym.isEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
+                    kind: sym.isBlueprintEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
                     data: ["func", sym.containingType.typename, sym.name, sym.id],
                     commitCharacters: ["("],
                     filterText: GetSymbolFilterText(context, sym),
@@ -1495,7 +1495,7 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
                 {
                     let compl = <CompletionItem>{
                         label: sym.name,
-                        kind: sym.isEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
+                        kind: sym.isBlueprintEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
                         data: ["func_mixin", sym.containingType.typename, sym.name, sym.id],
                         commitCharacters: ["("],
                         filterText: GetSymbolFilterText(context, sym),
@@ -3356,7 +3356,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
             if (!includeParamsOnly && !includeReturnType)
                 continue;
 
-            if (checktype.isUnrealType() && !method.isEvent)
+            if (checktype.isUnrealType() && !method.isBlueprintEvent)
                 continue;
             if (foundOverrides.has(method.name))
                 continue;
@@ -3368,7 +3368,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
             let complStr = GetDeclarationSnippet(method, currentIndent, false);
             let complEdits = textEdits;
 
-            if (method.isEvent)
+            if (method.isBlueprintEvent)
                 complEdits = complEdits.concat(textEditsForEvent);
 
             let superStr = "";
@@ -3478,9 +3478,9 @@ function GetDeclarationSnippet(method : typedb.DBMethod, indent : string, includ
     complStr += ")";
     if (method.isConst)
         complStr += " const";
-    if (!method.isEvent)
+    if (!method.isBlueprintEvent)
         complStr += " override";
-    if (!method.isEvent && method.isProperty && method.declaredModule)
+    if (!method.isBlueprintEvent && method.isProperty && method.declaredModule)
         complStr += " property";
     complStr += "\n";
     return complStr;

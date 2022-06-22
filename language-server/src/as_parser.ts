@@ -1613,7 +1613,7 @@ function AddDBMethod(scope : ASScope, funcname : string) : typedb.DBMethod
     dbfunc.isConstructor = false;
     dbfunc.isConst = false;
     dbfunc.isProperty = false;
-    dbfunc.isEvent = false;
+    dbfunc.isBlueprintEvent = false;
     return dbfunc;
 }
 
@@ -1997,8 +1997,15 @@ function GenerateTypeInformation(scope : ASScope)
                 MakeMacroSpecifiers(funcdef.macro, dbfunc.macroSpecifiers, dbfunc.macroMeta);
 
                 // Mark as event
-                if (dbfunc.macroSpecifiers.has("BlueprintEvent") || dbfunc.macroSpecifiers.has("BlueprintOverride"))
-                    dbfunc.isEvent = true;
+                if (dbfunc.macroSpecifiers.has("BlueprintOverride"))
+                {
+                    dbfunc.isBlueprintEvent = true;
+                    dbfunc.isBlueprintOverride = true;
+                }
+                else if (dbfunc.macroSpecifiers.has("BlueprintEvent"))
+                {
+                    dbfunc.isBlueprintEvent = true;
+                }
 
                 // Check if we have keywords
                 let keywords = dbfunc.macroMeta.get("scriptkeywords");

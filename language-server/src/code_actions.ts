@@ -452,7 +452,7 @@ function AddMethodOverrideSnippets(context : CodeActionContext)
     {
         for (let method of checktype.methods)
         {
-            if (checktype.isUnrealType() && !method.isEvent)
+            if (checktype.isUnrealType() && !method.isBlueprintEvent)
                 continue;
             if (foundOverrides.has(method.name))
                 continue;
@@ -506,15 +506,15 @@ function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : 
     let snippet = "";
     snippet += prefix;
 
-    if (method.isEvent)
+    if (method.isBlueprintEvent)
         snippet += indent+"UFUNCTION(BlueprintOverride)\n";
 
     snippet += GenerateMethodHeaderString("", indent, data.name, method.returnType, method.args);
     if (method.isConst)
         snippet += " const"
-    if (!method.isEvent)
+    if (!method.isBlueprintEvent)
         snippet += " override";
-    if (!method.isEvent && method.isProperty && method.declaredModule)
+    if (!method.isBlueprintEvent && method.isProperty && method.declaredModule)
         snippet += " property";
 
     snippet += "\n";
@@ -1081,7 +1081,7 @@ function AddMemberActions(context : CodeActionContext)
                     let superFunc = superType.findFirstSymbol(context.statement.ast.name.value, typedb.DBAllowSymbol.FunctionOnly);
                     if (superFunc && superFunc instanceof typedb.DBMethod)
                     {
-                        if (superFunc.isEvent)
+                        if (superFunc.isBlueprintEvent)
                             isOverrideEvent = true;
                     }
                 }
