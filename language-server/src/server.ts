@@ -19,7 +19,7 @@ import {
     ColorPresentationParams, ColorPresentation,
     TypeHierarchyItem, TypeHierarchyPrepareParams,
     TypeHierarchySupertypesParams, TypeHierarchySubtypesParams,
-    NotificationType,
+    WorkspaceSymbol,
 } from 'vscode-languageserver/node';
 import { TextDocument, TextDocumentContentChangeEvent } from 'vscode-languageserver-textdocument';
 
@@ -304,7 +304,7 @@ connection.onInitialize((_params): InitializeResult => {
             },
             hoverProvider: true,
             documentSymbolProvider: true,
-            workspaceSymbolProvider: true,
+            workspaceSymbolProvider: { "resolveProvider": true },
             definitionProvider: true,
             implementationProvider: true,
             referencesProvider: true,
@@ -608,8 +608,12 @@ connection.onDocumentSymbol((_params : DocumentSymbolParams) : SymbolInformation
     return scriptsymbols.DocumentSymbols(_params.textDocument.uri);
 });
 
-connection.onWorkspaceSymbol((_params : WorkspaceSymbolParams) : SymbolInformation[] => {
+connection.onWorkspaceSymbol((_params : WorkspaceSymbolParams) : WorkspaceSymbol[] => {
     return scriptsymbols.WorkspaceSymbols(_params.query);
+});
+
+connection.onWorkspaceSymbolResolve((symbol : WorkspaceSymbol) : WorkspaceSymbol => {
+    return scriptsymbols.ResolveWorkspaceSymbol(symbol);
 });
 
 connection.onReferences(function (params : ReferenceParams) : Location[] | Thenable<Location[]>

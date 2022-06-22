@@ -2,7 +2,7 @@ import {
     TextDocumentPositionParams, CompletionItem, CompletionItemKind, SignatureHelp,
     SignatureInformation, ParameterInformation, Hover, MarkupContent, SymbolInformation,
     TextDocument, SymbolKind, Definition, Location, InsertTextFormat, TextEdit,
-    Range, Position, MarkupKind
+    Range, Position, MarkupKind, WorkspaceSymbol
 } from 'vscode-languageserver';
 
 import * as scriptfiles from './as_parser';
@@ -628,18 +628,7 @@ export function DocumentSymbols( uri : string ) : SymbolInformation[]
     return symbols;
 }
 
-export function WorkspaceSymbols( query : string ) : SymbolInformation[]
-{
-    let symbols = new Array<SymbolInformation>();
-    for (let asmodule of scriptfiles.GetAllParsedModules())
-    {
-        AddModuleSymbols(asmodule, symbols, query);
-        AddScopeSymbols(asmodule, asmodule.rootscope, symbols, query);
-    }
-    return symbols;
-}
-
-function AddModuleSymbols(asmodule : scriptfiles.ASModule, symbols : Array<SymbolInformation>, query : string = null)
+function AddModuleSymbols(asmodule : scriptfiles.ASModule, symbols : Array<SymbolInformation>)
 {
     for (let dbtype of [...asmodule.types, ...asmodule.namespaces])
     {
@@ -656,14 +645,12 @@ function AddModuleSymbols(asmodule : scriptfiles.ASModule, symbols : Array<Symbo
             scopeSymbol.location = asmodule.getLocation(dbtype.moduleOffset);
 
         if (scopeSymbol.name.startsWith("__"))
-            scopeSymbol.name = scopeSymbol.name.substr(2);
+            scopeSymbol.name = scopeSymbol.name.substring(2);
 
         if (dbtype.isNamespace())
             scopeSymbol.kind = SymbolKind.Namespace;
         else if (dbtype.isEnum)
             scopeSymbol.kind = SymbolKind.Enum;
-        else if (dbtype.isStruct)
-            scopeSymbol.kind = SymbolKind.Struct;
         else
             scopeSymbol.kind = SymbolKind.Class;
 
@@ -671,7 +658,7 @@ function AddModuleSymbols(asmodule : scriptfiles.ASModule, symbols : Array<Symbo
     }
 }
 
-function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.ASScope, symbols: Array<SymbolInformation>, query : string = null)
+function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.ASScope, symbols: Array<SymbolInformation>)
 {
     if (!scope)
         return;
@@ -687,7 +674,7 @@ function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.AS
 
                 symbols.push(<SymbolInformation> {
                     name : classVar.name,
-                    kind : SymbolKind.Variable,
+                    kind : SymbolKind.Field,
                     location : asmodule.getLocationRange(classVar.start_offset_name, classVar.end_offset_name),
                     containerName : scopeType.typename,
                 });
@@ -725,4 +712,175 @@ function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.AS
 
     for (let subscope of scope.scopes)
         AddScopeSymbols(asmodule, subscope, symbols);
+}
+
+export function WorkspaceSymbols( query : string ) : WorkspaceSymbol[]
+{
+    let symbols = new Array<WorkspaceSymbol>();
+
+    // Always ignore case for queries
+    query = query.toLowerCase();
+
+    // This is intentional, we don't send anything when there's no query because it's way too slow
+    if (query.length == 0)
+        return symbols;
+
+    // We never match for members unless we've typed a longer query string, to improve performance.
+    // The vscode filtering on all this stuff is also incredibly bad, so this isn't a very useful usecase anyway.
+    let matchMembers = query.length >= 5;
+
+    for (let [typename, dbtype] of typedb.GetAllTypes())
+    {
+        if (!dbtype.declaredModule)
+            continue;
+
+        let asmodule = scriptfiles.GetModule(dbtype.declaredModule);
+        if (!asmodule)
+            continue;
+
+        let containingTypename = dbtype.getDisplayName();
+        let typeIsMatching = containingTypename.toLowerCase().indexOf(query) != -1;
+        if (typeIsMatching && !dbtype.isGlobalScope && !dbtype.isShadowedNamespace())
+        {
+            let symbol = <WorkspaceSymbol> {
+                name: containingTypename,
+            };
+
+            symbol.location = {uri: asmodule.displayUri};
+
+            if (dbtype.isNamespace())
+                symbol.kind = SymbolKind.Namespace;
+            else if (dbtype.isEnum)
+                symbol.kind = SymbolKind.Enum;
+            else
+                symbol.kind = SymbolKind.Class;
+
+            symbol.data = dbtype.typename;
+            symbols.push(symbol);
+        }
+
+        if (matchMembers)
+        {
+            let memberPrefix = containingTypename;
+            if (dbtype.isGlobalScope)
+                memberPrefix = "";
+            else if (dbtype.isNamespace())
+                memberPrefix += "::";
+            else
+                memberPrefix += ".";
+
+            for (let dbfunc of dbtype.methods)
+            {
+                if (dbfunc.isAutoGenerated)
+                    continue;
+                let funcIsMatching = dbfunc.name.toLowerCase().indexOf(query) != -1;
+                if (!funcIsMatching && !typeIsMatching)
+                    continue;
+
+                let symbol = <WorkspaceSymbol> {};
+                if (dbfunc.args && dbfunc.args.length != 0)
+                    symbol.name = memberPrefix+dbfunc.name+"(…)";
+                else
+                    symbol.name = memberPrefix+dbfunc.name+"()";
+
+                symbol.data = [dbtype.typename, dbfunc.name];
+                symbol.location = {uri: asmodule.displayUri};
+
+                if (dbtype.isGlobalScope)
+                {
+                    symbol.kind = SymbolKind.Function;
+                }
+                else if (dbtype.isNamespace())
+                {
+                    symbol.kind = SymbolKind.Function;
+                    symbol.containerName = containingTypename;
+                }
+                else
+                {
+                    if (dbfunc.isBlueprintEvent)
+                        symbol.kind = SymbolKind.Event;
+                    else
+                        symbol.kind = SymbolKind.Method;
+                    symbol.containerName = containingTypename;
+                }
+
+                symbols.push(symbol);
+            }
+
+            for (let dbprop of dbtype.properties)
+            {
+                if (dbprop.isAutoGenerated)
+                    continue;
+                let propIsMatching = dbprop.name.toLowerCase().indexOf(query) != -1;
+                if (!propIsMatching && !typeIsMatching)
+                    continue;
+
+                let symbol = <WorkspaceSymbol> {};
+                symbol.name = memberPrefix+dbprop.name;
+                symbol.data = [dbtype.typename, dbprop.name];
+                symbol.location = {uri: asmodule.displayUri};
+
+                if (dbtype.isGlobalScope)
+                {
+                    symbol.kind = SymbolKind.Variable;
+                }
+                else if (dbtype.isNamespace())
+                {
+                    symbol.kind = SymbolKind.Variable;
+                    symbol.containerName = containingTypename;
+                }
+                else
+                {
+                    symbol.kind = SymbolKind.Field;
+                    symbol.containerName = containingTypename;
+                }
+
+                symbols.push(symbol);
+            }
+        }
+    }
+
+    return symbols;
+}
+
+export function ResolveWorkspaceSymbol(symbol : WorkspaceSymbol) : WorkspaceSymbol
+{
+    if (typeof symbol.data === "string")
+    {
+        let dbtype = typedb.GetType(symbol.data);
+        if (!dbtype)
+            return;
+        let asmodule = scriptfiles.GetModule(dbtype.declaredModule);
+        if (!asmodule)
+            return;
+
+        if (dbtype.moduleScopeStart != -1)
+            symbol.location = asmodule.getLocationRange(dbtype.moduleOffset, dbtype.moduleScopeEnd);
+        else
+            symbol.location = asmodule.getLocation(dbtype.moduleOffset);
+    }
+    else
+    {
+        let dbtype = typedb.GetType(symbol.data[0]);
+        if (!dbtype)
+            return;
+        let asmodule = scriptfiles.GetModule(dbtype.declaredModule);
+        if (!asmodule)
+            return;
+
+        let subSymbol = dbtype.findFirstSymbol(symbol.data[1]);
+        if (subSymbol instanceof typedb.DBMethod)
+        {
+            if (subSymbol.moduleScopeStart != -1)
+                symbol.location = asmodule.getLocationRange(subSymbol.moduleOffset, subSymbol.moduleScopeEnd);
+            else
+                symbol.location = asmodule.getLocation(subSymbol.moduleOffset);
+        }
+        else if (subSymbol instanceof typedb.DBProperty)
+        {
+            symbol.location = asmodule.getLocation(subSymbol.moduleOffset);
+        }
+    }
+
+    return symbol;
 }

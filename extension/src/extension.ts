@@ -49,11 +49,7 @@ export function activate(context: ExtensionContext) {
 	
 	// Create the language client and start the client.
 	let client = new LanguageClient('angelscriptLanguageServer', 'Angelscript Language Server', serverOptions, clientOptions)
-	let disposable = client.start();
-	
-	// Push the disposable to the context's subscriptions so that the 
-	// client can be deactivated on extension deactivation
-	context.subscriptions.push(disposable);
+	let started_client = client.start();
 
 	// register a configuration provider for 'mock' debug type
 	const provider = new ASConfigurationProvider();
