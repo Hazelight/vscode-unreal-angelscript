@@ -452,15 +452,35 @@ function GetWordHover(word : string) : Hover
     if (!word)
         return;
 
+    let specifier_lists = [
+        specifiers.ASPropertySpecifiers,
+        specifiers.ASClassSpecifiers,
+        specifiers.ASFunctionSpecifiers,
+        specifiers.ASStructSpecifiers,
+    ];
+
+    let subspecifier_lists = [
+        specifiers.ASPropertySubSpecifiers,
+        specifiers.ASClassSubSpecifiers,
+        specifiers.ASFunctionSubSpecifiers,
+        specifiers.ASStructSubSpecifiers,
+    ];
+
+    for (let sublist of subspecifier_lists)
+    {
+        for (let subspec in sublist)
+            specifier_lists.push(sublist[subspec]);
+    }
+
     let documentation = null;
-    if (word in specifiers.ASPropertySpecifiers)
-        documentation = specifiers.ASPropertySpecifiers[word];
-    else if (word in specifiers.ASClassSpecifiers)
-        documentation = specifiers.ASClassSpecifiers[word];
-    else if (word in specifiers.ASFunctionSpecifiers)
-        documentation = specifiers.ASFunctionSpecifiers[word];
-    else if (word in specifiers.ASStructSpecifiers)
-        documentation = specifiers.ASStructSpecifiers[word];
+    for (let speclist of specifier_lists)
+    {
+        if (word in speclist)
+        {
+            documentation = speclist[word];
+            break;
+        }
+    }
 
     if (documentation)
     {

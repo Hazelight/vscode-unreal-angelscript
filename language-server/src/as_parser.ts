@@ -27,11 +27,13 @@ export interface ASSettings
 {
     automaticImports : boolean,
     floatIsFloat64 : boolean,
+    useAngelscriptHaze: boolean,
 };
 
 let ScriptSettings : ASSettings = {
     automaticImports: false,
     floatIsFloat64: false,
+    useAngelscriptHaze: false,
 };
 
 let PreParsedIdentifiersInModules = new Map<string, Set<ASModule>>();

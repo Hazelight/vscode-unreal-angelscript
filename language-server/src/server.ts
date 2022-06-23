@@ -188,6 +188,8 @@ function connect_unreal() {
 
                 if (version >= 2)
                     scriptSettings.floatIsFloat64 = msg.readBool();
+                if (version >= 3)
+                    scriptSettings.useAngelscriptHaze = msg.readBool();
             }
         }
     });

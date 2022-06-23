@@ -2,8 +2,6 @@ import { assert } from 'console';
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 
-let UseHazeGeneratedCode = true;
-
 export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType, asmodule : scriptfiles.ASModule)
 {
     // Code that all delegate structs have
@@ -32,7 +30,8 @@ export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType, asmodule 
         if (dbtype.inheritsFrom("USubsystem"))
             AddGeneratedCodeForSubsystem(dbtype, nsType);
 
-        if (UseHazeGeneratedCode)
+        // Hazelight-specific generated code only if it's configured on
+        if (scriptfiles.GetScriptSettings().useAngelscriptHaze)
             AddHazeGeneratedCode(dbtype, nsType);
 
         // Merge namespace into the type database

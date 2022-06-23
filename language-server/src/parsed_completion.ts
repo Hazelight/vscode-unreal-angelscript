@@ -70,6 +70,7 @@ class CompletionContext
     scope: scriptfiles.ASScope = null;
     statement: scriptfiles.ASStatement = null;
     baseStatement: scriptfiles.ASStatement = null;
+    completeOffset : number = -1;
 
     completingSymbol: string = null;
     completingNode: any = null;
@@ -110,6 +111,7 @@ class CompletionContext
 
     leftStatement : scriptfiles.ASStatement = null;
     leftType : typedb.DBType = null;
+    outerAssignIdentifier : string = null;
 
     completionsMatchingExpected : Array<CompletionItem> = [];
     havePreselection : boolean = false;
@@ -725,6 +727,119 @@ function AddCompletionsFromUnrealMacro(context : CompletionContext, completions 
 {
     if (context.isSubExpression)
     {
+        if (context.outerAssignIdentifier)
+        {
+            let subspecifiers = [];
+
+            let isInsideMacro = false;
+            let macroContent : string = null;
+            if (context.baseStatement.ast && context.baseStatement.ast.macro)
+            {
+                let macro_start = context.baseStatement.start_offset + context.baseStatement.ast.macro.start;
+                let macro_end = context.baseStatement.start_offset + context.baseStatement.ast.macro.end;
+
+                if (context.completeOffset >= macro_start && context.completeOffset < macro_end)
+                {
+                    isInsideMacro = true;
+                    macroContent = context.baseStatement.content.substring(
+                        context.baseStatement.ast.macro.start,
+                        context.baseStatement.ast.macro.end);
+                }
+            }
+            
+            // Detect if we're inside a sub-specifier
+            let isPropertySpec = false;
+            if (/[\r\n\s]*UPROPERTY\s*\(.*\)[\r\n\s]*$/.test(context.baseStatement.content))
+            {
+                subspecifiers.push(specifiers.ASPropertySubSpecifiers);
+                isPropertySpec = true;
+            }
+            else if (/[\r\n\s]*UFUNCTION\s*\(.*\)[\r\n\s]*$/.test(context.baseStatement.content))
+            {
+                subspecifiers.push(specifiers.ASFunctionSubSpecifiers);
+            }
+            else if (/[\r\n\s]*UCLASS\s*\(.*\)[\r\n\s]*$/.test(context.baseStatement.content))
+            {
+                subspecifiers.push(specifiers.ASClassSubSpecifiers);
+            }
+            else if (/[\r\n\s]*USTRUCT\s*\(.*\)[\r\n\s]*$/.test(context.baseStatement.content))
+            {
+                subspecifiers.push(specifiers.ASStructSubSpecifiers);
+            }
+            else if (isInsideMacro && /^\s*UPROPERTY\s*\(/.test(macroContent))
+            {
+                subspecifiers.push(specifiers.ASPropertySubSpecifiers);
+                isPropertySpec = true;
+            }
+            else if (isInsideMacro && /^\s*UFUNCTION\s*\(/.test(macroContent))
+            {
+                subspecifiers.push(specifiers.ASFunctionSubSpecifiers);
+            }
+            else if (isInsideMacro && /^\s*UCLASS\s*\(/.test(macroContent))
+            {
+                subspecifiers.push(specifiers.ASClassSubSpecifiers);
+            }
+            else if (isInsideMacro && /^\s*USTRUCT\s*\(/.test(macroContent))
+            {
+                subspecifiers.push(specifiers.ASStructSubSpecifiers);
+            }
+
+            let foundSubSpecifier = false;
+            let lowerIdentifier = context.outerAssignIdentifier.toLowerCase();
+            for (let sublist of subspecifiers)
+            {
+                if (lowerIdentifier in sublist)
+                {
+                    foundSubSpecifier = true;
+                    AddCompletionsFromSpecifiers(context, sublist[lowerIdentifier], completions);
+                }
+            }
+
+            // If we're completing an 'Attach' also complete component names
+            if (isPropertySpec && lowerIdentifier == "attach")
+            {
+                let dbtype = context.scope.getDatabaseType();
+                if (dbtype && dbtype.inheritsFrom("AActor"))
+                {
+                    let properties = dbtype.allProperties();
+                    for (let prop of properties)
+                    {
+                        // We can't complete to C++ components unfortunately because we only know the variable
+                        // name, not the name of the component, and we need the name of the component.
+                        if (!prop.declaredModule)
+                            continue;
+
+                        let propType = typedb.GetType(prop.typename);
+                        if (!propType)
+                            continue;
+                        if (!propType.inheritsFrom("USceneComponent"))
+                            continue;
+                        if (!prop.macroSpecifiers || !prop.macroSpecifiers.has("DefaultComponent"))
+                            continue;
+
+                        if (!context.completingSymbol || CanCompleteTo(context, prop.name))
+                        {
+                            let documentation = "Attach this component to "+prop.name;
+                            if (prop.documentation)
+                                documentation += ":\n"+prop.documentation;
+
+                            completions.push({
+                                label: prop.name,
+                                documentation: documentation,
+                                kind: CompletionItemKind.Field,
+                                sortText: Sort.Keyword,
+                            });
+                        }
+                    }
+
+                    foundSubSpecifier = true;
+                }
+            }
+
+            if (foundSubSpecifier)
+                return true;
+        }
+
         if (/^\s*UCLASS\s*$/.test(context.subOuterStatement.content))
         {
             AddCompletionsFromSpecifiers(context, specifiers.ASClassSpecifiers, completions);
@@ -746,6 +861,9 @@ function AddCompletionsFromUnrealMacro(context : CompletionContext, completions 
         if (/^\s*UFUNCTION\s*$/.test(context.subOuterStatement.content))
         {
             AddCompletionsFromSpecifiers(context, specifiers.ASFunctionSpecifiers, completions);
+
+            if (scriptfiles.GetScriptSettings().useAngelscriptHaze)
+                AddCompletionsFromSpecifiers(context, specifiers.ASFunctionSpecifiers_HAZE, completions);
             return true;
         }
     }
@@ -1644,6 +1762,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
 
     let contentOffset = 0;
     context.baseStatement = asmodule.getStatementAt(offset);
+    context.completeOffset = offset;
     let content : string = null;
 
     if (context.baseStatement)
@@ -1831,6 +1950,10 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
                 }
             }
         }
+
+        // We couldn't find this as a function, try finding it as a specifier (eg `Meta = (|)`)
+        if (!context.subOuterStatement.ast)
+            context.outerAssignIdentifier = ExtractAssignmentIdentifierPreceding(content, subExprOffset);
 
         // Disambiguate if we have overloads available for the base method and the child override both
         scriptfiles.DisambiguateFunctionOverloadsFromOverriddenFunctions(context.subOuterFunctions);
@@ -2030,6 +2153,11 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
                 }
             }
         }
+    }
+    else if (context.isRightExpression && context.rightOperator == "=")
+    {
+        let assignLeftOffset = context.statement.start_offset - contentOffset;
+        context.outerAssignIdentifier = ExtractAssignmentIdentifierPreceding(content, assignLeftOffset);
     }
 
     // If we're editing inside an if statement, we might expect to be typing a bool
@@ -2869,6 +2997,68 @@ function ScanOffsetStartOfOuterExpression(content : string, offset : number, ign
     }
 
     return [-1, 0];
+}
+
+function ExtractIdentifierPreceding(content : string, offset : number) : string | null
+{
+    let identifierEndOffset = -1;
+    let identifierStartOffset = offset-1;
+    for (; identifierStartOffset >= 0; --identifierStartOffset)
+    {
+        let char = content[identifierStartOffset];
+        let charCode = content.charCodeAt(identifierStartOffset);
+
+        let isIdentifierChar = false;
+        if (charCode > 47 && charCode < 58)
+            isIdentifierChar = true;
+        else if (charCode > 64 && charCode < 91)
+            isIdentifierChar = true;
+        else if (charCode > 96 && charCode < 123)
+            isIdentifierChar = true;
+        else if (charCode == 95)
+            isIdentifierChar = true;
+
+        if (identifierEndOffset == -1)
+        {
+            if (char == ' ' || char == '\t')
+                continue;
+
+            if (isIdentifierChar)
+                identifierEndOffset = identifierStartOffset+1;
+            else
+                return null;
+        }
+        else
+        {
+            if (!isIdentifierChar)
+                return content.substring(identifierStartOffset+1, identifierEndOffset);
+        }
+    }
+
+    return null;
+}
+
+function ExtractAssignmentIdentifierPreceding(content : string, offset : number) : string | null
+{
+    let scanOffset = offset-1;
+    for (; scanOffset >= 0; --scanOffset)
+    {
+        let char = content[scanOffset];
+
+        if (char == ' ' || char == '\t')
+            continue;
+
+        if (char == '=')
+        {
+            return ExtractIdentifierPreceding(content, scanOffset);
+        }
+        else
+        {
+            return null;
+        }
+    }
+
+    return null;
 }
 
 function ScanOffsetEndOfOuterExpression(content : string, offset : number, ignoreTable : Array<number>) : number

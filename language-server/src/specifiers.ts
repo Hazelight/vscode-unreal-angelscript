@@ -39,6 +39,23 @@ export let ASPropertySpecifiers : any = {
     "SaveGame": "Property should be serialized for save games",
 };
 
+export let ASPropertySubSpecifiers : any = {
+    // Note: subspecifier keys should be lowercase so they can be found consistently
+    "meta": {
+        "InlineEditCondition": "When this boolean is used as an edit condition, display it inline to the left of the conditional property",
+        "EditCondition": "Only allow this property to be edited depending on the state of other properties",
+        "EditConditionHides": "Hide this property completely when its EditCondition is false",
+        "MakeEditWidget": "Create a movable 3D widget in the world for transforms and vectors",
+        "ClampMin": "Clamp the numeric value of this property so it is never below the specifiec value",
+        "ClampMax": "Clamp the numeric value of this property so it is never below the specifiec value",
+        "UIMin": "Set the minimum value for the UI slider for the numeric value of this property",
+        "UIMax": "Set the maximum value for the UI slider for the numeric value of this property",
+        "Units": "Determine the unit of this property's numeric value for the UI",
+        "Delta": "How large is one value step in the UI for the numeric value of this property",
+        "ShowOnlyInnerProperties": "Show this property's inner properties as if they are parent-level properties",
+    }
+};
+
 export let ASClassSpecifiers : any = {
     "NotPlaceable": "Class cannot be placed in the level or on an actor by the editor",
     "NotBlueprintable": "Blueprints cannot be choose this as a parent class",
@@ -57,8 +74,22 @@ export let ASClassSpecifiers : any = {
     "Meta": "Specify arbitrary meta tags",
 };
 
+export let ASClassSubSpecifiers : any = {
+    // Note: subspecifier keys should be lowercase so they can be found consistently
+    "meta": {
+        "DisplayName": "Name to use to display in the editor",
+    }
+};
+
 export let ASStructSpecifiers : any = {
     "Meta": "Specify arbitrary meta tags",
+};
+
+export let ASStructSubSpecifiers : any = {
+    // Note: subspecifier keys should be lowercase so they can be found consistently
+    "meta": {
+        "DisplayName": "Name to use to display in the editor",
+    }
 };
 
 export let ASFunctionSpecifiers : any = {
@@ -66,9 +97,6 @@ export let ASFunctionSpecifiers : any = {
     "NotBlueprintCallable": "Function is not available in blueprint at all",
     "BlueprintPure": "Function is a pure node in blueprint without an exec pin",
     "BlueprintEvent": "Function can be overridden by child blueprint classes",
-    "NetFunction": "Function is a NetFunction",
-    "CrumbFunction": "Function is a CrumbFunction",
-    "DevFunction": "Function is a DevFunction",
     "Unreliable": "Network function is sent as unreliable",
     "BlueprintOverride": "Override a BlueprintEvent in a parent script or C++ class",
     "CallInEditor": "Create a button in the details panel to call this function in the editor",
@@ -78,4 +106,18 @@ export let ASFunctionSpecifiers : any = {
     "DisplayName": "Name to use to display the function in the editor",
     "BlueprintProtected": "Treat this function as protected in blueprint, disallowing it from being called by non-child blueprints",
     "Meta": "Specify arbitrary meta tags",
+};
+
+export let ASFunctionSpecifiers_HAZE : any = {
+    "NetFunction": "Function is a NetFunction",
+    "CrumbFunction": "Function is a CrumbFunction",
+    "DevFunction": "Function is a DevFunction",
+};
+
+export let ASFunctionSubSpecifiers : any = {
+    // Note: subspecifier keys should be lowercase so they can be found consistently
+    "meta": {
+        "NoSuperCall": "This function is allowed to not call its Super, suppress the warning",
+        "AdvancedDisplay": "Determine which parameters to the function are considered Advanced",
+    }
 };
