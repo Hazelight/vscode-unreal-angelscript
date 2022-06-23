@@ -39,20 +39,7 @@ export let ASPropertySpecifiers : any = {
     "SaveGame": "Property should be serialized for save games",
     "Replicated": "Property should be replicated to clients",
     "ReplicatedUsing": "Specify a function to call when the property is replicated (requires Replicated)",
-    "ReplicatedCondition": "Specify when the property should be replicated",
-    "InitialOnly": "Used with ReplicatedCondition: This property will only attempt to send on the initial bunch",
-    "OwnerOnly": "Used with ReplicatedCondition: This property will only send to the actor's owner",
-    "SkipOwner": "Used with ReplicatedCondition: This property send to every connection EXCEPT the owner",
-    "SimulatedOnly": "Used with ReplicatedCondition: This property will only send to simulated actors",
-    "AutonomousOnly": "Used with ReplicatedCondition: This property will only send to autonomous actors",
-    "SimulatedOrPhysics": "Used with ReplicatedCondition: This property will send to simulated OR bRepPhysics actors",
-    "InitialOrOwner": "Used with ReplicatedCondition: This property will send on the initial packet, or to the actors owner",
-    "Custom": "Used with ReplicatedCondition",
-    "ReplayOrOwner": "Used with ReplicatedCondition",
-    "ReplayOnly": "Used with ReplicatedCondition",
-    "SimulatedOnlyNoReplay": "Used with ReplicatedCondition",
-    "SimulatedOrPhysicsNoReplay": "Used with ReplicatedCondition",
-    "SkipReplay": "Used with ReplicatedCondition",
+    "ReplicationCondition": "Specify when the property should be replicated",
 };
 
 export let ASClassSpecifiers : any = {
