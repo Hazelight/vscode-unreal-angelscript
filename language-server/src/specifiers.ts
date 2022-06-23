@@ -81,4 +81,8 @@ export let ASFunctionSpecifiers : any = {
     "DisplayName": "Name to use to display the function in the editor",
     "BlueprintProtected": "Treat this function as protected in blueprint, disallowing it from being called by non-child blueprints",
     "Meta": "Specify arbitrary meta tags",
+    "NetMulticast": "The function is executed both locally on the server, and replicated to all clients, regardless of the Actor's NetOwner",
+    "Client": "The function is only executed on the only client if called from the server",
+    "Server": "The function is only executed on the server if called from the owning client",
+    "BlueprintAuthorityOnly": "This function will only execute from Blueprint code if running on a machine with network authority (a server, dedicated server, or single-player game)",
 };
