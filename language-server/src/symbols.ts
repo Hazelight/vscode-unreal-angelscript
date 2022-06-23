@@ -459,6 +459,17 @@ function GetWordHover(word : string) : Hover
         specifiers.ASStructSpecifiers,
     ];
 
+    if (scriptfiles.GetScriptSettings().useAngelscriptHaze)
+    {
+        specifier_lists.push(specifiers.ASPropertySpecifiers_HAZE);
+        specifier_lists.push(specifiers.ASFunctionSpecifiers_HAZE);
+    }
+    else
+    {
+        specifier_lists.push(specifiers.ASPropertySpecifiers_NO_HAZE);
+        specifier_lists.push(specifiers.ASFunctionSpecifiers_NO_HAZE);
+    }
+
     let subspecifier_lists = [
         specifiers.ASPropertySubSpecifiers,
         specifiers.ASClassSubSpecifiers,

@@ -855,6 +855,11 @@ function AddCompletionsFromUnrealMacro(context : CompletionContext, completions 
         if (/^\s*UPROPERTY\s*$/.test(context.subOuterStatement.content))
         {
             AddCompletionsFromSpecifiers(context, specifiers.ASPropertySpecifiers, completions);
+
+            if (scriptfiles.GetScriptSettings().useAngelscriptHaze)
+                AddCompletionsFromSpecifiers(context, specifiers.ASPropertySpecifiers_HAZE, completions);
+            else
+                AddCompletionsFromSpecifiers(context, specifiers.ASPropertySpecifiers_NO_HAZE, completions);
             return true;
         }
 
@@ -864,6 +869,8 @@ function AddCompletionsFromUnrealMacro(context : CompletionContext, completions 
 
             if (scriptfiles.GetScriptSettings().useAngelscriptHaze)
                 AddCompletionsFromSpecifiers(context, specifiers.ASFunctionSpecifiers_HAZE, completions);
+            else
+                AddCompletionsFromSpecifiers(context, specifiers.ASFunctionSpecifiers_NO_HAZE, completions);
             return true;
         }
     }

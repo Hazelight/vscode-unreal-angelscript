@@ -26,7 +26,7 @@ export let ASPropertySpecifiers : any = {
     "EditFixedSize": "Use on TArray propertie, the size of the array cannot be changed from the editor",
     "BlueprintProtected": "Treat this property as protected in blueprint, disallowing it from being edited by non-child blueprints",
     "DefaultComponent": "Component will be created as a default component on the actor",
-    "OverrideComponent": "Specify a component in the praent class to override the class type of",
+    "OverrideComponent": "Specify a component in the parent class to override the class type of",
     "RootComponent": "Use on DefaultComponents, specify that this component should be the root component of the actor",
     "ShowOnActor": "Use on DefaultComponents, properties from the component will appear in the actor's details panel",
     "Attach": "Use on DefaultComponents, specify a different component to attach this to in the scene hierarchy",
@@ -37,6 +37,15 @@ export let ASPropertySpecifiers : any = {
     "BlueprintGetter": "Specify a function to call instead when reading this property from blueprint",
     "BindWidget": "Automatically bind this property to the widget with the same name within child UMG blueprints",
     "SaveGame": "Property should be serialized for save games",
+};
+
+export let ASPropertySpecifiers_HAZE : any = {
+};
+
+export let ASPropertySpecifiers_NO_HAZE : any = {
+    "Replicated": "Property should be replicated to clients",
+    "ReplicatedUsing": "Specify a function to call when the property is replicated (requires Replicated)",
+    "ReplicationCondition": "Specify when the property should be replicated",
 };
 
 export let ASPropertySubSpecifiers : any = {
@@ -53,7 +62,22 @@ export let ASPropertySubSpecifiers : any = {
         "Units": "Determine the unit of this property's numeric value for the UI",
         "Delta": "How large is one value step in the UI for the numeric value of this property",
         "ShowOnlyInnerProperties": "Show this property's inner properties as if they are parent-level properties",
-    }
+    },
+    "replicationcondition": {
+        "InitialOnly": "This property will only attempt to send on the initial bunch",
+        "OwnerOnly": "This property will only send to the actor's owner",
+        "SkipOwner": "This property send to every connection EXCEPT the owner",
+        "SimulatedOnly": "This property will only send to simulated actors",
+        "AutonomousOnly": "This property will only send to autonomous actors",
+        "SimulatedOrPhysics": "This property will send to simulated OR bRepPhysics actors",
+        "InitialOrOwner": "This property will send on the initial packet, or to the actors owner",
+        "Custom": "",
+        "ReplayOrOwner": "",
+        "ReplayOnly": "",
+        "SimulatedOnlyNoReplay": "",
+        "SimulatedOrPhysicsNoReplay": "",
+        "SkipReplay": "",
+    },
 };
 
 export let ASClassSpecifiers : any = {
@@ -112,6 +136,13 @@ export let ASFunctionSpecifiers_HAZE : any = {
     "NetFunction": "Function is a NetFunction",
     "CrumbFunction": "Function is a CrumbFunction",
     "DevFunction": "Function is a DevFunction",
+};
+
+export let ASFunctionSpecifiers_NO_HAZE : any = {
+    "NetMulticast": "The function is executed both locally on the server, and replicated to all clients, regardless of the Actor's NetOwner",
+    "Client": "The function is only executed on the only client if called from the server",
+    "Server": "The function is only executed on the server if called from the owning client",
+    "BlueprintAuthorityOnly": "This function will only execute from Blueprint code if running on a machine with network authority (a server, dedicated server, or single-player game)",
 };
 
 export let ASFunctionSubSpecifiers : any = {
