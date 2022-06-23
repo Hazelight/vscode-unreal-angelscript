@@ -42,6 +42,22 @@ export let ASPropertySpecifiers : any = {
     "ReplicationCondition": "Specify when the property should be replicated",
 };
 
+export let ASReplicationConditionSpecifiers : any = {
+    "InitialOnly": "This property will only attempt to send on the initial bunch",
+    "OwnerOnly": "This property will only send to the actor's owner",
+    "SkipOwner": "This property send to every connection EXCEPT the owner",
+    "SimulatedOnly": "This property will only send to simulated actors",
+    "AutonomousOnly": "This property will only send to autonomous actors",
+    "SimulatedOrPhysics": "This property will send to simulated OR bRepPhysics actors",
+    "InitialOrOwner": "This property will send on the initial packet, or to the actors owner",
+    "Custom": "",
+    "ReplayOrOwner": "",
+    "ReplayOnly": "",
+    "SimulatedOnlyNoReplay": "",
+    "SimulatedOrPhysicsNoReplay": "",
+    "SkipReplay": "",
+}
+
 export let ASClassSpecifiers : any = {
     "NotPlaceable": "Class cannot be placed in the level or on an actor by the editor",
     "NotBlueprintable": "Blueprints cannot be choose this as a parent class",

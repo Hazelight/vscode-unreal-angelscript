@@ -738,6 +738,17 @@ function AddCompletionsFromUnrealMacro(context : CompletionContext, completions 
 
         if (/^\s*UPROPERTY\s*$/.test(context.subOuterStatement.content))
         {
+            if (context.isRightExpression && context.rightOperator === "=")
+            {
+                const regex = new RegExp(`([a-zA-Z]+)\\s*=\\s*${context.completingSymbol}`);
+                const match = regex.exec(context.fullOuterStatement.content);
+                if (match && match.length > 1 && match[1] === "ReplicationCondition")
+                {
+                    AddCompletionsFromSpecifiers(context, specifiers.ASReplicationConditionSpecifiers, completions);
+                    return true;
+                }
+            }
+
             AddCompletionsFromSpecifiers(context, specifiers.ASPropertySpecifiers, completions);
             return true;
         }
