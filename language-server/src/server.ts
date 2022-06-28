@@ -956,6 +956,7 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
 
     let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
     asmodule.isOpened = true;
+    scriptfiles.UpdateModuleFromDisk(asmodule);
     scriptfiles.ParseModuleAndDependencies(asmodule);
     if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
     {
