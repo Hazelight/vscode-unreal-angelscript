@@ -598,6 +598,7 @@ var_decl -> typename _ var_decl_multi_part (_ %comma _ var_decl_multi_part):+ {%
         {
             for (let part of d[3])
             {
+                part[3].is_secondary = true;
                 part[3].typename = d[0];
                 vars.push(part[3]);
             }

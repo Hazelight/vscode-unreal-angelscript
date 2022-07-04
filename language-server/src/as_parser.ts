@@ -4190,7 +4190,8 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     if (variableType || DoesTypenameExist(node.typename.value))
                     {
                         // Easy case, type exists, mark it as a typename
-                        typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
+                        if (!node.is_secondary)
+                            typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
                     }
                     else
                     {
@@ -4214,7 +4215,8 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                                 if (!hasPotentialCompletions)
                                 {
                                     // Now we can add it as a typename symbol, because we know it cannot possibly be an identifier symbol
-                                    typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
+                                    if (!node.is_secondary)
+                                        typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
                                 }
                             }
                         }
@@ -4222,7 +4224,8 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 }
                 else
                 {
-                    typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
+                    if (!node.is_secondary)
+                        typenameSymbol = AddTypenameSymbol(scope, statement, node.typename);
                 }
             }
 
@@ -4353,7 +4356,9 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         {
             // Detect in each declaration inside this statement
             for (let child of node.children)
+            {
                 DetectNodeSymbols(scope, statement, child, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            }
         }
         break;
         // Assignment should recurse, and mark the left hand side as write access
