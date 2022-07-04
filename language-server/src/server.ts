@@ -505,7 +505,8 @@ connection.onDidChangeWatchedFiles((_change) => {
         let module = scriptfiles.GetOrCreateModule(getModuleName(change.uri), getPathName(change.uri), change.uri);
         if (module)
         {
-            scriptfiles.UpdateModuleFromDisk(module);
+            if (!module.isOpened)
+                scriptfiles.UpdateModuleFromDisk(module);
             scriptfiles.ParseModule(module);
 
             if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
@@ -916,6 +917,8 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
     let modulename = getModuleName(uri);
     
     let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
+    if (!asmodule.loaded)
+        scriptfiles.UpdateModuleFromDisk(asmodule);
     scriptfiles.UpdateModuleFromContentChanges(asmodule, params.contentChanges);
 
     if (!asmodule.queuedParse)

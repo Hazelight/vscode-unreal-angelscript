@@ -1175,8 +1175,6 @@ export function UpdateModuleFromContentChanges(module : ASModule, contentChanges
             }
         }
     }
-
-    LoadModule(module);
 }
 
 export function UpdateModuleFromDisk(module : ASModule)
