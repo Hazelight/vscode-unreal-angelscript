@@ -1735,6 +1735,12 @@ export function FinishTypesFromUnreal()
 
 export function AddTypeToDatabase(dbtype : DBType)
 {
+    // If we're adding a script type, but an engine type with that name exists already, ignore
+    // We can't replace the engine type, because we will lose completion for it
+    let previousType = database.get(dbtype.typename);
+    if (previousType && dbtype.declaredModule && !previousType.declaredModule)
+        return;
+
     let prefix = GetTypenameCharPrefix(dbtype.typename);
     if (prefix)
     {
@@ -1745,7 +1751,6 @@ export function AddTypeToDatabase(dbtype : DBType)
             databaseByPrefix.set(prefix, prefixSyms);
         }
 
-        let previousType = database.get(dbtype.typename);
         if (previousType)
         {
             let previousIndex = prefixSyms.indexOf(previousType);
