@@ -164,6 +164,11 @@
                 "path": "./extension/syntaxes/angelscript_snippet.tmLanguage.json"
             }
         ],
+        "configurationDefaults": {
+            "[angelscript]": {
+                "editor.tabSize": 4
+            }
+        },
         "breakpoints": [
             {
                 "language": "angelscript"
