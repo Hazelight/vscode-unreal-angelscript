@@ -6,6 +6,7 @@ import {
 import * as typedb from './database';
 import * as scriptfiles from './as_parser';
 import * as specifiers from './specifiers';
+import { FormatFunctionDocumentation, FormatPropertyDocumentation } from './documentation';
 
 let CommonTypenames = new Set<string>([
     "FVector", "FRotator", "FTransform", "FQuat"
@@ -528,9 +529,9 @@ export function Signature(asmodule: scriptfiles.ASModule, position: Position): S
             if (argContext.currentArgumentName && activeArg != -1)
                 bestFunctionActiveArg = activeArg;
             else if (argContext.isAfterNamedArgument)
-                bestFunctionActiveArg = -1;
+                activeArg = bestFunctionActiveArg = -1;
             else
-                bestFunctionActiveArg = context.subOuterArgumentIndex;
+                activeArg = bestFunctionActiveArg = context.subOuterArgumentIndex;
         }
 
         let skipFirstArg = false;
@@ -556,7 +557,12 @@ export function Signature(asmodule: scriptfiles.ASModule, position: Position): S
 
         let doc = func.findAvailableDocumentation(true, false);
         if (doc)
-            sig.documentation = doc;
+        {
+            sig.documentation = {
+                kind: MarkupKind.Markdown,
+                value: FormatFunctionDocumentation(doc, func, activeArg),
+            };
+        }
 
         sigHelp.signatures.push(sig);
     }
@@ -3731,7 +3737,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
                 value: "```angelscript_snippet\n"+NoBreakingSpaces(prop.format())+"\n```\n\n",
             };
             if (prop.documentation)
-                item.documentation.value += "\n"+prop.documentation.replace(/\n/g,"\n\n")+"\n\n";
+                item.documentation.value += "\n\n"+FormatPropertyDocumentation(prop.documentation)+"\n\n";
 
             if (kind == "prop")
             {
@@ -3792,7 +3798,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
 
             let doc = func.findAvailableDocumentation();
             if (doc)
-                item.documentation.value += "\n"+doc.replace(/\n/g,"\n\n")+"\n\n";
+                item.documentation.value += "\n\n"+FormatFunctionDocumentation(doc, func, null, false);
 
             item.labelDetails = <CompletionItemLabelDetails>
             {
@@ -3821,7 +3827,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
 
             let doc = func.findAvailableDocumentation();
             if (doc)
-                item.documentation.value += "\n"+doc.replace(/\n/g,"\n\n")+"\n\n";
+                item.documentation.value += "\n\n"+FormatFunctionDocumentation(doc, func, null, false);
         }
     }
 

@@ -9,6 +9,7 @@ import * as scriptfiles from './as_parser';
 import * as parsedcompletion from './parsed_completion';
 import * as typedb from './database';
 import * as specifiers from './specifiers';
+import { FormatFunctionDocumentation, FormatPropertyDocumentation } from './documentation';
 
 export function GetDefinition(asmodule : scriptfiles.ASModule, position : Position) : Array<Location>
 {
@@ -595,7 +596,7 @@ function GetHoverForProperty(type : typedb.DBType, prop : typedb.DBProperty) : H
         prefix = type.typename+".";*/
 
     let hover = "";
-    hover += FormatHoverDocumentation(prop.documentation);
+    hover += FormatPropertyDocumentation(prop.documentation);
     hover += "```angelscript_snippet\n"+prop.format(prefix)+"\n```";
 
     return <Hover> {contents: <MarkupContent> {
@@ -627,7 +628,7 @@ function GetHoverForFunction(type : typedb.DBType, func : typedb.DBMethod, isAcc
 
     let doc = func.findAvailableDocumentation();
     if (doc)
-        hover += FormatHoverDocumentation(doc);
+        hover += FormatFunctionDocumentation(doc, func);
 
     if (isAccessor)
     {
