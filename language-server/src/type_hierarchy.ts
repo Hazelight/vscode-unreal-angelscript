@@ -18,12 +18,7 @@ export function PrepareTypeHierarchy(asmodule : scriptfiles.ASModule, position :
         case scriptfiles.ASSymbolType.Typename:
         case scriptfiles.ASSymbolType.Namespace:
         {
-            if (findSymbol.symbol_name.startsWith("__"))
-                dbtype = typedb.GetType(findSymbol.symbol_name.substr(2));
-            if (!dbtype)
-                dbtype = typedb.GetType(findSymbol.symbol_name);
-            if (!dbtype)
-                dbtype = typedb.GetType("__"+findSymbol.symbol_name);
+            dbtype = typedb.GetTypeByName(findSymbol.symbol_name);
         }
     }
 
@@ -46,11 +41,6 @@ function GetTypeHierarchyItem(dbtype : typedb.DBType) : TypeHierarchyItem
     {
         symKind = SymbolKind.Enum;
         symDetail = "enum "+dbtype.getDisplayName();
-    }
-    else if (dbtype.isNamespace())
-    {
-        symKind = SymbolKind.Namespace;
-        symDetail = "namespace "+dbtype.getDisplayName();
     }
     else
     {
@@ -87,17 +77,17 @@ function GetTypeHierarchyItem(dbtype : typedb.DBType) : TypeHierarchyItem
         uri: uri,
         range: range,
         selectionRange: selectionRange,
-        data: dbtype.typename,
+        data: dbtype.name,
     };
 }
 
 export function GetTypeHierarchySupertypes(item : TypeHierarchyItem) : TypeHierarchyItem[]
 {
-    let dbtype = typedb.GetType(item.data);
+    let dbtype = typedb.GetTypeByName(item.data);
     if (!dbtype || !dbtype.supertype)
         return [];
 
-    let dbsuper = typedb.GetType(dbtype.supertype);
+    let dbsuper = dbtype.getSuperType();
     if (!dbsuper)
         return [];
 
@@ -106,14 +96,14 @@ export function GetTypeHierarchySupertypes(item : TypeHierarchyItem) : TypeHiera
 
 export function GetTypeHierarchySubtypes(item : TypeHierarchyItem) : TypeHierarchyItem[]
 {
-    let dbtype = typedb.GetType(item.data);
+    let dbtype = typedb.GetTypeByName(item.data);
     if (!dbtype)
         return [];
 
     let subTypes : Array<TypeHierarchyItem> = [];
-    for (let [checkName, checkType] of typedb.GetAllTypes())
+    for (let [_, checkType] of typedb.GetAllTypesById())
     {
-        if (checkType.supertype == dbtype.typename)
+        if (checkType.supertype == dbtype.name)
             subTypes.push(GetTypeHierarchyItem(checkType));
     }
 

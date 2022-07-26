@@ -182,19 +182,19 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
         if (!objType)
             continue;
         
-        let foundFunc = objType.findFirstSymbol(funcName, typedb.DBAllowSymbol.FunctionOnly);
+        let foundFunc = objType.findFirstSymbol(funcName, typedb.DBAllowSymbol.Functions);
         if (!foundFunc || !(foundFunc instanceof typedb.DBMethod))
         {
             // We didn't find the function at all
             let classType = delegateBind.scope.getParentType();
-            let delegateType = typedb.GetType(delegateBind.delegateType);
+            let delegateType = typedb.GetTypeByName(delegateBind.delegateType);
             let data = null;
 
-            if (delegateType && classType && classType.typename == objType.typename)
+            if (delegateType && classType && classType.name == objType.name)
             {
                 data = {
                     type: "delegateBind",
-                    delegate: delegateType.typename,
+                    delegate: delegateType.name,
                     name: funcName,
                 };
             }
@@ -204,7 +204,7 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                 range: asmodule.getRange(
                     delegateBind.statement.start_offset + delegateBind.node_expression.start,
                     delegateBind.statement.start_offset + delegateBind.node_expression.end),
-                message: "Function "+funcName+" does not exist in type "+objType.typename,
+                message: "Function "+funcName+" does not exist in type "+objType.name,
                 source: "angelscript",
                 data: data,
             });
@@ -219,13 +219,13 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                 range: asmodule.getRange(
                     delegateBind.statement.start_offset + delegateBind.node_expression.start,
                     delegateBind.statement.start_offset + delegateBind.node_expression.end),
-                message: "Function "+foundFunc.name+" in "+foundFunc.containingType.typename+" is not declared UFUNCTION() and cannot be bound as a delegate.",
+                message: "Function "+foundFunc.name+" in "+foundFunc.containingType.name+" is not declared UFUNCTION() and cannot be bound as a delegate.",
                 source: "angelscript"
             });
             continue;
         }
 
-        let delegateType = typedb.GetType(delegateBind.delegateType);
+        let delegateType = typedb.GetTypeByName(delegateBind.delegateType);
         if (!delegateType || !delegateType.delegateArgs)
             continue;
 
@@ -292,7 +292,7 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                 range: asmodule.getRange(
                     delegateBind.statement.start_offset + delegateBind.node_expression.start,
                     delegateBind.statement.start_offset + delegateBind.node_expression.end),
-                message: "Cannot bind function "+foundFunc.name+" in "+foundFunc.containingType.typename
+                message: "Cannot bind function "+foundFunc.name+" in "+foundFunc.containingType.name
                 +".\nExpected Signature: "+delegateType.formatDelegateSignature()
                 +"\nGot Signature: "+foundFunc.format(),
                 source: "angelscript"
@@ -441,7 +441,7 @@ function AddSymbolDiagnostics(asmodule : scriptfiles.ASModule, diagnostics : Arr
     if (!asmodule.isOpened)
         return;
 
-    for (let symbol of asmodule.symbols)
+    for (let symbol of asmodule.semanticSymbols)
     {
         if (!symbol.isUnimported)
             continue;
@@ -467,10 +467,10 @@ function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBM
 {
     if (dbfunc.containingType)
     {
-        let parentType = typedb.GetType(dbfunc.containingType.supertype);
+        let parentType = dbfunc.containingType.getSuperType();
         if (parentType)
         {
-            let parentMethod = parentType.findFirstSymbol(dbfunc.name, typedb.DBAllowSymbol.FunctionOnly);
+            let parentMethod = parentType.findFirstSymbol(dbfunc.name, typedb.DBAllowSymbol.Functions);
             if (parentMethod && parentMethod instanceof typedb.DBMethod)
             {
                 // Add a diagnostic if we aren't calling the super function
@@ -489,7 +489,7 @@ function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBM
                         source: "angelscript",
                         data: {
                             type: "superCall",
-                            inType: parentMethod.containingType.typename,
+                            inType: parentMethod.containingType.name,
                             name: parentMethod.name,
                         },
                     });
@@ -545,12 +545,12 @@ function IsMaybeActorType(dbtype : typedb.DBType) : boolean
     let checkType = dbtype;
     while (checkType)
     {
-        if (checkType.typename == "AActor")
+        if (checkType.name == "AActor")
             return true;
 
         if (checkType.supertype)
         {
-            let superType = typedb.GetType(checkType.supertype);
+            let superType = checkType.getSuperType();
             if (superType)
             {
                 checkType = superType;
@@ -562,7 +562,7 @@ function IsMaybeActorType(dbtype : typedb.DBType) : boolean
 
         if (checkType.unrealsuper)
         {
-            let superType = typedb.GetType(checkType.unrealsuper);
+            let superType = typedb.GetTypeByName(checkType.unrealsuper);
             if (superType)
             {
                 checkType = superType;
@@ -582,7 +582,7 @@ function AddScopeNamingConventionDiagnostics(scope : scriptfiles.ASScope, diagno
 {
     // Check the naming convention for types
     let scopeType = scope.getDatabaseType();
-    if (scopeType && (!scopeType.isNamespaceOrGlobalScope() || scopeType.isEnum))
+    if (scopeType)
     {
         let suggestedName = scopeType.getDisplayName();
         let hasSuggestion = false;

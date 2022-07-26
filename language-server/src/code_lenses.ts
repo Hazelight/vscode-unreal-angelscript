@@ -68,7 +68,7 @@ function AddScopeLenses(scope : scriptfiles.ASScope, lenses : Array<CodeLens>)
 
 function AddAssetImplementationsLense(scope : scriptfiles.ASScope, dbtype : typedb.DBType, lenses : Array<CodeLens>)
 {
-    let references = assets.GetAssetsImplementing(dbtype.typename);
+    let references = assets.GetAssetsImplementing(dbtype.name);
     if (!references || references.length == 0)
         return;
 
@@ -109,7 +109,7 @@ function AddAssetImplementationsLense(scope : scriptfiles.ASScope, dbtype : type
 		command: <Command> {
 			title: message,
 			command: "angelscript.openAssets",
-            arguments: [dbtype.typename],
+            arguments: [dbtype.name],
 		}
     });
 }

@@ -75,13 +75,13 @@ let WhitelistedInlineStructs = new Set<string>([
 
 function CanTypeHaveInlineValue(typename : string) : boolean
 {
-    let dbType = typedb.GetType(typename);
+    let dbType = typedb.GetTypeByName(typename);
     if (!dbType)
         return false;
 
     if (dbType.isStruct && !dbType.isTemplateInstantiation)
     {
-        if (!WhitelistedInlineStructs.has(dbType.typename))
+        if (!WhitelistedInlineStructs.has(dbType.name))
             return false;
     }
 
@@ -93,7 +93,7 @@ function AddThisObjectInlineValue(context : InlineValueContext, scope : scriptfi
     // Show the this pointer above the function
     let inFunction = scope.getParentFunction();
     let functionScope = scope.getParentFunctionScope();
-    if (context.inType && !context.inType.isNamespaceOrGlobalScope() && inFunction && functionScope)
+    if (context.inType && inFunction && functionScope)
     {
         let range : Range = null;
 

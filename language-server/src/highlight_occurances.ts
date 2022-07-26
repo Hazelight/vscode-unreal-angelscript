@@ -41,7 +41,7 @@ export function HighlightOccurances(uri : string, position : Position) : Array<D
     }
 
     // Find all symbols in the file that match
-    for (let symbol of asmodule.symbols)
+    for (let symbol of asmodule.semanticSymbols)
     {
         if (symbol.type != findSymbol.type)
             continue;

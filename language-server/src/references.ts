@@ -34,7 +34,7 @@ export function* FindReferences(uri : string, position : Position) : any
         let declaredScope = asmodule.getScopeDeclaringLocalSymbol(findSymbol);
         if (!declaredScope)
             return references;
-        for (let symbol of asmodule.symbols)
+        for (let symbol of asmodule.semanticSymbols)
         {
             if (symbol.type != findSymbol.type)
                 continue;
@@ -158,7 +158,7 @@ export function* FindReferences(uri : string, position : Position) : any
         // Find symbols that match the symbol we're trying to find
         if (auxSymbols)
         {
-            for (let symbol of checkmodule.symbols)
+            for (let symbol of checkmodule.semanticSymbols)
             {
                 if (!searchForTypes.has(symbol.container_type))
                     continue;
@@ -191,7 +191,7 @@ export function* FindReferences(uri : string, position : Position) : any
         }
         else
         {
-            for (let symbol of checkmodule.symbols)
+            for (let symbol of checkmodule.semanticSymbols)
             {
                 if (symbol.type != findSymbol.type && symbol.type != alternateType)
                     continue;
@@ -389,7 +389,7 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
             return edits;
 
         // Find all symbols in the file that match
-        for (let symbol of asmodule.symbols)
+        for (let symbol of asmodule.semanticSymbols)
         {
             if (symbol.type != findSymbol.type)
                 continue;
@@ -454,7 +454,7 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
             // Find symbols that match the symbol we're trying to find
             let fileEdits : Array<TextEdit> = null;
 
-            for (let symbol of checkmodule.symbols)
+            for (let symbol of checkmodule.semanticSymbols)
             {
                 if (symbol.type != findSymbol.type && symbol.type != alternateType)
                     continue;

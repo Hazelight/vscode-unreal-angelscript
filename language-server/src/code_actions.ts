@@ -33,9 +33,9 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
 
     // Determine which symbols overlap the range
     let foundSymbol = false;
-    for (let i = 0, count = context.module.symbols.length; i < count; ++i)
+    for (let i = 0, count = context.module.semanticSymbols.length; i < count; ++i)
     {
-        let symbol = context.module.symbols[i];
+        let symbol = context.module.semanticSymbols[i];
         if (symbol.end < context.range_start)
             continue;
         if (symbol.start > context.range_end)
@@ -111,7 +111,7 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
 
 function AddImportActions(context : CodeActionContext)
 {
-    for (let symbol of context.module.symbols)
+    for (let symbol of context.module.semanticSymbols)
     {
         if (!symbol.isUnimported)
             continue;
@@ -254,7 +254,7 @@ function AddGenerateDelegateFunctionActions(context : CodeActionContext)
 
 function ResolveGenerateDelegateFunctionAction(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
 {
-    let delegateType = typedb.GetType(data.delegate);
+    let delegateType = typedb.GetTypeByName(data.delegate);
     if (!delegateType)
         return;
 
@@ -458,7 +458,7 @@ function AddMethodOverrideSnippets(context : CodeActionContext)
                 continue;
 
             // Ignore methods we've already overridden
-            let existingSymbol = typeOfScope.findFirstSymbol(method.name, typedb.DBAllowSymbol.FunctionOnly);
+            let existingSymbol = typeOfScope.findFirstSymbol(method.name, typedb.DBAllowSymbol.Functions);
             if (!existingSymbol || !existingSymbol.containingType)
                 continue;
             if (existingSymbol.containingType == typeOfScope)
@@ -479,7 +479,7 @@ function AddMethodOverrideSnippets(context : CodeActionContext)
                 data: {
                     uri: context.module.uri,
                     type: "methodOverride",
-                    inside: method.containingType.typename,
+                    inside: method.containingType.name,
                     name: method.name,
                     position: context.module.getPosition(context.range_start),
                 }
@@ -490,7 +490,7 @@ function AddMethodOverrideSnippets(context : CodeActionContext)
 
 function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
 {
-    let insideType = typedb.GetType(data.inside);
+    let insideType = typedb.GetTypeByName(data.inside);
     if (!insideType)
         return;
 
@@ -522,10 +522,10 @@ function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : 
 
     if (scopeType)
     {
-        let parentType = typedb.GetType(scopeType.supertype);
+        let parentType = scopeType.getSuperType();
         if (parentType)
         {
-            let parentMethod = parentType.findFirstSymbol(method.name, typedb.DBAllowSymbol.FunctionOnly);
+            let parentMethod = parentType.findFirstSymbol(method.name, typedb.DBAllowSymbol.Functions);
             if (parentMethod instanceof typedb.DBMethod && parentMethod.declaredModule && !parentMethod.isEmpty)
             {
                 if (!method.returnType || method.returnType == "void")
@@ -588,7 +588,7 @@ function AddCastHelpers(context : CodeActionContext)
     else if (statement.ast.type == scriptfiles.node_types.VariableDecl)
     {
         if (statement.ast.typename)
-            leftType = typedb.GetType(statement.ast.typename.value);
+            leftType = typedb.LookupType(context.scope.getNamespace(), statement.ast.typename.value);
 
         if (statement.ast.expression)
             rightType = GetTypeFromExpressionIgnoreNullptr(scope, statement.ast.expression);
@@ -597,7 +597,7 @@ function AddCastHelpers(context : CodeActionContext)
     {
         let dbFunc = scope.getDatabaseFunction();
         if (dbFunc && dbFunc.returnType)
-            leftType = typedb.GetType(dbFunc.returnType);
+            leftType = typedb.LookupType(context.scope.getNamespace(), dbFunc.returnType);
 
         if (statement.ast.children && statement.ast.children[0])
             rightType = GetTypeFromExpressionIgnoreNullptr(scope, statement.ast.children[0]);
@@ -615,21 +615,21 @@ function AddCastHelpers(context : CodeActionContext)
         return;
 
     // Maybe we can implicitly convert
-    if (rightType.inheritsFrom(leftType.typename))
+    if (rightType.inheritsFrom(leftType.name))
         return;
     
     // Cast needs to make sense
-    if (!leftType.inheritsFrom(rightType.typename))
+    if (!leftType.inheritsFrom(rightType.name))
         return;
 
     context.actions.push(<CodeAction> {
         kind: CodeActionKind.QuickFix,
-        title: "Cast to "+leftType.typename,
+        title: "Cast to "+leftType.name,
         source: "angelscript",
         data: {
             uri: context.module.uri,
             type: "addCast",
-            castTo: leftType.typename,
+            castTo: leftType.name,
             position: context.module.getPosition(context.range_start),
         }
     });
@@ -713,10 +713,10 @@ function ResolveSuperCallHelper(asmodule : scriptfiles.ASModule, action : CodeAc
     if (!scopeFunc)
         return;
 
-    let superType = typedb.GetType(data.inType);
+    let superType = typedb.LookupType(scope.getNamespace(), data.inType);
     if (!superType)
         return;
-    let superMethod = superType.findFirstSymbol(data.name, typedb.DBAllowSymbol.FunctionOnly);
+    let superMethod = superType.findFirstSymbol(data.name, typedb.DBAllowSymbol.Functions);
     if (!superMethod)
         return;
     if (!(superMethod instanceof typedb.DBMethod))
@@ -805,9 +805,11 @@ function FindInsertPositionFunctionStart(scope : scriptfiles.ASScope) : [Positio
 
 function AddAutoActions(context : CodeActionContext)
 {
+    if (!context.scope)
+        return;
     for (let i = context.first_symbol; i < context.last_symbol; ++i)
     {
-        let symbol = context.module.symbols[i];
+        let symbol = context.module.semanticSymbols[i];
         if (!symbol.isAuto)
             continue;
 
@@ -815,7 +817,7 @@ function AddAutoActions(context : CodeActionContext)
         if (realTypename.startsWith("__"))
             realTypename = realTypename.substr(2);
 
-        let dbtype = typedb.GetType(realTypename);
+        let dbtype = typedb.LookupType(context.scope.getNamespace(), realTypename);
         if (!dbtype)
             continue;
 
@@ -846,7 +848,7 @@ function AddAutoActions(context : CodeActionContext)
 
 function ResolveAutoAction(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
 {
-    let symbol = data.symbol as scriptfiles.ASSymbol;
+    let symbol = data.symbol as scriptfiles.ASSemanticSymbol;
     let typename = data.typename;
 
     action.edit = <WorkspaceEdit> {};
@@ -898,7 +900,7 @@ function AddVariablePromotionHelper(context : CodeActionContext)
                 uri: context.module.uri,
                 type: "variablePromotion",
                 variableName: variableName,
-                variableType: rvalueType.typename,
+                variableType: rvalueType.name,
                 position: context.range_start,
             }
         });
@@ -1070,15 +1072,15 @@ function AddMemberActions(context : CodeActionContext)
         && context.statement.ast.name
         && !context.statement.ast.macro)
     {
-        if (!dbType || dbType.isNamespaceOrGlobalScope() || !dbType.isStruct)
+        if (!dbType || !dbType.isStruct)
         {
             let isOverrideEvent = false;
             if (dbType)
             {
-                let superType = typedb.GetType(dbType.supertype);
+                let superType = dbType.getSuperType();
                 if (superType)
                 {
-                    let superFunc = superType.findFirstSymbol(context.statement.ast.name.value, typedb.DBAllowSymbol.FunctionOnly);
+                    let superFunc = superType.findFirstSymbol(context.statement.ast.name.value, typedb.DBAllowSymbol.Functions);
                     if (superFunc && superFunc instanceof typedb.DBMethod)
                     {
                         if (superFunc.isBlueprintEvent)
@@ -1143,11 +1145,10 @@ function AddMemberActions(context : CodeActionContext)
         && context.statement.ast.name
         && !context.statement.ast.macro)
     {
-        if (dbType && !dbType.isNamespaceOrGlobalScope()
-            && context.scope.scopetype == scriptfiles.ASScopeType.Class)
+        if (dbType && context.scope.scopetype == scriptfiles.ASScopeType.Class)
         {
             let variableName = context.statement.ast.name.value;
-            let varType = typedb.GetType(context.statement.ast.typename.value);
+            let varType = typedb.LookupType(context.scope.getNamespace(), context.statement.ast.typename.value);
 
             if (varType && varType.inheritsFrom("UActorComponent")
                 && !dbType.isStruct
@@ -1514,10 +1515,9 @@ function AddGenerateMethodActions(context : CodeActionContext)
     if (!context.statement || !context.scope)
         return;
     let dbtype = context.scope.getParentType();
-    if (!dbtype || dbtype.isEnum || dbtype.isNamespaceOrGlobalScope())
+    if (!dbtype || dbtype.isEnum)
         return;
 
-    // Find unknown symbols that are in this line before we start parsing more to find unknown functions
     let functionCallNodes : Array<any> = [];
     FindMemberFunctionCallNodes(context.statement.ast, context.statement, functionCallNodes);
 
@@ -1527,23 +1527,11 @@ function AddGenerateMethodActions(context : CodeActionContext)
             continue;
 
         let functionName = callNode.children[0].value;
-        if (dbtype.findFirstSymbol(functionName, typedb.DBAllowSymbol.FunctionOnly))
+        if (dbtype.findFirstSymbol(functionName, typedb.DBAllowSymbol.Functions))
             continue;
 
-        let globalSyms = typedb.FindScriptGlobalSymbols(functionName);
+        let globalSyms = typedb.LookupGlobalSymbol(context.scope.getNamespace(), functionName, typedb.DBAllowSymbol.Functions);
         if (globalSyms && globalSyms.length != 0)
-            continue;
-
-        let foundGlobalFunction = false;
-        for (let scopeGlobalType of context.scope.getAvailableGlobalTypes())
-        {
-            if (scopeGlobalType.findFirstSymbol(functionName, typedb.DBAllowSymbol.FunctionOnly))
-            {
-                foundGlobalFunction = true;
-                break;
-            }
-        }
-        if (foundGlobalFunction)
             continue;
 
         let args = "";
@@ -1587,9 +1575,9 @@ function AddGenerateMethodActions(context : CodeActionContext)
                     if (argType)
                     {
                         if (argType.isPrimitive)
-                            argName = argType.typename[0].toUpperCase() + argType.typename.substring(1);
+                            argName = argType.name[0].toUpperCase() + argType.name.substring(1);
                         else
-                            argName = argType.typename.substring(1);
+                            argName = argType.name.substring(1);
                     }
                     else
                     {

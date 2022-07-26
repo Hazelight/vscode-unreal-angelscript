@@ -47,7 +47,7 @@ export function GetDefinition(asmodule : scriptfiles.ASModule, position : Positi
     return locations;
 }
 
-export function FindUnimportedSymbolOnLine(asmodule : scriptfiles.ASModule, position : Position) : scriptfiles.ASSymbol
+export function FindUnimportedSymbolOnLine(asmodule : scriptfiles.ASModule, position : Position) : scriptfiles.ASSemanticSymbol
 {
     let offset = asmodule.getOffset(position);
     let findSymbol = asmodule.getSymbolAtOrBefore(offset);
@@ -61,7 +61,7 @@ export function FindUnimportedSymbolOnLine(asmodule : scriptfiles.ASModule, posi
         Position.create(position.line, 10000)
     );
 
-    for (let sym of asmodule.symbols)
+    for (let sym of asmodule.semanticSymbols)
     {
         if (!sym.overlapsRange(lineStartOffset, lineEndOffset))
             continue;
@@ -78,15 +78,14 @@ export interface SymbolDeclaration
     module : scriptfiles.ASModule,
 };
 
-export function GetSymbolDefinition(asmodule : scriptfiles.ASModule, findSymbol : scriptfiles.ASSymbol) : Array<SymbolDeclaration>
+export function GetSymbolDefinition(asmodule : scriptfiles.ASModule, findSymbol : scriptfiles.ASSemanticSymbol) : Array<SymbolDeclaration>
 {
     let definitions = new Array<SymbolDeclaration>();
     switch (findSymbol.type)
     {
         case scriptfiles.ASSymbolType.Typename:
-        case scriptfiles.ASSymbolType.Namespace:
         {
-            let dbtype = typedb.GetType(findSymbol.symbol_name);
+            let dbtype = typedb.GetTypeByName(findSymbol.symbol_name);
             if (dbtype && dbtype.declaredModule)
             {
                 let symbolModule = scriptfiles.GetModule(dbtype.declaredModule);
@@ -98,17 +97,26 @@ export function GetSymbolDefinition(asmodule : scriptfiles.ASModule, findSymbol 
                     }];
                 }
             }
-
-            dbtype = typedb.GetType("__"+findSymbol.symbol_name);
-            if (dbtype && dbtype.declaredModule)
+        }
+        break;
+        case scriptfiles.ASSymbolType.Namespace:
+        {
+            let namespace = typedb.LookupNamespace(null, findSymbol.symbol_name);
+            if (namespace)
             {
-                let symbolModule = scriptfiles.GetModule(dbtype.declaredModule);
-                if (symbolModule)
+                for (let decl of namespace.declarations)
                 {
-                    return [{
-                        module: symbolModule,
-                        location: symbolModule.getLocation(dbtype.moduleOffset),
-                    }];
+                    if (!decl.declaredModule)
+                        continue;
+
+                    let declModule = scriptfiles.GetModule(decl.declaredModule);
+                    if (declModule)
+                    {
+                        definitions.push({
+                            module: declModule,
+                            location: declModule.getLocation(decl.declaredOffset),
+                        });
+                    }
                 }
             }
         }
@@ -159,10 +167,8 @@ export function GetSymbolDefinition(asmodule : scriptfiles.ASModule, findSymbol 
         break;
         case scriptfiles.ASSymbolType.MemberVariable:
         case scriptfiles.ASSymbolType.MemberFunction:
-        case scriptfiles.ASSymbolType.GlobalFunction:
-        case scriptfiles.ASSymbolType.GlobalVariable:
         {
-            let insideType = typedb.GetType(findSymbol.container_type);
+            let insideType = typedb.GetTypeByName(findSymbol.container_type);
             if (!insideType)
                 return null;
             
@@ -185,20 +191,78 @@ export function GetSymbolDefinition(asmodule : scriptfiles.ASModule, findSymbol 
             }
         }
         break;
-        case scriptfiles.ASSymbolType.MemberAccessor:
-        case scriptfiles.ASSymbolType.GlobalAccessor:
+        case scriptfiles.ASSymbolType.GlobalFunction:
+        case scriptfiles.ASSymbolType.GlobalVariable:
         {
-            let insideType = typedb.GetType(findSymbol.container_type);
+            let namespace = typedb.LookupNamespace(null, findSymbol.container_type);
+            if (!namespace)
+                return null;
+            
+            let dbSymbols = namespace.findSymbols(findSymbol.symbol_name);
+            for (let sym of dbSymbols)
+            {
+                if (sym instanceof typedb.DBMethod || sym instanceof typedb.DBProperty)
+                {
+                    if (!sym.declaredModule)
+                        continue;
+                    let symbolModule = scriptfiles.GetModule(sym.declaredModule);
+                    if (symbolModule)
+                    {
+                        definitions.push({
+                            module: symbolModule,
+                            location: symbolModule.getLocation(sym.moduleOffset)
+                        });
+                    }
+                }
+            }
+        }
+        break;
+        case scriptfiles.ASSymbolType.MemberAccessor:
+        {
+            let insideType = typedb.GetTypeByName(findSymbol.container_type);
             if (!insideType)
                 return null;
             
             let accessName = findSymbol.symbol_name;
             if (accessName.startsWith("Get") || accessName.startsWith("Set"))
-                accessName = accessName.substr(3);
+                accessName = accessName.substring(3);
 
             let dbSymbols = [
                 ...insideType.findSymbols("Get"+accessName),
                 ...insideType.findSymbols("Set"+accessName),
+            ];
+
+            for (let sym of dbSymbols)
+            {
+                if (sym instanceof typedb.DBMethod || sym instanceof typedb.DBProperty)
+                {
+                    if (!sym.declaredModule)
+                        continue;
+                    let symbolModule = scriptfiles.GetModule(sym.declaredModule);
+                    if (symbolModule)
+                    {
+                        definitions.push({
+                            module: symbolModule,
+                            location: symbolModule.getLocation(sym.moduleOffset)
+                        });
+                    }
+                }
+            }
+        }
+        break;
+        case scriptfiles.ASSymbolType.GlobalAccessor:
+        {
+            let namespace = typedb.LookupNamespace(null, findSymbol.container_type);
+            if (!namespace)
+                return null;
+            
+            let accessName = findSymbol.symbol_name;
+            if (accessName.startsWith("Get") || accessName.startsWith("Set"))
+                accessName = accessName.substring(3);
+
+            let dbSymbols = [
+                ...namespace.findSymbols("Get"+accessName),
+                ...namespace.findSymbols("Set"+accessName),
             ];
 
             for (let sym of dbSymbols)
@@ -227,14 +291,14 @@ export function GetSymbolDefinition(asmodule : scriptfiles.ASModule, findSymbol 
 export function GetUnrealTypeFor(typename : string) : string
 {
     // Walk through the typedb to find parent types until we find a C++ class
-    let type = typedb.GetType(typename);
+    let type = typedb.GetTypeByName(typename);
     while(type && type.declaredModule && type.supertype)
-        type = typedb.GetType(type.supertype);
+        type = typedb.GetTypeByName(type.supertype);
 
     if (!type)
         return null;
 
-    return type.typename;
+    return type.name;
 }
 
 export function GetCppSymbol(asmodule : scriptfiles.ASModule, position : Position) : [string, string]
@@ -250,10 +314,6 @@ export function GetCppSymbol(asmodule : scriptfiles.ASModule, position : Positio
         case scriptfiles.ASSymbolType.Namespace:
         {
             let unrealType = GetUnrealTypeFor(findSymbol.symbol_name);
-            if (unrealType)
-                return ["", unrealType];
-
-            unrealType = GetUnrealTypeFor("__"+findSymbol.symbol_name);
             if (unrealType)
                 return ["", unrealType];
         }
@@ -294,18 +354,17 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
     switch (findSymbol.type)
     {
         case scriptfiles.ASSymbolType.Typename:
-        case scriptfiles.ASSymbolType.Namespace:
         {
-            let dbtype : typedb.DBType = null;
-            if (findSymbol.symbol_name.startsWith("__"))
-                dbtype = typedb.GetType(findSymbol.symbol_name.substr(2));
-            if (!dbtype)
-                dbtype = typedb.GetType(findSymbol.symbol_name);
-            if (!dbtype)
-                dbtype = typedb.GetType("__"+findSymbol.symbol_name);
-
+            let dbtype = typedb.GetTypeByName(findSymbol.symbol_name);
             if (dbtype)
                 return GetHoverForType(dbtype);
+        }
+        break;
+        case scriptfiles.ASSymbolType.Namespace:
+        {
+            let namespace = typedb.LookupNamespace(null, findSymbol.symbol_name);
+            if (namespace)
+                return GetHoverForNamespace(namespace);
         }
         break;
         case scriptfiles.ASSymbolType.LocalVariable:
@@ -329,9 +388,8 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
         }
         break;
         case scriptfiles.ASSymbolType.MemberFunction:
-        case scriptfiles.ASSymbolType.GlobalFunction:
         {
-            let insideType = typedb.GetType(findSymbol.container_type);
+            let insideType = typedb.GetTypeByName(findSymbol.container_type);
             if (!insideType)
                 return null;
             
@@ -351,30 +409,63 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
                 return GetHoverForFunction(insideType, methods[0], false);
         }
         break;
-        case scriptfiles.ASSymbolType.MemberVariable:
-        case scriptfiles.ASSymbolType.GlobalVariable:
+        case scriptfiles.ASSymbolType.GlobalFunction:
         {
-            let insideType = typedb.GetType(findSymbol.container_type);
+            let namespace = typedb.LookupNamespace(null, findSymbol.container_type);
+            if (!namespace)
+                return null;
+            
+            let symbols = namespace.findSymbols(findSymbol.symbol_name);
+            let methods = [];
+
+            for (let func of symbols)
+            {
+                if (func instanceof typedb.DBMethod)
+                    methods.push(func);
+            }
+
+            if (methods.length > 1)
+                parsedcompletion.SortMethodsBasedOnArgumentTypes(methods, asmodule, findSymbol.end + 2);
+
+            if (methods.length != 0)
+                return GetHoverForFunction(namespace, methods[0], false);
+        }
+        break;
+        case scriptfiles.ASSymbolType.MemberVariable:
+        {
+            let insideType = typedb.GetTypeByName(findSymbol.container_type);
             if (!insideType)
                 return null;
             
-            let sym = insideType.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.PropertyOnly);
+            let sym = insideType.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.Properties);
             if (sym instanceof typedb.DBProperty)
             {
                 return GetHoverForProperty(insideType, sym);
             }
         }
         break;
-        case scriptfiles.ASSymbolType.MemberAccessor:
-        case scriptfiles.ASSymbolType.GlobalAccessor:
+        case scriptfiles.ASSymbolType.GlobalVariable:
         {
-            let insideType = typedb.GetType(findSymbol.container_type);
+            let namespace = typedb.LookupNamespace(null, findSymbol.container_type);
+            if (!namespace)
+                return null;
+            
+            let sym = namespace.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.Properties);
+            if (sym instanceof typedb.DBProperty)
+            {
+                return GetHoverForProperty(namespace, sym);
+            }
+        }
+        break;
+        case scriptfiles.ASSymbolType.MemberAccessor:
+        {
+            let insideType = typedb.GetTypeByName(findSymbol.container_type);
             if (!insideType)
                 return null;
             
             let accessName = findSymbol.symbol_name;
             if (accessName.startsWith("Get") || accessName.startsWith("Set"))
-                accessName = accessName.substr(3);
+                accessName = accessName.substring(3);
 
             let dbSymbols = [
                 ...insideType.findSymbols("Get"+accessName),
@@ -400,11 +491,46 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
             }
         }
         break;
+        case scriptfiles.ASSymbolType.GlobalAccessor:
+        {
+            let namespace = typedb.LookupNamespace(null, findSymbol.container_type);
+            if (!namespace)
+                return null;
+            
+            let accessName = findSymbol.symbol_name;
+            if (accessName.startsWith("Get") || accessName.startsWith("Set"))
+                accessName = accessName.substring(3);
+
+            let dbSymbols = [
+                ...namespace.findSymbols("Get"+accessName),
+                ...namespace.findSymbols("Set"+accessName),
+            ];
+
+            for (let sym of dbSymbols)
+            {
+                // Find the symbol that has documentation
+                if (sym instanceof typedb.DBMethod && sym.findAvailableDocumentation())
+                {
+                    return GetHoverForFunction(namespace, sym, true)
+                }
+            }
+
+            for (let sym of dbSymbols)
+            {
+                // Fall back to first symbol
+                if (sym instanceof typedb.DBMethod)
+                {
+                    return GetHoverForFunction(namespace, sym, true)
+                }
+            }
+        }
+        break;
         case scriptfiles.ASSymbolType.AccessSpecifier:
             return <Hover> {contents: <MarkupContent> {
                 kind: "markdown",
                 value: `Access specifier \`${findSymbol.symbol_name}\` restricts which other classes this can be used from`,
             }};
+        break;
     }
 }
 
@@ -526,29 +652,25 @@ function GetHoverForType(hoveredType : typedb.DBType) : Hover
     hover += "```angelscript_snippet\n";
     if (hoveredType.isEnum)
     {
-        hover += "enum "+hoveredType.typename.substr(2);
-    }
-    else if (hoveredType.isNamespace())
-    {
-        hover += "namespace "+hoveredType.typename.substr(2);
+        hover += "enum "+hoveredType.name;
     }
     else if (hoveredType.isDelegate)
     {
         hover += "delegate ";
         let mth = hoveredType.getMethod("ExecuteIfBound");
         if (mth)
-            hover += mth.format(null, false, false, hoveredType.typename);
+            hover += mth.format(null, false, false, hoveredType.name);
         else
-            hover += hoveredType.typename;
+            hover += hoveredType.name;
     }
     else if (hoveredType.isEvent)
     {
         hover += "event ";
         let mth = hoveredType.getMethod("Broadcast");
         if (mth)
-            hover += mth.format(null, false, false, hoveredType.typename);
+            hover += mth.format(null, false, false, hoveredType.name);
         else
-            hover += hoveredType.typename;
+            hover += hoveredType.name;
     }
     else
     {
@@ -557,12 +679,26 @@ function GetHoverForType(hoveredType : typedb.DBType) : Hover
         else
             hover += "class ";
 
-        hover += hoveredType.typename;
+        hover += hoveredType.name;
         if (hoveredType.supertype)
             hover += " : "+hoveredType.supertype;
         else if (hoveredType.unrealsuper)
             hover += " : "+hoveredType.unrealsuper;
     }
+
+    hover += "\n```";
+    return <Hover> {contents: <MarkupContent> {
+        kind: "markdown",
+        value: hover,
+    }};
+}
+
+function GetHoverForNamespace(hoveredNamespace : typedb.DBNamespace) : Hover
+{
+    let hover = "";
+    hover += FormatHoverDocumentation(hoveredNamespace.documentation);
+    hover += "```angelscript_snippet\n";
+    hover += "namespace "+hoveredNamespace.name;
 
     hover += "\n```";
     return <Hover> {contents: <MarkupContent> {
@@ -584,16 +720,14 @@ function GetHoverForLocalVariable(scope : scriptfiles.ASScope, asvar : scriptfil
     }};
 }
 
-function GetHoverForProperty(type : typedb.DBType, prop : typedb.DBProperty) : Hover
+function GetHoverForProperty(type : typedb.DBType | typedb.DBNamespace, prop : typedb.DBProperty) : Hover
 {
     let prefix = null;
-    if(type.typename.startsWith("__"))
+    if(type instanceof typedb.DBNamespace)
     {
-        if(type.typename != "__")
-            prefix = type.typename.substring(2)+"::";
+        if(type.name.length != 0)
+            prefix = type.name+"::";
     }
-    /*else if(!type.typename.startsWith("//"))
-        prefix = type.typename+".";*/
 
     let hover = "";
     hover += FormatPropertyDocumentation(prop.documentation);
@@ -605,7 +739,7 @@ function GetHoverForProperty(type : typedb.DBType, prop : typedb.DBProperty) : H
     }};
 }
 
-function GetHoverForFunction(type : typedb.DBType, func : typedb.DBMethod, isAccessor : boolean) : Hover
+function GetHoverForFunction(type : typedb.DBType | typedb.DBNamespace, func : typedb.DBMethod, isAccessor : boolean) : Hover
 {
     let prefix = "";
     let suffix = "";
@@ -614,14 +748,14 @@ function GetHoverForFunction(type : typedb.DBType, func : typedb.DBMethod, isAcc
         prefix = func.args[0].typename+".";
         suffix = " mixin";
     }
-    else if (type.typename.startsWith("__"))
+    else if (type instanceof typedb.DBNamespace)
     {
-        if (type.typename != "__")
-            prefix = type.typename.substring(2)+"::";
+        if (type.name.length != 0)
+            prefix = type.name+"::";
     }
-    else if (!type.typename.startsWith("//"))
+    else
     {
-        prefix = type.typename+".";
+        prefix = type.name+".";
     }
 
     let hover = "";
@@ -633,9 +767,9 @@ function GetHoverForFunction(type : typedb.DBType, func : typedb.DBMethod, isAcc
     if (isAccessor)
     {
         if (func.name.startsWith("Get"))
-            hover += "```angelscript_snippet\n"+func.returnType+" "+prefix+func.name.substr(3)+"\n```";
+            hover += "```angelscript_snippet\n"+func.returnType+" "+prefix+func.name.substring(3)+"\n```";
         else if (func.args && func.args.length > 0)
-            hover += "```angelscript_snippet\n"+func.args[0].typename+" "+prefix+func.name.substr(3)+"\n```";
+            hover += "```angelscript_snippet\n"+func.args[0].typename+" "+prefix+func.name.substring(3)+"\n```";
     }
     else
     {
@@ -662,13 +796,10 @@ export function DocumentSymbols( uri : string ) : SymbolInformation[]
 
 function AddModuleSymbols(asmodule : scriptfiles.ASModule, symbols : Array<SymbolInformation>)
 {
-    for (let dbtype of [...asmodule.types, ...asmodule.namespaces])
+    for (let dbtype of asmodule.types)
     {
-        if (dbtype.isShadowedNamespace())
-            continue;
-
         let scopeSymbol = <SymbolInformation> {
-            name : dbtype.typename,
+            name : dbtype.name,
         };
 
         if (dbtype.moduleScopeStart != -1)
@@ -676,16 +807,33 @@ function AddModuleSymbols(asmodule : scriptfiles.ASModule, symbols : Array<Symbo
         else
             scopeSymbol.location = asmodule.getLocation(dbtype.moduleOffset);
 
-        if (scopeSymbol.name.startsWith("__"))
-            scopeSymbol.name = scopeSymbol.name.substring(2);
-
-        if (dbtype.isNamespace())
-            scopeSymbol.kind = SymbolKind.Namespace;
-        else if (dbtype.isEnum)
+        if (dbtype.isEnum)
             scopeSymbol.kind = SymbolKind.Enum;
         else
             scopeSymbol.kind = SymbolKind.Class;
 
+        symbols.push(scopeSymbol);
+    }
+
+    for (let namespace of asmodule.namespaces)
+    {
+        if (namespace.isShadowingType())
+            continue;
+
+        let scopeSymbol = <SymbolInformation> {
+            name : namespace.name,
+        };
+
+        let decl = namespace.getDeclarationInModule(asmodule.modulename);
+        if (!decl)
+            continue;
+
+        if (decl.scopeOffsetStart != -1)
+            scopeSymbol.location = asmodule.getLocationRange(decl.scopeOffsetStart, decl.scopeOffsetEnd);
+        else
+            scopeSymbol.location = asmodule.getLocation(decl.declaredOffset);
+
+        scopeSymbol.kind = SymbolKind.Namespace;
         symbols.push(scopeSymbol);
     }
 }
@@ -708,7 +856,7 @@ function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.AS
                     name : classVar.name,
                     kind : SymbolKind.Field,
                     location : asmodule.getLocationRange(classVar.start_offset_name, classVar.end_offset_name),
-                    containerName : scopeType.typename,
+                    containerName : scopeType.name,
                 });
             }
         }
@@ -731,7 +879,7 @@ function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.AS
             if (scope.parentscope && scope.parentscope.scopetype == scriptfiles.ASScopeType.Class)
             {
                 scopeSymbol.kind = SymbolKind.Method;
-                scopeSymbol.containerName = scope.parentscope.getDatabaseType().typename;
+                scopeSymbol.containerName = scope.parentscope.getDatabaseType().name;
             }
             else
             {
@@ -739,6 +887,23 @@ function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.AS
             }
 
             symbols.push(scopeSymbol);
+        }
+    }
+
+    let scopeNamespace = scope.dbnamespace;
+    if (scopeNamespace)
+    {
+        for (let classVar of scope.variables)
+        {
+            if (classVar.isArgument)
+                continue;
+
+            symbols.push(<SymbolInformation> {
+                name : classVar.name,
+                kind : SymbolKind.Variable,
+                location : asmodule.getLocationRange(classVar.start_offset_name, classVar.end_offset_name),
+                containerName : scopeNamespace.getQualifiedNamespace(),
+            });
         }
     }
 
@@ -761,7 +926,7 @@ export function WorkspaceSymbols( query : string ) : WorkspaceSymbol[]
     // The vscode filtering on all this stuff is also incredibly bad, so this isn't a very useful usecase anyway.
     let matchMembers = query.length >= 5;
 
-    for (let [typename, dbtype] of typedb.GetAllTypes())
+    for (let [_, dbtype] of typedb.GetAllTypesById())
     {
         if (!dbtype.declaredModule)
             continue;
@@ -772,7 +937,7 @@ export function WorkspaceSymbols( query : string ) : WorkspaceSymbol[]
 
         let containingTypename = dbtype.getDisplayName();
         let typeIsMatching = containingTypename.toLowerCase().indexOf(query) != -1;
-        if (typeIsMatching && !dbtype.isGlobalScope && !dbtype.isShadowedNamespace())
+        if (typeIsMatching)
         {
             let symbol = <WorkspaceSymbol> {
                 name: containingTypename,
@@ -780,26 +945,19 @@ export function WorkspaceSymbols( query : string ) : WorkspaceSymbol[]
 
             symbol.location = {uri: asmodule.displayUri};
 
-            if (dbtype.isNamespace())
-                symbol.kind = SymbolKind.Namespace;
-            else if (dbtype.isEnum)
+            if (dbtype.isEnum)
                 symbol.kind = SymbolKind.Enum;
             else
                 symbol.kind = SymbolKind.Class;
 
-            symbol.data = dbtype.typename;
+            symbol.data = dbtype.name;
             symbols.push(symbol);
         }
 
         if (matchMembers)
         {
             let memberPrefix = containingTypename;
-            if (dbtype.isGlobalScope)
-                memberPrefix = "";
-            else if (dbtype.isNamespace())
-                memberPrefix += "::";
-            else
-                memberPrefix += ".";
+            memberPrefix += ".";
 
             for (let dbfunc of dbtype.methods)
             {
@@ -815,26 +973,14 @@ export function WorkspaceSymbols( query : string ) : WorkspaceSymbol[]
                 else
                     symbol.name = memberPrefix+dbfunc.name+"()";
 
-                symbol.data = [dbtype.typename, dbfunc.name];
+                symbol.data = [dbtype.name, dbfunc.name];
                 symbol.location = {uri: asmodule.displayUri};
 
-                if (dbtype.isGlobalScope)
-                {
-                    symbol.kind = SymbolKind.Function;
-                }
-                else if (dbtype.isNamespace())
-                {
-                    symbol.kind = SymbolKind.Function;
-                    symbol.containerName = containingTypename;
-                }
+                if (dbfunc.isBlueprintEvent)
+                    symbol.kind = SymbolKind.Event;
                 else
-                {
-                    if (dbfunc.isBlueprintEvent)
-                        symbol.kind = SymbolKind.Event;
-                    else
-                        symbol.kind = SymbolKind.Method;
-                    symbol.containerName = containingTypename;
-                }
+                    symbol.kind = SymbolKind.Method;
+                symbol.containerName = containingTypename;
 
                 symbols.push(symbol);
             }
@@ -849,26 +995,96 @@ export function WorkspaceSymbols( query : string ) : WorkspaceSymbol[]
 
                 let symbol = <WorkspaceSymbol> {};
                 symbol.name = memberPrefix+dbprop.name;
-                symbol.data = [dbtype.typename, dbprop.name];
+                symbol.data = [dbtype.name, dbprop.name];
                 symbol.location = {uri: asmodule.displayUri};
 
-                if (dbtype.isGlobalScope)
-                {
-                    symbol.kind = SymbolKind.Variable;
-                }
-                else if (dbtype.isNamespace())
-                {
-                    symbol.kind = SymbolKind.Variable;
-                    symbol.containerName = containingTypename;
-                }
-                else
-                {
-                    symbol.kind = SymbolKind.Field;
-                    symbol.containerName = containingTypename;
-                }
+                symbol.kind = SymbolKind.Field;
+                symbol.containerName = containingTypename;
 
                 symbols.push(symbol);
             }
+        }
+    }
+
+    for (let [_, namespace] of typedb.GetAllNamespaces())
+    {
+        let scriptDecl = namespace.getFirstScriptDeclaration();
+        if (!scriptDecl)
+            continue;
+
+        let asmodule = scriptfiles.GetModule(scriptDecl.declaredModule);
+        if (!asmodule)
+            continue;
+
+        let containingTypename = namespace.name;
+        let typeIsMatching = containingTypename.toLowerCase().indexOf(query) != -1;
+        if (typeIsMatching)
+        {
+            let symbol = <WorkspaceSymbol> {
+                name: containingTypename,
+            };
+
+            symbol.location = {uri: asmodule.displayUri};
+            symbol.kind = SymbolKind.Namespace;
+            symbol.data = namespace.getQualifiedNamespace();
+
+            symbols.push(symbol);
+        }
+
+        if (matchMembers)
+        {
+            let memberPrefix = containingTypename;
+            memberPrefix += ".";
+
+            namespace.forEachSymbol(
+                function (dbsym : typedb.DBSymbol)
+                {
+                    if (dbsym instanceof typedb.DBMethod)
+                    {
+                        let dbfunc = dbsym;
+                        if (dbfunc.isAutoGenerated)
+                            return;
+                        let funcIsMatching = dbfunc.name.toLowerCase().indexOf(query) != -1;
+                        if (!funcIsMatching && !typeIsMatching)
+                            return;
+
+                        let symbol = <WorkspaceSymbol> {};
+                        if (dbfunc.args && dbfunc.args.length != 0)
+                            symbol.name = memberPrefix+dbfunc.name+"(…)";
+                        else
+                            symbol.name = memberPrefix+dbfunc.name+"()";
+
+                        symbol.data = [namespace.getQualifiedNamespace(), dbfunc.name];
+                        symbol.location = {uri: asmodule.displayUri};
+
+                        if (dbfunc.isBlueprintEvent)
+                            symbol.kind = SymbolKind.Event;
+                        else
+                            symbol.kind = SymbolKind.Method;
+                        symbol.containerName = containingTypename;
+
+                        symbols.push(symbol);
+                    }
+                    else if (dbsym instanceof typedb.DBProperty)
+                    {
+                        let dbprop = dbsym;
+                        if (dbprop.isAutoGenerated)
+                            return;
+                        let propIsMatching = dbprop.name.toLowerCase().indexOf(query) != -1;
+                        if (!propIsMatching && !typeIsMatching)
+                            return;
+
+                        let symbol = <WorkspaceSymbol> {};
+                        symbol.name = memberPrefix+dbprop.name;
+                        symbol.data = [namespace.getQualifiedNamespace(), dbprop.name];
+                        symbol.location = {uri: asmodule.displayUri};
+
+                        symbol.kind = SymbolKind.Field;
+                        symbol.containerName = containingTypename;
+
+                        symbols.push(symbol);
+                    }
+                });
         }
     }
 
@@ -879,38 +1095,90 @@ export function ResolveWorkspaceSymbol(symbol : WorkspaceSymbol) : WorkspaceSymb
 {
     if (typeof symbol.data === "string")
     {
-        let dbtype = typedb.GetType(symbol.data);
-        if (!dbtype)
-            return;
-        let asmodule = scriptfiles.GetModule(dbtype.declaredModule);
-        if (!asmodule)
-            return;
+        {
+            let dbtype = typedb.GetTypeByName(symbol.data);
+            if (dbtype && dbtype.declaredModule)
+            {
+                let asmodule = scriptfiles.GetModule(dbtype.declaredModule);
+                if (!asmodule)
+                    return;
 
-        if (dbtype.moduleScopeStart != -1)
-            symbol.location = asmodule.getLocationRange(dbtype.moduleOffset, dbtype.moduleScopeEnd);
-        else
-            symbol.location = asmodule.getLocation(dbtype.moduleOffset);
+                if (dbtype.moduleScopeStart != -1)
+                    symbol.location = asmodule.getLocationRange(dbtype.moduleOffset, dbtype.moduleScopeEnd);
+                else
+                    symbol.location = asmodule.getLocation(dbtype.moduleOffset);
+            }
+        }
+
+        {
+            let namespace = typedb.LookupNamespace(null, symbol.data);
+            if (namespace)
+            {
+                let scriptDecl = namespace.getFirstScriptDeclaration();
+                if (scriptDecl)
+                {
+                    let asmodule = scriptfiles.GetModule(scriptDecl.declaredModule);
+                    if (!asmodule)
+                        return;
+
+                    if (scriptDecl.scopeOffsetStart != -1)
+                        symbol.location = asmodule.getLocationRange(scriptDecl.scopeOffsetStart, scriptDecl.scopeOffsetEnd);
+                    else
+                        symbol.location = asmodule.getLocation(scriptDecl.declaredOffset);
+                }
+            }
+        }
     }
     else
     {
-        let dbtype = typedb.GetType(symbol.data[0]);
-        if (!dbtype)
-            return;
-        let asmodule = scriptfiles.GetModule(dbtype.declaredModule);
-        if (!asmodule)
-            return;
+        {
+            let dbtype = typedb.GetTypeByName(symbol.data[0]);
+            if (dbtype && dbtype.declaredModule)
+            {
+                let asmodule = scriptfiles.GetModule(dbtype.declaredModule);
+                if (!asmodule)
+                    return;
 
-        let subSymbol = dbtype.findFirstSymbol(symbol.data[1]);
-        if (subSymbol instanceof typedb.DBMethod)
-        {
-            if (subSymbol.moduleScopeStart != -1)
-                symbol.location = asmodule.getLocationRange(subSymbol.moduleOffset, subSymbol.moduleScopeEnd);
-            else
-                symbol.location = asmodule.getLocation(subSymbol.moduleOffset);
+                let subSymbol = dbtype.findFirstSymbol(symbol.data[1]);
+                if (subSymbol instanceof typedb.DBMethod)
+                {
+                    if (subSymbol.moduleScopeStart != -1)
+                        symbol.location = asmodule.getLocationRange(subSymbol.moduleOffset, subSymbol.moduleScopeEnd);
+                    else
+                        symbol.location = asmodule.getLocation(subSymbol.moduleOffset);
+                }
+                else if (subSymbol instanceof typedb.DBProperty)
+                {
+                    symbol.location = asmodule.getLocation(subSymbol.moduleOffset);
+                }
+            }
         }
-        else if (subSymbol instanceof typedb.DBProperty)
+
         {
-            symbol.location = asmodule.getLocation(subSymbol.moduleOffset);
+            let namespace = typedb.LookupNamespace(null, symbol.data);
+            if (namespace)
+            {
+                let scriptDecl = namespace.getFirstScriptDeclaration();
+                if (scriptDecl)
+                {
+                    let asmodule = scriptfiles.GetModule(scriptDecl.declaredModule);
+                    if (!asmodule)
+                        return;
+
+                    let subSymbol = namespace.findFirstSymbol(symbol.data[1]);
+                    if (subSymbol instanceof typedb.DBMethod)
+                    {
+                        if (subSymbol.moduleScopeStart != -1)
+                            symbol.location = asmodule.getLocationRange(subSymbol.moduleOffset, subSymbol.moduleScopeEnd);
+                        else
+                            symbol.location = asmodule.getLocation(subSymbol.moduleOffset);
+                    }
+                    else if (subSymbol instanceof typedb.DBProperty)
+                    {
+                        symbol.location = asmodule.getLocation(subSymbol.moduleOffset);
+                    }
+                }
+            }
         }
     }
 

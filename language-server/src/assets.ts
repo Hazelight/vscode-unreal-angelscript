@@ -38,8 +38,7 @@ export function GetAssetsImplementing(className : string) : Array<string>
 {
     let references = ClassToReferencingAssets.get(className);
     if (!references && (className[0] == 'U' || className[0] == 'A'))
-
-        references = ClassToReferencingAssets.get(className.substr(1));
+        references = ClassToReferencingAssets.get(className.substring(1));
     return references;
 }
 

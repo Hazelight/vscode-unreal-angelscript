@@ -6,7 +6,6 @@ import * as nearley from 'nearley';
 
 import * as typedb from './database';
 import { ProcessScriptTypeGeneratedCode } from "./generated_code";
-import { performance } from "perf_hooks";
 
 let grammar_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_statement.js"));
 let grammar_class_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_class_statement.js"));
@@ -92,13 +91,10 @@ export class ASModule
 
     rootscope : ASScope = null;
 
-    global_type : typedb.DBType = null;
-    all_global_types : Array<typedb.DBType> = [];
-
-    namespaces : Array<typedb.DBType> = [];
+    namespaces : Array<typedb.DBNamespace> = [];
     types : Array<typedb.DBType> = [];
-    globals : Array<typedb.DBSymbol> = [];
-    symbols : Array<ASSymbol> = [];
+    globalSymbols : Array<typedb.DBSymbol> = [];
+    semanticSymbols : Array<ASSemanticSymbol> = [];
 
     importedModules : Array<ASModule> = [];
     delegateBinds : Array<ASDelegateBind> = [];
@@ -187,9 +183,9 @@ export class ASModule
         )
     }
 
-    getSymbolAt(offset : number) : ASSymbol
+    getSymbolAt(offset : number) : ASSemanticSymbol
     {
-        for (let symbol of this.symbols)
+        for (let symbol of this.semanticSymbols)
         {
             if (offset >= symbol.start && offset < symbol.end)
                 return symbol;
@@ -197,11 +193,11 @@ export class ASModule
         return null;
     }
 
-    getSymbolAtOrBefore(offset : number) : ASSymbol
+    getSymbolAtOrBefore(offset : number) : ASSemanticSymbol
     {
         // Find the symbol of the character we're standing on
-        let symbolBefore : ASSymbol = null;
-        for (let symbol of this.symbols)
+        let symbolBefore : ASSemanticSymbol = null;
+        for (let symbol of this.semanticSymbols)
         {
             if (offset >= symbol.start && offset < symbol.end)
                 return symbol;
@@ -229,7 +225,7 @@ export class ASModule
         )
     }
 
-    getScopeDeclaringLocalSymbol(symbol : ASSymbol) : ASScope
+    getScopeDeclaringLocalSymbol(symbol : ASSemanticSymbol) : ASScope
     {
         if (symbol.type != ASSymbolType.Parameter && symbol.type != ASSymbolType.LocalVariable)
             return null;
@@ -276,6 +272,15 @@ export class ASModule
             this.moduleDependencies.add(GetModule(dependency.declaredModule));
     }
 
+    markDependencyNamespace(namespace : typedb.DBNamespace)
+    {
+        for (let decl of namespace.declarations)
+        {
+            if (decl.declaredModule)
+                this.moduleDependencies.add(GetModule(decl.declaredModule));
+        }
+    }
+
     markDependencyFunction(dependency : typedb.DBMethod)
     {
         if (!dependency.declaredModule)
@@ -285,11 +290,11 @@ export class ASModule
         if (dependency.args)
         {
             for (let arg of dependency.args)
-                this.markDependencyTypename(arg.typename);
+                this.markDependencyTypename(dependency.namespace, arg.typename);
         }
 
         if (dependency.returnType && dependency.returnType != "void")
-            this.markDependencyTypename(dependency.returnType);
+            this.markDependencyTypename(dependency.namespace, dependency.returnType);
     }
 
     markDependencyProperty(dependency : typedb.DBProperty)
@@ -298,12 +303,12 @@ export class ASModule
             return;
 
         this.moduleDependencies.add(GetModule(dependency.declaredModule));
-        this.markDependencyTypename(dependency.typename);
+        this.markDependencyTypename(dependency.namespace, dependency.typename);
     }
 
-    markDependencyTypename(typename : string)
+    markDependencyTypename(namespace : typedb.DBNamespace, typename : string)
     {
-        let dependencyType = typedb.GetType(typename);
+        let dependencyType = typedb.LookupType(namespace, typename);
         if (dependencyType)
             this.markDependencyType(dependencyType);
         else
@@ -364,7 +369,7 @@ export class ASVariable
     accessSpecifier : typedb.DBAccessSpecifier = null;
     isUnused : boolean = true;
     hasAnyUsages : boolean = false;
-    usages : Array<ASSymbol> = null;
+    usages : Array<ASSemanticSymbol> = null;
 
     start_offset_type : number = -1;
     end_offset_type : number = -1;
@@ -378,9 +383,9 @@ export class ASVariable
         return this.typename.indexOf("&") != -1;
     }
 
-    isValueType() : boolean
+    isValueType(scope : ASScope) : boolean
     {
-        let dbType = typedb.GetType(this.typename);
+        let dbType = typedb.LookupType(scope.getNamespace(), this.typename);
         if (dbType)
             return dbType.isValueType();
         return false;
@@ -409,7 +414,7 @@ export enum ASSymbolType
     NoSymbol,
 };
 
-export class ASSymbol
+export class ASSemanticSymbol
 {
     type : ASSymbolType;
     start: number = -1;
@@ -449,6 +454,7 @@ export class ASScope extends ASElement
     variables : Array<ASVariable> = [];
     variablesByName : Map<string, ASVariable> = new Map<string, ASVariable>();
 
+    dbnamespace : typedb.DBNamespace = null;
     dbtype : typedb.DBType = null;
     dbfunc : typedb.DBMethod = null;
 
@@ -539,8 +545,6 @@ export class ASScope extends ASElement
         let checkscope : ASScope = this;
         while (checkscope != null)
         {
-            if (checkscope.scopetype == ASScopeType.Namespace)
-                break;
             if (checkscope.scopetype == ASScopeType.Global)
                 break;
 
@@ -554,12 +558,12 @@ export class ASScope extends ASElement
 
     getParentType() : typedb.DBType
     {
-        if (this.dbtype && this.scopetype != ASScopeType.Namespace && this.scopetype != ASScopeType.Global)
+        if (this.dbtype)
             return this.dbtype;
 
         if (this.parentscope)
         {
-            if (this.parentscope.dbtype && this.parentscope.scopetype != ASScopeType.Namespace && this.parentscope.scopetype != ASScopeType.Global)
+            if (this.parentscope.dbtype)
                 return this.parentscope.dbtype;
 
             let checkscope : ASScope = this.parentscope.parentscope;;
@@ -573,6 +577,7 @@ export class ASScope extends ASElement
                     return checkscope.dbtype;
                 checkscope = checkscope.parentscope;
             }
+
             return null;
         }
         else
@@ -582,34 +587,17 @@ export class ASScope extends ASElement
         
     }
 
-    getGlobalOrNamespaceParentType() : typedb.DBType
+    getNamespace() : typedb.DBNamespace
     {
         let checkscope : ASScope = this;
         while (checkscope != null)
         {
-            let dbType = checkscope.getDatabaseType();
-            if (dbType
-                && (checkscope.scopetype == ASScopeType.Namespace
-                    || checkscope.scopetype == ASScopeType.Global))
-            {
-                return dbType;
-            }
+            let dbNS = checkscope.dbnamespace;
+            if (dbNS && checkscope.scopetype == ASScopeType.Namespace)
+                return dbNS;
             checkscope = checkscope.parentscope;
         }
-        return null;
-    }
-
-    getNamespaceParentType() : typedb.DBType
-    {
-        let checkscope : ASScope = this;
-        while (checkscope != null)
-        {
-            let dbType = checkscope.getDatabaseType();
-            if (dbType && checkscope.scopetype == ASScopeType.Namespace)
-                return dbType;
-            checkscope = checkscope.parentscope;
-        }
-        return null;
+        return typedb.GetRootNamespace();
     }
 
     getDatabaseType() : typedb.DBType
@@ -625,7 +613,7 @@ export class ASScope extends ASElement
     findScopeForType(typename : string) : ASScope
     {
         let dbtype = this.getDatabaseType();
-        if(dbtype && dbtype.typename == typename)
+        if(dbtype && dbtype.name == typename)
             return this;
         for(let subscope of this.scopes)
         {
@@ -636,29 +624,20 @@ export class ASScope extends ASElement
         return null;
     }
 
-    getAvailableGlobalTypes() : Array<typedb.DBType>
+    isNamespaceOrGlobalScope() : boolean
     {
-        if (!this.available_global_types)
+        let checkscope : ASScope = this;
+        while (checkscope != null)
         {
-            this.available_global_types = new Array<typedb.DBType>();
-
-            let checkscope : ASScope = this;
-            while (checkscope != null)
-            {
-                let dbType = checkscope.getDatabaseType();
-                if (dbType && checkscope.scopetype == ASScopeType.Namespace)
-                    this.available_global_types.push(dbType);
-                checkscope = checkscope.parentscope;
-            }
-
-            for (let globalType of this.module.all_global_types)
-            {
-                if (globalType)
-                    this.available_global_types.push(globalType);
-            }
+            if (checkscope.scopetype == ASScopeType.Global)
+                return true;
+            if (checkscope.scopetype == ASScopeType.Namespace)
+                return true;
+            if (checkscope.scopetype == ASScopeType.Class)
+                return false;
+            checkscope = checkscope.parentscope;
         }
-
-        return this.available_global_types;
+        return false;
     }
 };
 
@@ -788,13 +767,6 @@ export function ParseModule(module : ASModule, debug : boolean = false)
     // Parse each statement into an abstract syntax tree
     ParseAllStatements(module.rootscope, debug);
 
-    // Create the global type for the module
-    module.global_type = AddDBType(module.rootscope, "//"+module.modulename);
-    module.global_type.siblingTypes = [];
-    module.global_type.moduleOffset = 0;
-    module.global_type.isGlobalScope = true;
-    module.rootscope.dbtype = module.global_type;
-
     // Traverse syntax trees to lift out functions, variables and imports during this first parse step
     GenerateTypeInformation(module.rootscope);
 
@@ -867,9 +839,6 @@ export function ResolveModule(module : ASModule)
     {
         module.resolved = true;
 
-        // Resolve which global types should be used
-        module.all_global_types = [ module.global_type, typedb.GetType("__") ];
-
         // Flatten full tree of imported modules
         module.flatImportList.clear();
         let importList = new Array<ASModule>();
@@ -927,7 +896,7 @@ export function ResolveModule(module : ASModule)
 
             if (!module.resolved)
             {
-                module.symbols = [];
+                module.semanticSymbols = [];
                 module.moduleDependencies.clear();
             }
         }
@@ -952,9 +921,10 @@ function EnsureTypeHierarchyFullyParsed(dbtype : typedb.DBType) : boolean
     let newTypesLoaded = false;
 
     let superTypeName = dbtype.supertype;
+    let superNamespace = dbtype.namespace;
     while (superTypeName)
     {
-        let superType = typedb.GetType(superTypeName);
+        let superType = typedb.LookupType(superNamespace, superTypeName);
         if (superType)
         {
             if (superType.declaredModule)
@@ -970,6 +940,7 @@ function EnsureTypeHierarchyFullyParsed(dbtype : typedb.DBType) : boolean
                     // Super module must already be parsed if the type in it exists,
                     // but keep checking supers to make sure they're all parsed.
                     superTypeName = superType.supertype;
+                    superNamespace = superType.namespace;
                     continue;
                 }
             }
@@ -989,7 +960,7 @@ function EnsureTypeHierarchyFullyParsed(dbtype : typedb.DBType) : boolean
                 for (let moduleWithSuper of potentialModules)
                     ParseModuleAndDependencies(moduleWithSuper);
 
-                let superType = typedb.GetType(superTypeName);
+                let superType = typedb.LookupType(superNamespace, superTypeName);
                 if (superType)
                 {
                     // We found a new supertype, so we need to re-resolve
@@ -1210,7 +1181,7 @@ export function ClearAllResolvedModules()
         if (asmodule.resolved)
         {
             asmodule.resolved = false;
-            asmodule.symbols = [];
+            asmodule.semanticSymbols = [];
             asmodule.delegateBinds = [];
             asmodule.annotatedFunctionCalls = [];
         }
@@ -1291,15 +1262,14 @@ function PreParseTypes(module : ASModule)
 }
 
 // Get all modules that could potentially have imported this symbol
-export function GetModulesPotentiallyImportingSymbol(asmodule : ASModule, findSymbol : ASSymbol) : Array<ASModule>
+export function GetModulesPotentiallyImportingSymbol(asmodule : ASModule, findSymbol : ASSemanticSymbol) : Array<ASModule>
 {
     switch (findSymbol.type)
     {
         case ASSymbolType.Typename:
         case ASSymbolType.TemplateBaseType:
-        case ASSymbolType.Namespace:
         {
-            let dbtype = typedb.GetType(findSymbol.symbol_name);
+            let dbtype = typedb.GetTypeByName(findSymbol.symbol_name);
             if (dbtype)
             {
                 // Limit to things importing this type if it's a script type
@@ -1310,14 +1280,27 @@ export function GetModulesPotentiallyImportingSymbol(asmodule : ASModule, findSy
             }
         }
         break;
+        case ASSymbolType.Namespace:
+        {
+            let dbnamespace = typedb.LookupNamespace(null, findSymbol.symbol_name);
+            if (dbnamespace)
+                return GetModulesPotentiallyImportingNamespace(dbnamespace);
+        }
+        break;
         case ASSymbolType.GlobalFunction:
-        case ASSymbolType.MemberFunction:
-        case ASSymbolType.MemberAccessor:
         case ASSymbolType.GlobalAccessor:
         case ASSymbolType.GlobalVariable:
+        {
+            let dbnamespace = typedb.LookupNamespace(null, findSymbol.container_type);
+            if (dbnamespace)
+                return GetModulesPotentiallyImportingNamespace(dbnamespace);
+        }
+        break;
+        case ASSymbolType.MemberFunction:
+        case ASSymbolType.MemberAccessor:
         case ASSymbolType.MemberVariable:
         {
-            let dbtype = typedb.GetType(findSymbol.container_type);
+            let dbtype = typedb.GetTypeByName(findSymbol.container_type);
             if (dbtype)
             {
                 // Limit to things importing this type if it's a script type
@@ -1348,10 +1331,49 @@ export function GetModulesPotentiallyImportingSymbol(asmodule : ASModule, findSy
 export function GetModulesPotentiallyImporting(findModule : string) : Array<ASModule>
 {
     let markedModules = new Set<string>();
-
-    let anyMarked = true;
     markedModules.add(findModule);
 
+    RecursiveMarkDependentModules(markedModules);
+
+    let modules = new Array<ASModule>();
+    for (let markedName of markedModules)
+        modules.push(GetModule(markedName));
+    return modules;
+}
+
+export function GetModulesPotentiallyImportingMultiple(findModules : Array<string>) : Array<ASModule>
+{
+    let markedModules = new Set<string>();
+    for (let module of findModules)
+        markedModules.add(module);
+
+    RecursiveMarkDependentModules(markedModules);
+
+    let modules = new Array<ASModule>();
+    for (let markedName of markedModules)
+        modules.push(GetModule(markedName));
+    return modules;
+}
+
+export function GetModulesPotentiallyImportingNamespace(namespace : typedb.DBNamespace) : Array<ASModule>
+{
+    // Limit to things importing this type if it's a script type
+    let allDeclaredModules : Array<string> = [];
+    for (let decl of namespace.declarations)
+    {
+        // If it's a C++ namespace everything can use it
+        if (!decl.declaredModule)
+            return GetAllLoadedModules();
+
+        allDeclaredModules.push(decl.declaredModule);
+    }
+
+    return GetModulesPotentiallyImportingMultiple(allDeclaredModules);
+}
+
+export function RecursiveMarkDependentModules(markedModules : Set<string>)
+{
+    let anyMarked = true;
     while (anyMarked)
     {
         anyMarked = false;
@@ -1418,28 +1440,19 @@ export function GetModulesPotentiallyImporting(findModule : string) : Array<ASMo
             }
         }
     }
-
-    let modules = new Array<ASModule>();
-    for (let markedName of markedModules)
-        modules.push(GetModule(markedName));
-    return modules;
 }
 
 function ClearModule(module : ASModule)
 {
     if (module.parsed)
     {
-        // Remove the module globals from the type database
-        if (module.global_type)
-            typedb.RemoveTypeFromDatabase(module.global_type);
-
         // Remove symbols from old namespaces
         for (let ns of module.namespaces)
-            typedb.RemoveModuleFromNamespace(ns.typename, module.modulename);
+            typedb.RemoveNamespaceDeclaration(ns, module.modulename);
 
         // Remove symbols from old globals
-        for (let sym of module.globals)
-            typedb.RemoveScriptGlobalSymbol(sym);
+        for (let sym of module.globalSymbols)
+            sym.namespace.removeSymbol(sym);
 
         // Remove types declared in this file
         for (let type of module.types)
@@ -1448,13 +1461,12 @@ function ClearModule(module : ASModule)
 
     module.loaded = false;
     module.parsed = false;
-    module.global_type = null;
-    module.symbols = [];
+    module.semanticSymbols = [];
     module.types = [];
     module.delegateBinds = [];
     module.annotatedFunctionCalls = [];
     module.namespaces = [];
-    module.globals = [];
+    module.globalSymbols = [];
     module.resolved = false;
     module.typesPostProcessed = false;
     module.rootscope = null;
@@ -1488,7 +1500,7 @@ export function GetSymbolLocation(modulename : string, typename : string, symbol
     if (!typename)
         return _GetScopeSymbol(asmodule, asmodule.rootscope, symbolname);
     if (typename.startsWith("__"))
-        typename = typename.substr(2);
+        typename = typename.substring(2);
     return RecursiveFindScopeSymbol(asmodule, asmodule.rootscope, typename, symbolname);
 }
 
@@ -1512,7 +1524,7 @@ function RecursiveFindScopeSymbol(file : ASModule, scope : ASScope, typename : s
         let scopeType = subscope.getDatabaseType();
         if (!scopeType)
             continue;
-        if (scopeType.typename == typename)
+        if (scopeType.name == typename)
         {
             let symbolLocation = _GetScopeSymbol(file, subscope, symbolname);
             if (symbolLocation)
@@ -1584,7 +1596,7 @@ export function GetTypeSymbolLocation(modulename : string, typename : string) : 
 function AddDBType(scope : ASScope, typename : string, addToDatabase = true) : typedb.DBType
 {
     let dbtype = new typedb.DBType();
-    dbtype.typename = typename;
+    dbtype.name = typename;
     dbtype.supertype = null;
     dbtype.properties = new Array<typedb.DBProperty>();
     dbtype.methods = new Array<typedb.DBMethod>();
@@ -1594,7 +1606,7 @@ function AddDBType(scope : ASScope, typename : string, addToDatabase = true) : t
     dbtype.isEnum = false;
 
     if (addToDatabase)
-        typedb.AddTypeToDatabase(dbtype);
+        typedb.AddTypeToDatabase(scope.getNamespace(), dbtype);
     return dbtype;
 }
 
@@ -1805,9 +1817,9 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
     scope.variablesByName.set(asvar.name, asvar);
 
     // Add it to the type database
-    if (scope.dbtype)
+    if (scope.dbtype || scope.isNamespaceOrGlobalScope())
     {
-        if (!scope.dbtype.isNamespaceOrGlobalScope())
+        if (scope.isNamespaceOrGlobalScope())
             asvar.isMember = true;
         else
             asvar.isGlobal = true;
@@ -1838,15 +1850,20 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
                 dbprop.keywords = keywords.split(" ");
         }
 
-        scope.dbtype.properties.push(dbprop);
-        scope.dbtype.addSymbol(dbprop);
-
-        // Make the variable globally accessible if we need to
-        if (scope.dbtype.isGlobalScope
-            && vardecl.type == node_types.AssetDefinition)
+        if (scope.dbtype)
         {
-            scope.module.globals.push(dbprop);
-            typedb.AddScriptGlobalSymbol(dbprop);
+            scope.dbtype.properties.push(dbprop);
+            scope.dbtype.addSymbol(dbprop);
+        }
+        else
+        {
+            let namespace = scope.getNamespace();
+            namespace.addSymbol(dbprop);
+
+            if (vardecl.type == node_types.AssetDefinition)
+                dbprop.isLiteralAsset = true;
+
+            scope.module.globalSymbols.push(dbprop);
         }
     }
 
@@ -1935,19 +1952,26 @@ function GenerateTypeInformation(scope : ASScope)
         {
             scope.declaration = scope.previous;
 
+            let parentNamespace = null;
+            if (scope.parentscope)
+                parentNamespace = scope.parentscope.getNamespace();
+
             let nsdef = scope.previous.ast;
-            let dbtype = AddDBType(scope, "__"+nsdef.name.value, false);
+
+            let decl = new typedb.DBNamespaceDeclaration();
+            decl.declaredModule = scope.module.modulename;
+            decl.declaredOffset = scope.previous.start_offset + nsdef.name.start;
+            decl.declaredOffsetEnd = scope.previous.start_offset + nsdef.name.end;
+            decl.scopeOffsetStart = scope.start_offset;
+            decl.scopeOffsetEnd = scope.end_offset;
+
+            scope.dbnamespace = typedb.DeclareNamespace(parentNamespace, nsdef.name.value, decl)
+
             if (nsdef.documentation)
-                dbtype.documentation = typedb.FormatDocumentationComment(nsdef.documentation);
-            dbtype.moduleOffset = scope.previous.start_offset + nsdef.name.start;
-            dbtype.moduleOffsetEnd = scope.previous.start_offset + nsdef.name.end;
+                scope.dbnamespace.documentation = typedb.FormatDocumentationComment(nsdef.documentation);
 
-            scope.module.namespaces.push(dbtype);
-            scope.dbtype = dbtype;
-
+            scope.module.namespaces.push(scope.dbnamespace);
             ExtendScopeToStatement(scope, scope.previous);
-            dbtype.moduleScopeStart = scope.start_offset;
-            dbtype.moduleScopeEnd = scope.end_offset;
         }
         // Enum definition in global scope
         else if (scope.previous.ast.type == node_types.EnumDefinition)
@@ -1955,7 +1979,7 @@ function GenerateTypeInformation(scope : ASScope)
             scope.declaration = scope.previous;
             
             let enumdef = scope.previous.ast;
-            let dbtype = AddDBType(scope, "__"+enumdef.name.value);
+            let dbtype = AddDBType(scope, enumdef.name.value);
             dbtype.isEnum = true;
             if (enumdef.documentation)
                 dbtype.documentation = typedb.FormatDocumentationComment(enumdef.documentation);
@@ -2067,16 +2091,20 @@ function GenerateTypeInformation(scope : ASScope)
             }
 
             scope.dbfunc = dbfunc;
+
             if (scope.parentscope && scope.parentscope.dbtype)
             {
                 scope.parentscope.dbtype.methods.push(dbfunc);
                 scope.parentscope.dbtype.addSymbol(dbfunc);
+            }
+            else
+            {
+                let namespace = typedb.GetRootNamespace();
+                if (scope.parentscope)
+                    namespace = scope.parentscope.getNamespace();
 
-                if (scope.parentscope.dbtype.isGlobalScope)
-                {
-                    scope.module.globals.push(dbfunc);
-                    typedb.AddScriptGlobalSymbol(dbfunc);
-                }
+                scope.module.globalSymbols.push(dbfunc);
+                namespace.addSymbol(dbfunc);
             }
 
             ExtendScopeToStatement(scope, scope.previous);
@@ -2097,20 +2125,14 @@ function GenerateTypeInformation(scope : ASScope)
             scope.dbfunc = dbfunc;
 
             // Constructor gets added to the namespace as a global function instead
-            if (scope.parentscope && scope.parentscope.dbtype)
+            if (scope.parentscope)
             {
+                let namespace = scope.parentscope.getNamespace();
                 dbfunc.documentation = scope.parentscope.dbtype.documentation;
-                dbfunc.returnType = scope.parentscope.dbtype.typename;
+                dbfunc.returnType = scope.parentscope.dbtype.name;
 
-                let nsType = scope.getGlobalOrNamespaceParentType();
-                nsType.methods.push(dbfunc);
-                nsType.addSymbol(dbfunc);
-
-                if (nsType.isGlobalScope)
-                {
-                    scope.module.globals.push(dbfunc);
-                    typedb.AddScriptGlobalSymbol(dbfunc);
-                }
+                scope.module.globalSymbols.push(dbfunc);
+                namespace.addSymbol(dbfunc);
             }
 
             ExtendScopeToStatement(scope, scope.previous);
@@ -2151,7 +2173,6 @@ function GenerateTypeInformation(scope : ASScope)
                 {
                     let importedModule = GetModule(statement.ast.children[0].value);
                     scope.module.importedModules.push(importedModule);
-                    scope.module.global_type.siblingTypes.push("//"+importedModule.modulename);
                 }
             }
             break;
@@ -2282,11 +2303,10 @@ function GenerateTypeInformation(scope : ASScope)
 
                 AddParametersToFunction(scope, statement, dbfunc, funcdef.parameters);
 
-                if (scope.dbtype)
-                {
-                    scope.dbtype.methods.push(dbfunc);
-                    scope.dbtype.addSymbol(dbfunc);
-                }
+                let namespace = scope.getNamespace();
+
+                scope.module.globalSymbols.push(dbfunc);
+                namespace.addSymbol(dbfunc);
             }
             break;
             case node_types.AssetDefinition:
@@ -2307,7 +2327,7 @@ function GenerateTypeInformation(scope : ASScope)
                         // Add enum value to type database
                         let dbprop = new typedb.DBProperty();
                         dbprop.name = enumValue.name.value;
-                        dbprop.typename = scope.dbtype.typename.substr(2);
+                        dbprop.typename = scope.dbtype.name;
                         if (enumValue.documentation)
                             dbprop.documentation = typedb.FormatDocumentationComment(enumValue.documentation);
                         dbprop.declaredModule = scope.module.modulename;
@@ -2335,22 +2355,18 @@ function GenerateTypeInformation(scope : ASScope)
     for (let subscope of scope.scopes)
         GenerateTypeInformation(subscope);
 
-    // If this was a namespace, merge it after we've generated everything and update the dbtype
-    if (scope.scopetype == ASScopeType.Namespace && scope.dbtype)
-        scope.dbtype = typedb.MergeNamespaceToDB(scope.dbtype, false);
-
     // If this was a struct and we haven't generated a default constructor, generate it now
     if (scope.scopetype == ASScopeType.Class && scope.dbtype && scope.dbtype.isStruct)
     {
-        let nsType = scope.getGlobalOrNamespaceParentType();
+        let namespace = scope.getNamespace();
         let hasDefaultConstructor = false;
         
-        let constructors = nsType.findSymbols(scope.dbtype.typename);
+        let constructors = namespace.findSymbols(scope.dbtype.name);
         for (let constr of constructors)
         {
             if (constr instanceof typedb.DBMethod)
             {
-                if (constr.args.length == 0 && constr.returnType == scope.dbtype.typename)
+                if (constr.args.length == 0 && constr.returnType == scope.dbtype.name)
                 {
                     hasDefaultConstructor = true;
                     break;
@@ -2360,22 +2376,16 @@ function GenerateTypeInformation(scope : ASScope)
 
         if (!hasDefaultConstructor)
         {
-            let dbfunc = AddDBMethod(scope, scope.dbtype.typename);
+            let dbfunc = AddDBMethod(scope, scope.dbtype.name);
             dbfunc.moduleOffset = scope.start_offset;
             dbfunc.moduleOffsetEnd = scope.end_offset;
             dbfunc.isConstructor = true;
 
             dbfunc.documentation = scope.dbtype.documentation;
-            dbfunc.returnType = scope.dbtype.typename;
+            dbfunc.returnType = scope.dbtype.name;
 
-            nsType.methods.push(dbfunc);
-            nsType.addSymbol(dbfunc);
-
-            if (nsType.isGlobalScope)
-            {
-                scope.module.globals.push(dbfunc);
-                typedb.AddScriptGlobalSymbol(dbfunc);
-            }
+            namespace.addSymbol(dbfunc);
+            scope.module.globalSymbols.push(dbfunc);
         }
     }
 }
@@ -2577,22 +2587,22 @@ function AddForEachVariableToScope(scope : ASScope, statement : ASStatement, nod
     scope.variablesByName.set(asvar.name, asvar);
 }
 
-function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType, container_type : typedb.DBType | string = null, symbol_name : string = null, isWriteAccess : boolean = false) : ASSymbol
+function AddIdentifierSymbol(scope : ASScope, statement : ASStatement, node : any, type : ASSymbolType, container_type : typedb.DBType | string = null, symbol_name : string = null, isWriteAccess : boolean = false) : ASSemanticSymbol
 {
     if (!node)
         return null;
-    let symbol = new ASSymbol;
+    let symbol = new ASSemanticSymbol;
     symbol.type = type;
     symbol.start = node.start + statement.start_offset;
     symbol.end = node.end + statement.start_offset;
     if (container_type instanceof typedb.DBType)
-        symbol.container_type = container_type.typename;
+        symbol.container_type = container_type.name;
     else
         symbol.container_type = container_type;
     symbol.symbol_name = symbol_name;
     symbol.isWriteAccess = isWriteAccess;
 
-    scope.module.symbols.push(symbol);
+    scope.module.semanticSymbols.push(symbol);
     return symbol;
 }
 
@@ -2612,17 +2622,12 @@ function AddUnknownSymbol(scope : ASScope, statement: ASStatement, node : any, h
     AddIdentifierSymbol(scope, statement, node, ASSymbolType.UnknownError);
 }
 
-function DoesTypenameExist(name : string) : boolean | typedb.DBType
+function DoesTypenameExist(scope : ASScope, name : string) : boolean | typedb.DBType
 {
     // Could be a type
-    let dbtype = typedb.GetType(name);
+    let dbtype = typedb.LookupType(scope.getNamespace(), name);
     if (dbtype)
         return dbtype;
-
-    // Could be an enum
-    let nsType = typedb.GetType("__"+name);
-    if (nsType && nsType.isEnum)
-        return nsType;
 
     // Could be auto
     if (name == 'auto')
@@ -2631,14 +2636,14 @@ function DoesTypenameExist(name : string) : boolean | typedb.DBType
     return false;
 }
 
-function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any, errorOnUnknown = true) : ASSymbol
+function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any, errorOnUnknown = true) : ASSemanticSymbol
 {
     if (!node)
         return null;
     if (node.basetype)
     {
-        let baseSymbol : ASSymbol = null;
-        if (errorOnUnknown && !DoesTypenameExist(node.basetype.value))
+        let baseSymbol : ASSemanticSymbol = null;
+        if (errorOnUnknown && !DoesTypenameExist(scope, node.basetype.value))
         {
             let hasPotentialCompletions = false;
             AddUnknownSymbol(scope, statement, node.basetype, hasPotentialCompletions);
@@ -2654,12 +2659,12 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
     }
     else
     {
-        let exists = DoesTypenameExist(node.name.value);
+        let exists = DoesTypenameExist(scope, node.name.value);
         if (errorOnUnknown && !exists)
         {
             let hasPotentialCompletions = false;
             if (scope.module.isEditingNode(statement, node))
-                hasPotentialCompletions = typedb.HasTypeWithPrefix(node.name.value);
+                hasPotentialCompletions = typedb.HasTypeWithPrefix(scope.getNamespace(), node.name.value);
             AddUnknownSymbol(scope, statement, node.name, hasPotentialCompletions);
             scope.module.markDependencyIdentifier(node.name.value);
             return null;
@@ -2670,7 +2675,7 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
             if (exists instanceof typedb.DBType)
             {
                 if (exists.isEnum)
-                    addSymbol.symbol_name = exists.typename;
+                    addSymbol.symbol_name = exists.name;
                 if (exists.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(exists.declaredModule))
                     addSymbol.isUnimported = true;
                 scope.module.markDependencyType(exists);
@@ -2680,7 +2685,7 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
     }
 }
 
-function AddAccessSpecifierSymbol(scope : ASScope, statement : ASStatement, node : any, errorOnUnknown = true) : ASSymbol
+function AddAccessSpecifierSymbol(scope : ASScope, statement : ASStatement, node : any, errorOnUnknown = true) : ASSemanticSymbol
 {
     if (!node)
         return null;
@@ -2700,11 +2705,11 @@ function AddAccessSpecifierSymbol(scope : ASScope, statement : ASStatement, node
     }
     else
     {
-        return AddIdentifierSymbol(scope, statement, node, ASSymbolType.AccessSpecifier, dbtype.typename, node.value);
+        return AddIdentifierSymbol(scope, statement, node, ASSymbolType.AccessSpecifier, dbtype.name, node.value);
     }
 }
 
-function UpdateAutoTypenameSymbol(symbol : ASSymbol, expressionType : typedb.DBSymbol | typedb.DBType)
+function UpdateAutoTypenameSymbol(symbol : ASSemanticSymbol, expressionType : typedb.DBSymbol | typedb.DBType)
 {
     if (!symbol)
         return;
@@ -2716,7 +2721,7 @@ function UpdateAutoTypenameSymbol(symbol : ASSymbol, expressionType : typedb.DBS
     if (expressionType instanceof typedb.DBType)
     {
         symbol.container_type = null;
-        symbol.symbol_name = expressionType.typename;
+        symbol.symbol_name = expressionType.name;
     }
     else if(expressionType instanceof typedb.DBProperty)
     {
@@ -2739,9 +2744,7 @@ function ResolveAutos(scope : ASScope)
             resolvedType = ResolveIteratorType(resolvedType);
         if (resolvedType)
         {
-            let typename = resolvedType.typename;
-            if (typename.startsWith("__"))
-                typename = typename.substr(2);
+            let typename = resolvedType.name;
             asvar.typename = CopyQualifiersToTypename(asvar.node_typename, typename);
 
             // Foreach iterators using 'auto' are always references
@@ -2793,13 +2796,13 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
         // 0.f
         case node_types.ConstFloat:
         {
-            return typedb.GetType("float");
+            return typedb.GetTypeByName("float");
         }
         break;
         // 0.0
         case node_types.ConstDouble:
         {
-            return typedb.GetType("double");
+            return typedb.GetTypeByName("double");
         }
         // 0
         case node_types.ConstInteger:
@@ -2807,31 +2810,31 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
         case node_types.ConstOctalInteger:
         case node_types.ConstBinaryInteger:
         {
-            return typedb.GetType("int");
+            return typedb.GetTypeByName("int");
         }
         break;
         // "X"
         case node_types.ConstString:
         {
-            return typedb.GetType("FString");
+            return typedb.GetTypeByName("FString");
         }
         break;
         // n"X"
         case node_types.ConstName:
         {
-            return typedb.GetType("FName");
+            return typedb.GetTypeByName("FName");
         }
         break;
         // f"X"
         case node_types.ConstFormatString:
         {
-            return typedb.GetType("FString");
+            return typedb.GetTypeByName("FString");
         }
         break;
         // true/false
         case node_types.ConstBool:
         {
-            return typedb.GetType("bool");
+            return typedb.GetTypeByName("bool");
         }
         // this
         case node_types.This:
@@ -2841,7 +2844,7 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
         // nullptr
         case node_types.ConstNullptr:
         {
-            return typedb.GetType("UObject");
+            return typedb.GetTypeByName("UObject");
         }
         // X.Y
         case node_types.MemberAccess:
@@ -2859,17 +2862,28 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
                 return null;
             if (node.children[0].value == "Super" && scope.getParentType())
             {
-                let superType = typedb.GetType(scope.getParentType().supertype);
+                let superType = scope.getParentType().getSuperType();
                 if (!superType)
                     return null;
                 return ResolvePropertyType(superType, node.children[1].value);
             }
             else
             {
-                let nsType = typedb.GetType("__"+node.children[0].value);
-                if (!nsType)
-                    return null;
-                return ResolvePropertyType(nsType, node.children[1].value);
+                let shadowedType = typedb.LookupType(scope.getNamespace(), node.children[0].value);
+                let namespace = typedb.LookupNamespace(scope.getNamespace(), node.children[0].value);
+
+                if (shadowedType && shadowedType.isEnum)
+                    return ResolvePropertyType(shadowedType, node.children[1].value);
+
+                let nsSymbol = ResolveNamespacePropertyType(namespace, node.children[1].value);
+                if (nsSymbol)
+                    return nsSymbol;
+
+                // We might be calling a function in a superclass scope
+                if (shadowedType && scope.getParentType() && scope.getParentType().inheritsFrom(shadowedType.name))
+                    return ResolvePropertyType(shadowedType, node.children[1].value);
+
+                return null;
             }
         }
         break;
@@ -2882,23 +2896,20 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
                 // Check if this is a constructor to some type
                 if (node.children[0] && node.children[0].type == node_types.Identifier)
                 {
-                    let enumType = typedb.GetType("__"+node.children[0].value);
-                    if (enumType && enumType.isEnum)
-                        return enumType;
-                    let constrType = typedb.GetType(node.children[0].value);
+                    let constrType = typedb.LookupType(scope.getNamespace(), node.children[0].value);
                     if (constrType)
                         return constrType;
                 }
                 return null;
             }
-            return typedb.GetType(left_func.returnType);
+            return typedb.LookupType(scope.getNamespace(), left_func.returnType);
         }
         break;
         // TType<TSubType>()
         case node_types.ConstructorCall:
             if (!node.children[0] || !node.children[0].value)
                 return null;
-            return typedb.GetType(node.children[0].value);
+            return typedb.LookupType(scope.getNamespace(), node.children[0].value);
         break;
         // X[]
         case node_types.IndexOperator:
@@ -2914,7 +2925,7 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
         {
             if (!node.children[0] || !node.children[0].value)
                 return null;
-            return typedb.GetType(node.children[0].value);
+            return typedb.LookupType(scope.getNamespace(), node.children[0].value);
         }
         break;
         // X * Y
@@ -3067,19 +3078,19 @@ function ResolveIteratorType(dbtype : typedb.DBType) : typedb.DBType
         return null;
 
     // Check if we have an iterator method
-    let iterator_sym = dbtype.findFirstSymbol("Iterator", typedb.DBAllowSymbol.FunctionOnly);
+    let iterator_sym = dbtype.findFirstSymbol("Iterator", typedb.DBAllowSymbol.Functions);
     if (iterator_sym && iterator_sym instanceof typedb.DBMethod)
     {
         // Check the return type of the method
-        let return_type = typedb.GetType(iterator_sym.returnType);
+        let return_type = typedb.LookupType(iterator_sym.namespace, iterator_sym.returnType);
         if (!return_type)
             return dbtype;
 
         // Check the Proceed method of the iterator and take its return value as the type
-        let proceed_sym = return_type.findFirstSymbol("Proceed", typedb.DBAllowSymbol.FunctionOnly);
+        let proceed_sym = return_type.findFirstSymbol("Proceed", typedb.DBAllowSymbol.Functions);
         if (proceed_sym && proceed_sym instanceof typedb.DBMethod)
         {
-            let proceed_return = typedb.GetType(proceed_sym.returnType);
+            let proceed_return = typedb.LookupType(proceed_sym.namespace, proceed_sym.returnType);
             if (proceed_return)
                 return proceed_return;
         }
@@ -3094,24 +3105,53 @@ function ResolvePropertyType(dbtype : typedb.DBType, name : string) : typedb.DBT
         return null;
 
     // Find property with this name
-    let usedSymbol = dbtype.findFirstSymbol(name, typedb.DBAllowSymbol.PropertyOnly);
+    let usedSymbol = dbtype.findFirstSymbol(name, typedb.DBAllowSymbol.Properties);
     if (usedSymbol && usedSymbol instanceof typedb.DBProperty)
-        return typedb.GetType(usedSymbol.typename);
+        return typedb.LookupType(dbtype.namespace, usedSymbol.typename);
 
     // Find get accessor
-    let getAccessor = dbtype.findFirstSymbol("Get"+name, typedb.DBAllowSymbol.FunctionOnly);
+    let getAccessor = dbtype.findFirstSymbol("Get"+name, typedb.DBAllowSymbol.Properties);
     if (getAccessor && getAccessor instanceof typedb.DBMethod)
     {
         if (getAccessor.isProperty)
-            return typedb.GetType(getAccessor.returnType);
+            return typedb.LookupType(dbtype.namespace, getAccessor.returnType);
     }
 
     // Find set accessor
-    let setAccessor = dbtype.findFirstSymbol("Set"+name, typedb.DBAllowSymbol.FunctionOnly);
+    let setAccessor = dbtype.findFirstSymbol("Set"+name, typedb.DBAllowSymbol.Properties);
     if (setAccessor && setAccessor instanceof typedb.DBMethod)
     {
         if (setAccessor.isProperty && setAccessor.args.length != 0)
-            return typedb.GetType(setAccessor.args[0].typename);
+            return typedb.LookupType(dbtype.namespace, setAccessor.args[0].typename);
+    }
+
+    return null;
+}
+
+function ResolveNamespacePropertyType(dbnamespace : typedb.DBNamespace, name : string) : typedb.DBType
+{
+    if (!dbnamespace || !name)
+        return null;
+
+    // Find property with this name
+    let usedSymbol = dbnamespace.findFirstSymbol(name, typedb.DBAllowSymbol.Properties);
+    if (usedSymbol && usedSymbol instanceof typedb.DBProperty)
+        return typedb.LookupType(dbnamespace, usedSymbol.typename);
+
+    // Find get accessor
+    let getAccessor = dbnamespace.findFirstSymbol("Get"+name, typedb.DBAllowSymbol.Properties);
+    if (getAccessor && getAccessor instanceof typedb.DBMethod)
+    {
+        if (getAccessor.isProperty)
+            return typedb.LookupType(dbnamespace, getAccessor.returnType);
+    }
+
+    // Find set accessor
+    let setAccessor = dbnamespace.findFirstSymbol("Set"+name, typedb.DBAllowSymbol.Properties);
+    if (setAccessor && setAccessor instanceof typedb.DBMethod)
+    {
+        if (setAccessor.isProperty && setAccessor.args.length != 0)
+            return typedb.LookupType(dbnamespace, setAccessor.args[0].typename);
     }
 
     return null;
@@ -3125,7 +3165,7 @@ function ResolveTypeFromIdentifier(scope : ASScope, identifier : string) : typed
     {
         let usedVariable = checkscope.variablesByName.get(identifier);
         if (usedVariable)
-            return typedb.GetType(usedVariable.typename);
+            return typedb.LookupType(checkscope.getNamespace(), usedVariable.typename);
         checkscope = checkscope.parentscope;
     }
 
@@ -3139,26 +3179,31 @@ function ResolveTypeFromIdentifier(scope : ASScope, identifier : string) : typed
     }
 
     // Find a symbol in global or namespace scope
-    for (let globalType of scope.getAvailableGlobalTypes())
-    {
-        let usedType = ResolvePropertyType(globalType, identifier);
-        if (usedType)
-            return usedType;
-    }
-
-    // Find an unimported global property
-    let globalSymbols = typedb.FindScriptGlobalSymbols(identifier);
+    let globalSymbols = typedb.LookupGlobalSymbol(scope.getNamespace(), identifier, typedb.DBAllowSymbol.Properties);
     if (globalSymbols)
     {
         for (let sym of globalSymbols)
         {
             if (sym instanceof typedb.DBProperty)
-                return typedb.GetType(sym.typename);
+            {
+                if (!sym.isLiteralAsset && sym.declaredModule != scope.module.modulename)
+                    continue;
+                return typedb.LookupType(sym.namespace, sym.typename);
+            }
+        }
+
+        if (!ScriptSettings.automaticImports)
+        {
+            for (let sym of globalSymbols)
+            {
+                if (sym instanceof typedb.DBProperty)
+                    return typedb.LookupType(sym.namespace, sym.typename);
+            }
         }
     }
 
     // Find an unimported global get accessor
-    let getSymbols = typedb.FindScriptGlobalSymbols("Get"+identifier);
+    let getSymbols = typedb.LookupGlobalSymbol(scope.getNamespace(), "Get"+identifier, typedb.DBAllowSymbol.Functions);
     if (getSymbols)
     {
         for (let sym of getSymbols)
@@ -3167,13 +3212,13 @@ function ResolveTypeFromIdentifier(scope : ASScope, identifier : string) : typed
             {
                 if (sym.isLocal && !sym.IsAccessibleFromModule(scope.module.modulename))
                     continue;
-                return typedb.GetType(sym.returnType);
+                return typedb.LookupType(sym.namespace, sym.returnType);
             }
         }
     }
 
     // Find an unimported global set accessor
-    let setSymbols = typedb.FindScriptGlobalSymbols("Set"+identifier);
+    let setSymbols = typedb.LookupGlobalSymbol(scope.getNamespace(), "Set"+identifier, typedb.DBAllowSymbol.Functions);
     if (setSymbols)
     {
         for (let sym of setSymbols)
@@ -3182,7 +3227,7 @@ function ResolveTypeFromIdentifier(scope : ASScope, identifier : string) : typed
             {
                 if (sym.isLocal && !sym.IsAccessibleFromModule(scope.module.modulename))
                     continue;
-                return typedb.GetType(sym.args[0].typename);
+                return typedb.LookupType(sym.namespace, sym.args[0].typename);
             }
         }
     }
@@ -3197,18 +3242,18 @@ function ResolveTypeFromOperator(scope : ASScope, leftType : typedb.DBType, righ
 
     // Some operators always return bools
     if (operator == "BOOLEAN")
-        return typedb.GetType("bool");
+        return typedb.GetTypeByName("bool");
 
     // If both types are primitives we upgrade to the highest
     if (leftType && leftType.isPrimitive && rightType && rightType.isPrimitive)
     {
-        if (leftType.typename == "double")
+        if (leftType.name == "double")
             return leftType;
-        if (rightType.typename == "double")
+        if (rightType.name == "double")
             return rightType;
-        if (leftType.typename == "float")
+        if (leftType.name == "float")
             return leftType;
-        if (rightType.typename == "float")
+        if (rightType.name == "float")
             return rightType;
         return leftType;
     }
@@ -3222,7 +3267,7 @@ function ResolveTypeFromOperator(scope : ASScope, leftType : typedb.DBType, righ
     {
         let sym = leftType.findFirstSymbol(operator);
         if (sym && sym instanceof typedb.DBMethod)
-            return typedb.GetType(sym.returnType);
+            return typedb.LookupType(sym.namespace, sym.returnType);
     }
 
     // Try the operator overload for the right side
@@ -3230,7 +3275,7 @@ function ResolveTypeFromOperator(scope : ASScope, leftType : typedb.DBType, righ
     {
         let sym_r = rightType.findFirstSymbol(operator+"_r");
         if (sym_r && sym_r instanceof typedb.DBMethod)
-            return typedb.GetType(sym_r.returnType);
+            return typedb.LookupType(sym_r.namespace, sym_r.returnType);
     }
 
     return null;
@@ -3271,7 +3316,7 @@ export function ResolveFunctionFromExpression(scope : ASScope, node : any) : typ
                 // Access the super type
                 if (node.children[0].value == "Super")
                 {
-                    let superType = typedb.GetType(scope.getParentType().supertype);
+                    let superType = scope.getParentType().getSuperType();
                     if (superType)
                         return ResolveFunctionFromType(scope, superType, node.children[1].value);
                     else
@@ -3279,20 +3324,20 @@ export function ResolveFunctionFromExpression(scope : ASScope, node : any) : typ
                 }
 
                 // If we inherit from this class, we could be accessing a function in a super scope
-                let nsClass = typedb.GetType(node.children[0].value);
-                if (nsClass && insideType.inheritsFrom(nsClass.typename))
+                let superClass = typedb.LookupType(scope.getNamespace(), node.children[0].value);
+                if (superClass && insideType.inheritsFrom(superClass.name))
                 {
-                    let superSymbol = ResolveFunctionFromType(scope, nsClass, node.children[1].value);
+                    let superSymbol = ResolveFunctionFromType(scope, superClass, node.children[1].value);
                     if(superSymbol)
                         return superSymbol;
                 }
             }
 
             // Access a function in the namespace
-            let nsType = typedb.GetType("__"+node.children[0].value);
-            if (nsType)
+            let namespace = typedb.LookupNamespace(scope.getNamespace(), node.children[0].value);
+            if (namespace)
             {
-                let namespaceSymbol = ResolveFunctionFromType(scope, nsType, node.children[1].value);
+                let namespaceSymbol = ResolveFunctionFromNamespace(scope, namespace, node.children[1].value);
                 if(namespaceSymbol)
                     return namespaceSymbol;
             }
@@ -3310,14 +3355,14 @@ function ResolveFunctionFromType(scope : ASScope, dbtype : typedb.DBType, name :
         return null;
 
     // Find function with this name
-    let usedSymbol = dbtype.findFirstSymbol(name, typedb.DBAllowSymbol.FunctionOnly);
+    let usedSymbol = dbtype.findFirstSymbol(name, typedb.DBAllowSymbol.Functions);
     if (usedSymbol && usedSymbol instanceof typedb.DBMethod)
         return usedSymbol;
 
     if (allowMixin)
     {
         // Find a symbol in global scope
-        let globalSymbols = typedb.FindScriptGlobalSymbols(name);
+        let globalSymbols = typedb.LookupGlobalSymbol(scope.getNamespace(), name, typedb.DBAllowSymbol.Mixins);
         if (globalSymbols)
         {
             for (let usedSymbol of globalSymbols)
@@ -3338,6 +3383,19 @@ function ResolveFunctionFromType(scope : ASScope, dbtype : typedb.DBType, name :
     return null;
 }
 
+function ResolveFunctionFromNamespace(scope : ASScope, namespace : typedb.DBNamespace, name : string) : typedb.DBMethod
+{
+    if (!namespace || !name)
+        return null;
+
+    // Find function with this name
+    let usedSymbol = namespace.findFirstSymbol(name, typedb.DBAllowSymbol.Functions);
+    if (usedSymbol && usedSymbol instanceof typedb.DBMethod)
+        return usedSymbol;
+
+    return null;
+}
+
 function ResolveFunctionFromIdentifier(scope : ASScope, identifier : string) : typedb.DBMethod
 {
     // Find a symbol in the class we're in
@@ -3350,18 +3408,11 @@ function ResolveFunctionFromIdentifier(scope : ASScope, identifier : string) : t
     }
 
     // Find a symbol in global scope
-    for (let globalType of scope.getAvailableGlobalTypes())
+    let globalSymbols = typedb.LookupGlobalSymbol(scope.getNamespace(), identifier,
+        typedb.DBAllowSymbol.Functions | typedb.DBAllowSymbol.Mixins);
+    if (globalSymbols)
     {
-        let usedFunc = ResolveFunctionFromType(scope, globalType, identifier);
-        if (usedFunc)
-            return usedFunc;
-    }
-
-    // Find unimported global functions
-    let globalSyms = typedb.FindScriptGlobalSymbols(identifier);
-    if (globalSyms)
-    {
-        for (let sym of globalSyms)
+        for (let sym of globalSymbols)
         {
             if (sym instanceof typedb.DBMethod)
             {
@@ -3397,8 +3448,6 @@ export function DisambiguateFunctionOverloadsFromOverriddenFunctions(functions :
         let insideType = functions[i].containingType;
         if (!insideType)
             continue;
-        if (insideType.isNamespaceOrGlobalScope())
-            continue;
 
         let hasOverriddenFunction = false;
         for (let j = 0; j < functions.length; ++j)
@@ -3408,12 +3457,10 @@ export function DisambiguateFunctionOverloadsFromOverriddenFunctions(functions :
                 continue;
             if (!compareType)
                 continue;
-            if (compareType.isNamespaceOrGlobalScope())
-                continue;
             if (!functions[i].isSignatureEqual(functions[j]))
                 continue;
 
-            if (compareType.inheritsFrom(insideType.typename))
+            if (compareType.inheritsFrom(insideType.name))
             {
                 hasOverriddenFunction = true;
                 break;
@@ -3464,22 +3511,22 @@ export function ResolveFunctionOverloadsFromExpression(scope : ASScope, node : a
                 // Access the super type
                 if (node.children[0].value == "Super")
                 {
-                    let superType = typedb.GetType(scope.getParentType().supertype);
+                    let superType = scope.getParentType().getSuperType();
                     if (superType)
                         ResolveFunctionOverloadsFromType(scope, superType, node.children[1].value, false, functions);
                     return;
                 }
 
                 // If we inherit from this class, we could be accessing a function in a super scope
-                let nsClass = typedb.GetType(node.children[0].value);
-                if (nsClass && insideType.inheritsFrom(nsClass.typename))
+                let nsClass = typedb.LookupType(scope.getNamespace(), node.children[0].value);
+                if (nsClass && insideType.inheritsFrom(nsClass.name))
                     ResolveFunctionOverloadsFromType(scope, nsClass, node.children[1].value, false, functions);
             }
 
             // Access a function in the namespace
-            let nsType = typedb.GetType("__"+node.children[0].value);
-            if (nsType)
-                ResolveFunctionOverloadsFromType(scope, nsType, node.children[1].value, false, functions);
+            let namespace = typedb.LookupNamespace(scope.getNamespace(), node.children[0].value);
+            if (namespace)
+                ResolveFunctionOverloadsFromNamespace(scope, namespace, node.children[1].value, false, functions);
         }
         break;
     }
@@ -3512,7 +3559,7 @@ function ResolveFunctionOverloadsFromType(scope : ASScope, dbtype : typedb.DBTyp
     if (allowMixin)
     {
         // Check if this is a mixin call in a global scope
-        let globalSymbols = typedb.FindScriptGlobalSymbols(name);
+        let globalSymbols = typedb.LookupGlobalSymbol(scope.getNamespace(), name, typedb.DBAllowSymbol.Mixins);
         if (globalSymbols)
         {
             for (let symbol of globalSymbols)
@@ -3531,6 +3578,31 @@ function ResolveFunctionOverloadsFromType(scope : ASScope, dbtype : typedb.DBTyp
     }
 }
 
+function ResolveFunctionOverloadsFromNamespace(scope : ASScope, namespace : typedb.DBNamespace, name : string, allowMixin = false, functions : Array<typedb.DBMethod>)
+{
+    if (!namespace || !name)
+        return;
+
+    // Find function with this name
+    {
+        let usedSymbols = namespace.findSymbols(name);
+        if (usedSymbols)
+        {
+            for (let symbol of usedSymbols)
+            {
+                if (symbol instanceof typedb.DBMethod)
+                {
+                    if (symbol.isMixin)
+                        continue;
+                    if (symbol.isLocal && !symbol.IsAccessibleFromModule(scope.module.modulename))
+                        continue;
+                    functions.push(symbol);
+                }
+            }
+        }
+    }
+}
+
 export function ResolveFunctionOverloadsFromIdentifier(scope : ASScope, identifier : string, functions : Array<typedb.DBMethod>, allowMixin = true)
 {
     // Find a symbol in the class we're in
@@ -3538,12 +3610,8 @@ export function ResolveFunctionOverloadsFromIdentifier(scope : ASScope, identifi
     if (insideType)
         ResolveFunctionOverloadsFromType(scope, insideType, identifier, allowMixin, functions);
 
-    // Find a symbol in global scope
-    for (let globalType of scope.getAvailableGlobalTypes())
-        ResolveFunctionOverloadsFromType(scope, globalType, identifier, false, functions);
-
     // Find unimported global symbols
-    let globalSyms = typedb.FindScriptGlobalSymbols(identifier);
+    let globalSyms = typedb.LookupGlobalSymbol(scope.getNamespace(), identifier);
     if (globalSyms)
     {
         for (let sym of globalSyms)
@@ -3572,7 +3640,7 @@ function DetectScopeSymbols(scope : ASScope) : ASParseContext
             if (element.ast)
             {
                 parseContext.isRootIdentifier = true;
-                DetectNodeSymbols(scope, element, element.ast, parseContext, typedb.DBAllowSymbol.PropertiesAndFunctions);
+                DetectNodeSymbols(scope, element, element.ast, parseContext, typedb.DBAllowSymbol.Properties | typedb.DBAllowSymbol.Functions);
             }
         }
         else if (element instanceof ASScope)
@@ -3587,7 +3655,7 @@ function DetectScopeSymbols(scope : ASScope) : ASParseContext
 function GetTypeFromSymbol(symbol : typedb.DBSymbol | typedb.DBType)
 {
     if (symbol instanceof typedb.DBProperty)
-        return typedb.GetType(symbol.typename);
+        return typedb.LookupType(symbol.namespace, symbol.typename);
     else if (symbol instanceof typedb.DBType)
         return symbol;
     else
@@ -3626,7 +3694,7 @@ export function GetConstantNumberFromNode(node : any) : [boolean, number]
     return [false, 0.0];
 }
 
-function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any, parseContext : ASParseContext, symbol_type : typedb.DBAllowSymbol = typedb.DBAllowSymbol.PropertyOnly) : typedb.DBSymbol | typedb.DBType
+function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any, parseContext : ASParseContext, symbol_type : typedb.DBAllowSymbol = typedb.DBAllowSymbol.Properties) : typedb.DBSymbol | typedb.DBType
 {
     if (!node)
         return;
@@ -3643,22 +3711,22 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
     {
         // this and other constants
         case node_types.This: return scope.getParentType(); break;
-        case node_types.ConstBool: return typedb.GetType("bool"); break;
-        case node_types.ConstDouble: return typedb.GetType("double"); break;
+        case node_types.ConstBool: return typedb.GetTypeByName("bool"); break;
+        case node_types.ConstDouble: return typedb.GetTypeByName("double"); break;
         case node_types.ConstInteger:
         case node_types.ConstHexInteger:
         case node_types.ConstOctalInteger:
         case node_types.ConstBinaryInteger:
-            return typedb.GetType("int");
+            return typedb.GetTypeByName("int");
         break;
-        case node_types.ConstFloat: return typedb.GetType("float"); break;
-        case node_types.ConstName: return typedb.GetType("FName"); break;
-        case node_types.ConstString: return typedb.GetType("FString"); break;
-        case node_types.ConstNullptr: return typedb.GetType("UObject"); break;
+        case node_types.ConstFloat: return typedb.GetTypeByName("float"); break;
+        case node_types.ConstName: return typedb.GetTypeByName("FName"); break;
+        case node_types.ConstString: return typedb.GetTypeByName("FString"); break;
+        case node_types.ConstNullptr: return typedb.GetTypeByName("UObject"); break;
         // Format string f"Blah {CODE}"
         case node_types.ConstFormatString:
             DetectFormatStringSymbols(scope, statement, node, parseContext);
-            return typedb.GetType("FString");
+            return typedb.GetTypeByName("FString");
         break;
         // X
         case node_types.Identifier:
@@ -3684,7 +3752,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     let usedVariable = checkscope.variablesByName.get(node.children[0].value);
                     if (usedVariable)
                     {
-                        if (!usedVariable.isReference() && usedVariable.isValueType())
+                        if (!usedVariable.isReference() && usedVariable.isValueType(scope))
                             parseContext.isWriteAccess = true;
                         break;
                     }
@@ -3692,7 +3760,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 }
             }
 
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.Properties);
             if (!left_symbol)
             {
                 if (parseContext.allow_errors)
@@ -3717,32 +3785,35 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 return null;
 
             let insideType = scope.getParentType();
-            let nsType : typedb.DBType = null;
             let parentType : typedb.DBType = null;
+            let shadowedType : typedb.DBType = null;
+            let namespace : typedb.DBNamespace = null;
             if (insideType)
             {
                 if (node.children[0].value == "Super")
                 {
-                    parentType = typedb.GetType(scope.getParentType().supertype);
+                    parentType = scope.getParentType().getSuperType();
                 }
                 else
                 {
-                    nsType = typedb.GetType("__"+node.children[0].value);
-
                     // We might be calling a function on one of our super classes
                     if (typedb.AllowsFunctions(symbol_type))
                     {
                         if (insideType.inheritsFrom(node.children[0].value))
-                            parentType = typedb.GetType(node.children[0].value);
+                            parentType = typedb.LookupType(scope.getNamespace(), node.children[0].value);
                     }
                 }
             }
             else
             {
-                nsType = typedb.GetType("__"+node.children[0].value);
+                namespace = typedb.LookupNamespace(scope.getNamespace(), node.children[0].value);
             }
 
-            if (!nsType && !parentType)
+            // See if we're accessing an enum value
+            if (!parentType)
+                shadowedType = typedb.LookupType(scope.getNamespace(), node.children[0].value);
+
+            if (!namespace && !parentType && !shadowedType)
             {
                 scope.module.markDependencyIdentifier(node.children[0].value);
                 if (parseContext.allow_errors)
@@ -3754,31 +3825,22 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             }
 
             let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, null);
-            if (nsType)
+            if (shadowedType && (namespace || shadowedType.isEnum))
             {
-                scope.module.markDependencyType(nsType);
-                if (nsType.isShadowedNamespace())
-                {
-                    addedSymbol.type = ASSymbolType.Typename;
-                    addedSymbol.symbol_name = nsType.rawName;
-                }
-                else if (nsType.isEnum)
-                {
-                    addedSymbol.type = ASSymbolType.Typename;
-                    addedSymbol.symbol_name = nsType.typename;
-                }
-                else
-                {
-                    addedSymbol.symbol_name = nsType.typename;
-                }
-                
-                if (nsType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(nsType.declaredModule))
-                    addedSymbol.isUnimported = true;
+                scope.module.markDependencyType(shadowedType);
+                addedSymbol.symbol_name = shadowedType.name;
+                addedSymbol.type = ASSymbolType.Typename;
+            }
+            else if (namespace)
+            {
+                scope.module.markDependencyNamespace(namespace);
+                addedSymbol.symbol_name = namespace.getQualifiedNamespace();
             }
             else if (parentType)
             {
                 scope.module.markDependencyType(parentType);
-                addedSymbol.symbol_name = parentType.typename;
+                addedSymbol.symbol_name = parentType.name;
+                addedSymbol.type = ASSymbolType.Typename;
             }
 
             if (node.children[1])
@@ -3800,11 +3862,15 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         return parentSymbol;
                     }
                 }
-
-                if (nsType)
+                else if (shadowedType && shadowedType.isEnum)
                 {
                     parseContext.isWriteAccess = outerWriteAccess;
-                    return DetectSymbolsInType(scope, statement, nsType, node.children[1], parseContext, symbol_type);
+                    return DetectSymbolsInType(scope, statement, shadowedType, node.children[1], parseContext, symbol_type);
+                }
+                else if (namespace)
+                {
+                    parseContext.isWriteAccess = outerWriteAccess;
+                    return DetectSymbolsInNamespace(scope, statement, namespace, node.children[1], parseContext, symbol_type);
                 }
             }
 
@@ -3820,42 +3886,44 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             let left_symbol : typedb.DBSymbol | typedb.DBType = null;
             if (node.children[0] && node.children[0].type == node_types.Identifier)
             {
-                let enumType = typedb.GetType("__"+node.children[0].value);
-                if (enumType && enumType.isEnum)
+                let refType = typedb.LookupType(scope.getNamespace(), node.children[0].value);
+                if (refType && refType.isEnum)
                 {
-                    left_type = enumType;
-                    let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, enumType.typename);
-                    if (enumType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(enumType.declaredModule))
+                    left_type = refType;
+                    let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, refType.name);
+                    if (refType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(refType.declaredModule))
                         addedSymbol.isUnimported = true;
-                    scope.module.markDependencyType(enumType);
+                    scope.module.markDependencyType(refType);
                 }
-                else
+                else if (refType)
                 {
-                    let constrType = typedb.GetType(node.children[0].value);
-                    if (constrType)
+                    scope.module.markDependencyType(refType);
+
+                    // Lookup a constructor
+                    let constructors = typedb.LookupGlobalSymbol(refType.namespace, refType.name, typedb.DBAllowSymbol.Functions);
+                    if (constructors && constructors.length >= 1)
+                        left_symbol = constructors[0];
+                    else
+                        left_symbol = null;
+                    left_type = refType;
+
+                    let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, refType.name);
+                    if (refType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(refType.declaredModule))
+                        addedSymbol.isUnimported = true;
+
+                    // If this is a delegate constructor call, mark it for later diagnostics
+                    if (left_type.isDelegate && node.children[1])
                     {
-                        scope.module.markDependencyType(constrType);
-                        left_symbol = typedb.GetType("__").findFirstSymbol(constrType.typename, typedb.DBAllowSymbol.FunctionOnly);
-                        left_type = constrType;
-
-                        let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Typename, null, constrType.typename);
-                        if (constrType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(constrType.declaredModule))
-                            addedSymbol.isUnimported = true;
-
-                        // If this is a delegate constructor call, mark it for later diagnostics
-                        if (left_type.isDelegate && node.children[1])
-                        {
-                            delegateBind = new ASDelegateBind;
-                            delegateBind.scope = scope;
-                            delegateBind.statement = statement;
-                            delegateBind.node_expression = node;
-                            if (node.children[1].children[0])
-                                delegateBind.node_object = node.children[1].children[0];
-                            if (node.children[1].children[1])
-                                delegateBind.node_name = node.children[1].children[1];
-                            delegateBind.delegateType = left_type.typename;
-                            scope.module.delegateBinds.push(delegateBind);
-                        }
+                        delegateBind = new ASDelegateBind;
+                        delegateBind.scope = scope;
+                        delegateBind.statement = statement;
+                        delegateBind.node_expression = node;
+                        if (node.children[1].children[0])
+                            delegateBind.node_object = node.children[1].children[0];
+                        if (node.children[1].children[1])
+                            delegateBind.node_name = node.children[1].children[1];
+                        delegateBind.delegateType = left_type.name;
+                        scope.module.delegateBinds.push(delegateBind);
                     }
                 }
             }
@@ -3863,9 +3931,9 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // Otherwise, resolve the left side as a function and get the return type
             if (left_type == null)
             {
-                left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.FunctionOnly);
+                left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.Functions);
                 if (left_symbol && left_symbol instanceof typedb.DBMethod)
-                    left_type = typedb.GetType(left_symbol.returnType);
+                    left_type = typedb.LookupType(left_symbol.namespace, left_symbol.returnType);
             }
 
             // Detect symbols in the argument expressions
@@ -3922,14 +3990,14 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     {
                         // Detect symbols for other arguments
                         parseContext.argumentFunction = left_symbol;
-                        DetectNodeSymbols(scope, statement, childNode, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                        DetectNodeSymbols(scope, statement, childNode, parseContext, typedb.DBAllowSymbol.Properties);
                     }
                 }
             }
             else
             {
                 // Detect symbols for all children
-                DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.Properties);
             }
 
             // Pass through the return type to be used for the next level
@@ -3943,11 +4011,11 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             AddTypenameSymbol(scope, statement, node.children[0]);
 
             // Detect symbols in the argument expressions
-            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.Properties);
 
             if (!node.children[0] || !node.children[0].value)
                 return null;
-            return typedb.GetType(node.children[0].value);
+            return typedb.LookupType(scope.getNamespace(), node.children[0].value);
         }
         break;
         // List of arguments within a function call
@@ -3967,10 +4035,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.IndexOperator:
         {
             // Detect symbols in the lvalue expression
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.Properties);
 
             // Detect symbols in the subscript expression
-            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.Properties);
 
             // Pass through the return type to be used for the next level
             return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), null, "opIndex");
@@ -3980,9 +4048,9 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.BinaryOperation:
         {
             // Detect symbols in the left expression
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.Properties);
             // Detect symbols in the right expression
-            let right_symbol = DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            let right_symbol = DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.Properties);
 
             return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), GetTypeFromSymbol(right_symbol), getBinaryOperatorOverloadMethod(node.operator));
         }
@@ -3991,7 +4059,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.UnaryOperation:
         {
             // Detect symbols in the left expression
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.Properties);
             return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), null, getUnaryOperatorOverloadMethod(node.operator));
         }
         break;
@@ -3999,7 +4067,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.PostfixOperation:
         {
             // Detect symbols in the left expression
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.Properties);
             return ResolveTypeFromOperator(scope, GetTypeFromSymbol(left_symbol), null, getPostfixOperatorOverloadMethod(node.operator));
         }
         break;
@@ -4007,11 +4075,11 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.TernaryOperation:
         {
             // Detect symbols in the condition expression
-            DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.Properties);
             // Detect symbols in the left expression
-            let left_symbol = DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            let left_symbol = DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.Properties);
             // Detect symbols in the right expression
-            let right_symbol = DetectNodeSymbols(scope, statement, node.children[2], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            let right_symbol = DetectNodeSymbols(scope, statement, node.children[2], parseContext, typedb.DBAllowSymbol.Properties);
 
             if (left_symbol)
                 return left_symbol;
@@ -4028,11 +4096,11 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             AddTypenameSymbol(scope, statement, node.children[0]);
 
             // Detect symbols in the casted expression
-            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.Properties);
 
             if (!node.children[0] || !node.children[0].value)
                 return null;
-            return typedb.GetType(node.children[0].value);
+            return typedb.LookupType(scope.getNamespace(), node.children[0].value);
         }
         break;
         // void X(...)
@@ -4050,13 +4118,17 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // Add the function name
             if (node.name)
             {
-                let insideType = scope.dbtype ? scope.dbtype.typename : null;
-                let symType = scope.dbtype && !scope.dbtype.isNamespaceOrGlobalScope() ? ASSymbolType.MemberFunction : ASSymbolType.GlobalFunction;
+                let insideType = scope.dbtype ? scope.dbtype.name : null;
+                let symType = scope.dbtype ? ASSymbolType.MemberFunction : ASSymbolType.GlobalFunction;
+                if (!insideType)
+                    insideType = scope.getNamespace().getQualifiedNamespace();
+
                 if (node.type == node_types.ConstructorDecl)
                 {
                     insideType = null;
                     symType = ASSymbolType.Typename;
                 }
+
                 AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value);
             }
 
@@ -4073,7 +4145,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         AddIdentifierSymbol(scope, statement, param.name, ASSymbolType.Parameter, null, param.name.value);
                     // Detect inside the default expression for the parameter
                     if (param.expression)
-                        DetectNodeSymbols(scope, statement, param.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                        DetectNodeSymbols(scope, statement, param.expression, parseContext, typedb.DBAllowSymbol.Properties);
                 }
             }
         }
@@ -4120,7 +4192,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                             AddIdentifierSymbol(scope, statement, param.name, ASSymbolType.Parameter, null, param.name.value);
                         // Detect inside the default expression for the parameter
                         if (param.expression)
-                            DetectNodeSymbols(scope, statement, param.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                            DetectNodeSymbols(scope, statement, param.expression, parseContext, typedb.DBAllowSymbol.Properties);
                     }
                 }
             }
@@ -4139,8 +4211,8 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 // Add the function name
                 if (signature.name)
                 {
-                    let targetModule = "//"+statement.ast.children[1].value;
-                    AddIdentifierSymbol(scope, statement, signature.name, ASSymbolType.GlobalFunction, targetModule, signature.name.value);
+                    let namespace = scope.getNamespace().getQualifiedNamespace();
+                    AddIdentifierSymbol(scope, statement, signature.name, ASSymbolType.GlobalFunction, namespace, signature.name.value);
                 }
 
                 // Add symbols for all parameters of the function
@@ -4156,7 +4228,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                             AddIdentifierSymbol(scope, statement, param.name, ASSymbolType.Parameter, null, param.name.value);
                         // Detect inside the default expression for the parameter
                         if (param.expression)
-                            DetectNodeSymbols(scope, statement, param.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                            DetectNodeSymbols(scope, statement, param.expression, parseContext, typedb.DBAllowSymbol.Properties);
                     }
                 }
             }
@@ -4170,11 +4242,11 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 AddAccessSpecifierSymbol(scope, statement, node.access);
 
             // Add the typename of the variable
-            let typenameSymbol : ASSymbol = null;
+            let typenameSymbol : ASSemanticSymbol = null;
             let variableType : typedb.DBType = null;
             if (node.typename)
             {
-                variableType = typedb.GetType(node.typename.value);
+                variableType = typedb.LookupType(scope.getNamespace(), node.typename.value);
                 if (scope.module.isEditingNode(statement, node.typename))
                 {
                     // This one gets a bit tricky if we are currently editing the typename.
@@ -4185,7 +4257,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     // The above gets detected as a variable declaration, but because the PreviousCa type
                     // doesn't exist, doing AddTypenameSymbol would error.
                     // So if we are editing the typename, we need to _also_ check for a valid identifier!
-                    if (variableType || DoesTypenameExist(node.typename.value))
+                    if (variableType || DoesTypenameExist(scope, node.typename.value))
                     {
                         // Easy case, type exists, mark it as a typename
                         if (!node.is_secondary)
@@ -4230,15 +4302,19 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // Add the name of the variable
             if (node.name)
             {
-                let insideType = scope.dbtype ? scope.dbtype.typename : null;
+                let insideType = scope.dbtype ? scope.dbtype.name : null;
                 let symType = ASSymbolType.LocalVariable;
-                if (scope.dbtype)
+
+                if (scope.dbtype && scope.scopetype == ASScopeType.Class)
                 {
-                    if (scope.scopetype == ASScopeType.Class)
-                        symType = ASSymbolType.MemberVariable;
-                    else
-                        symType = ASSymbolType.GlobalVariable;
+                    symType = ASSymbolType.MemberVariable;
                 }
+                else if (scope.scopetype == ASScopeType.Namespace || scope.scopetype == ASScopeType.Global)
+                {
+                    symType = ASSymbolType.GlobalVariable;
+                    insideType = scope.getNamespace().getQualifiedNamespace();
+                }
+
                 AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value, true);
             }
 
@@ -4257,7 +4333,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         delegateBind.node_object = node.expression.children[0];
                     if (node.expression.children[1])
                         delegateBind.node_name = node.expression.children[1];
-                    delegateBind.delegateType = variableType.typename;
+                    delegateBind.delegateType = variableType.name;
                     scope.module.delegateBinds.push(delegateBind);
 
                     for (let i = 0; i < node.expression.children.length; ++i)
@@ -4275,13 +4351,13 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         else
                         {
                             // Detect symbols for other arguments
-                            DetectNodeSymbols(scope, statement, childNode, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                            DetectNodeSymbols(scope, statement, childNode, parseContext, typedb.DBAllowSymbol.Properties);
                         }
                     }
                 }
                 else
                 {
-                    let expressionType = DetectNodeSymbols(scope, statement, node.expression, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                    let expressionType = DetectNodeSymbols(scope, statement, node.expression, parseContext, typedb.DBAllowSymbol.Properties);
 
                     // If this was an auto, we should update the typename symbol to match the expression
                     if (typenameSymbol && typenameSymbol.symbol_name == "auto")
@@ -4296,7 +4372,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // Add symbol for the name 
             if (node.name)
             {
-                let insideType = scope.dbtype ? scope.dbtype.typename : null;
+                let insideType = scope.dbtype ? scope.dbtype.name : null;
                 let symType = ASSymbolType.AccessSpecifier;
                 AddIdentifierSymbol(scope, statement, node.name, symType, insideType, node.name.value, true);
             }
@@ -4314,18 +4390,19 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         continue;
 
                     // Check if this is a global function or a type
-                    let specType = typedb.GetType(cls.className.value);
+                    let specType = typedb.LookupType(scope.getNamespace(), cls.className.value);
                     if (specType)
                     {
                         AddIdentifierSymbol(scope, statement, cls.className, ASSymbolType.Typename, null, cls.className.value);
                     }
                     else
                     {
-                        let globalFunctions = typedb.FindScriptGlobalSymbols(cls.className.value);
+                        let globalFunctions = typedb.LookupGlobalSymbol(scope.getNamespace(), cls.className.value, typedb.DBAllowSymbol.Functions);
                         if (globalFunctions && globalFunctions.length != 0)
                         {
                             let func = globalFunctions[0];
-                            AddIdentifierSymbol(scope, statement, cls.className, ASSymbolType.GlobalFunction, func.containingType, func.name);
+                            let namespace = func.namespace.getQualifiedNamespace();
+                            AddIdentifierSymbol(scope, statement, cls.className, ASSymbolType.GlobalFunction, namespace, func.name);
                         }
                         else
                         {
@@ -4341,8 +4418,8 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.AssetDefinition:
         {
             // Symbol for the global variable that holds the asset
-            let insideType = scope.dbtype ? scope.dbtype.typename : null;
-            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.GlobalVariable, insideType, node.name.value);
+            let namespace = scope.getNamespace().getQualifiedNamespace();
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.GlobalVariable, namespace, node.name.value);
 
             // Symbol for the typename of the asset
             if (node.typename)
@@ -4355,7 +4432,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // Detect in each declaration inside this statement
             for (let child of node.children)
             {
-                DetectNodeSymbols(scope, statement, child, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                DetectNodeSymbols(scope, statement, child, parseContext, typedb.DBAllowSymbol.Properties);
             }
         }
         break;
@@ -4367,7 +4444,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             for (let i = 0, count = node.children.length; i < count; ++i)
             {
                 parseContext.isWriteAccess = (i == 0);
-                DetectNodeSymbols(scope, statement, node.children[i], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                DetectNodeSymbols(scope, statement, node.children[i], parseContext, typedb.DBAllowSymbol.Properties);
             }
         }
         break;
@@ -4378,7 +4455,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         {
             // Detect in each subexpression
             for (let child of node.children)
-                DetectNodeSymbols(scope, statement, child, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                DetectNodeSymbols(scope, statement, child, parseContext, typedb.DBAllowSymbol.Properties);
         }
         break;
         // Some nodes can be followed by an optional statement, but this has been parsed into its own statement
@@ -4391,7 +4468,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.DefaultCaseStatement:
         {
             for (let i = 0, count = node.children.length-1; i < count; ++i)
-                DetectNodeSymbols(scope, statement, node.children[i], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+                DetectNodeSymbols(scope, statement, node.children[i], parseContext, typedb.DBAllowSymbol.Properties);
         }
         break;
         // For each loops add symbols for the typename and the variable name
@@ -4403,7 +4480,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 AddIdentifierSymbol(scope, statement, node.children[1], ASSymbolType.LocalVariable, null, node.children[1].value);
 
             // Detect in the expression that declares the variable
-            let expressionType = DetectNodeSymbols(scope, statement, node.children[2], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            let expressionType = DetectNodeSymbols(scope, statement, node.children[2], parseContext, typedb.DBAllowSymbol.Properties);
 
             // If this was an auto, we should update the typename symbol to match the expression
             if (typenameSymbol && typenameSymbol.symbol_name == "auto")
@@ -4421,7 +4498,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // If we specified a super type, add the symbol for that too
             if (node.superclass)
             {
-                let superType = typedb.GetType(node.superclass.value);
+                let superType = typedb.LookupType(scope.getNamespace(), node.superclass.value);
                 if (superType)
                 {
                     let superSymbol = AddIdentifierSymbol(scope, statement, node.superclass, ASSymbolType.Typename, null, node.superclass.value);
@@ -4433,7 +4510,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 {
                     let hasPotentialCompletions = false;
                     if (scope.module.isEditingNode(statement, node.superclass))
-                        hasPotentialCompletions = typedb.HasTypeWithPrefix(node.superclass.value);
+                        hasPotentialCompletions = typedb.HasTypeWithPrefix(scope.getNamespace(), node.superclass.value);
                     AddUnknownSymbol(scope, statement, node.superclass, hasPotentialCompletions);
                     scope.module.markDependencyIdentifier(node.superclass.value);
                     return null;
@@ -4448,19 +4525,21 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         break;
         case node_types.EnumDefinition:
         {
-            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, "__"+node.name.value);
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
         }
         break;
         // Namespace definitions add a namespace symbol
         case node_types.NamespaceDefinition:
         {
-            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Namespace, null, "__"+node.name.value);
+            let namespace = typedb.LookupNamespace(scope.getNamespace(), node.name.value);
+            if (namespace)
+                AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Namespace, null, namespace.getQualifiedNamespace());
         }
         break;
         // Named argument
         case node_types.NamedArgument:
         {
-            let expr_type = DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            let expr_type = DetectNodeSymbols(scope, statement, node.children[1], parseContext, typedb.DBAllowSymbol.Properties);
             return expr_type;
         }
         break;
@@ -4474,7 +4553,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     if (!enumValue)
                         continue;
                     // Emit symbol for enum value node
-                    AddIdentifierSymbol(scope, statement, enumValue.name, ASSymbolType.GlobalVariable, scope.dbtype.typename, enumValue.name.value);
+                    AddIdentifierSymbol(scope, statement, enumValue.name, ASSymbolType.MemberVariable, scope.dbtype.name, enumValue.name.value);
                 }
             }
         }
@@ -4506,10 +4585,10 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 let varSymbol = AddIdentifierSymbol(scope, statement, node, symType, null, node.value, parseContext.isWriteAccess);
 
                 if (!usedVariable.usages)
-                    usedVariable.usages = new Array<ASSymbol>();
+                    usedVariable.usages = new Array<ASSemanticSymbol>();
                 usedVariable.usages.push(varSymbol);
 
-                let dbType = typedb.GetType(usedVariable.typename);
+                let dbType = typedb.LookupType(checkscope.getNamespace(), usedVariable.typename);
                 scope.module.markDependencyType(dbType);
                 return dbType;
             }
@@ -4532,69 +4611,26 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
 
         if (typedb.AllowsProperties(symbol_type))
         {
-            let getAccessor = insideType.findFirstSymbol("Get"+node.value, typedb.DBAllowSymbol.FunctionOnly);
+            let getAccessor = insideType.findFirstSymbol("Get"+node.value, typedb.DBAllowSymbol.Functions);
             if (getAccessor && getAccessor instanceof typedb.DBMethod)
             {
                 AddIdentifierSymbol(scope, statement, node, ASSymbolType.MemberAccessor, getAccessor.containingType, getAccessor.name, parseContext.isWriteAccess);
                 scope.module.markDependencyFunction(getAccessor);
-                return typedb.GetType(getAccessor.returnType);
+                return typedb.LookupType(getAccessor.namespace, getAccessor.returnType);
             }
 
-            let setAccessor = insideType.findFirstSymbol("Set"+node.value, typedb.DBAllowSymbol.FunctionOnly);
+            let setAccessor = insideType.findFirstSymbol("Set"+node.value, typedb.DBAllowSymbol.Functions);
             if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
             {
                 AddIdentifierSymbol(scope, statement, node, ASSymbolType.MemberAccessor, setAccessor.containingType, setAccessor.name, parseContext.isWriteAccess);
                 scope.module.markDependencyFunction(setAccessor);
-                return typedb.GetType(setAccessor.args[0].typename);
-            }
-        }
-    }
-
-    // Find a symbol in global scope
-    for (let globalType of scope.getAvailableGlobalTypes())
-    {
-        let usedSymbol = globalType.findFirstSymbol(node.value, symbol_type);
-        if (usedSymbol)
-        {
-            let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.GlobalVariable : ASSymbolType.GlobalFunction;
-            if (usedSymbol instanceof typedb.DBMethod)
-            {
-                if (usedSymbol.isConstructor)
-                    symType = ASSymbolType.Typename;
-                if (usedSymbol.isLocal && !usedSymbol.IsAccessibleFromModule(scope.module.modulename))
-                    usedSymbol = null;
-            }
-
-            if (usedSymbol)
-            {
-                AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
-                scope.module.markDependencySymbol(usedSymbol);
-                return usedSymbol;
-            }
-        }
-
-        if (typedb.AllowsProperties(symbol_type))
-        {
-            let getAccessor = globalType.findFirstSymbol("Get"+node.value, typedb.DBAllowSymbol.FunctionOnly);
-            if (getAccessor && getAccessor instanceof typedb.DBMethod && getAccessor.isProperty && getAccessor.IsAccessibleFromModule(scope.module.modulename))
-            {
-                AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, getAccessor.containingType, getAccessor.name, parseContext.isWriteAccess);
-                scope.module.markDependencyFunction(getAccessor);
-                return typedb.GetType(getAccessor.returnType);
-            }
-
-            let setAccessor = globalType.findFirstSymbol("Set"+node.value, typedb.DBAllowSymbol.FunctionOnly);
-            if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0 && setAccessor.IsAccessibleFromModule(scope.module.modulename))
-            {
-                AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, setAccessor.containingType, setAccessor.name, parseContext.isWriteAccess);
-                scope.module.markDependencyFunction(setAccessor);
-                return typedb.GetType(setAccessor.args[0].typename);
+                return typedb.LookupType(setAccessor.namespace, setAccessor.args[0].typename);
             }
         }
     }
 
     // Find an unimported global symbol
-    let globalSymbols = typedb.FindScriptGlobalSymbols(node.value);
+    let globalSymbols = typedb.LookupGlobalSymbol(scope.getNamespace(), node.value);
     if (globalSymbols)
     {
         for (let usedSymbol of globalSymbols)
@@ -4616,16 +4652,18 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
 
                 if (usedSymbol.isLocal && !usedSymbol.IsAccessibleFromModule(scope.module.modulename))
                     continue;
-                let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
-                if (!ScriptSettings.automaticImports)
+                let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction,
+                    usedSymbol.namespace.getQualifiedNamespace(), usedSymbol.name, parseContext.isWriteAccess);
+                if (!ScriptSettings.automaticImports && usedSymbol.declaredModule && !scope.module.isModuleImported(usedSymbol.declaredModule))
                     addedSym.isUnimported = true;
                 scope.module.markDependencyFunction(usedSymbol);
                 return usedSymbol;
             }
             else if (usedSymbol instanceof typedb.DBProperty && typedb.AllowsProperties(symbol_type))
             {
-                let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalVariable, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
-                if (!ScriptSettings.automaticImports)
+                let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalVariable,
+                    usedSymbol.namespace.getQualifiedNamespace(), usedSymbol.name, parseContext.isWriteAccess);
+                if (!ScriptSettings.automaticImports && usedSymbol.declaredModule && !scope.module.isModuleImported(usedSymbol.declaredModule))
                     addedSym.isUnimported = true;
                 scope.module.markDependencyProperty(usedSymbol);
                 return usedSymbol;
@@ -4636,7 +4674,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
     // Find an unimproted global accessor
     if (typedb.AllowsProperties(symbol_type))
     {
-        let globalGetAccessors = typedb.FindScriptGlobalSymbols("Get"+node.value);
+        let globalGetAccessors = typedb.LookupGlobalSymbol(scope.getNamespace(), "Get"+node.value, typedb.DBAllowSymbol.Functions);
         if (globalGetAccessors)
         {
             for (let usedSymbol of globalGetAccessors)
@@ -4645,16 +4683,17 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 {
                     if (usedSymbol.isLocal && !usedSymbol.IsAccessibleFromModule(scope.module.modulename))
                         continue;
-                    let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
+                    let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor,
+                        usedSymbol.namespace.getQualifiedNamespace(), usedSymbol.name, parseContext.isWriteAccess);
                     if (!ScriptSettings.automaticImports)
                         addedSym.isUnimported = true;
                     scope.module.markDependencyFunction(usedSymbol);
-                    return typedb.GetType(usedSymbol.returnType);
+                    return typedb.LookupType(usedSymbol.namespace, usedSymbol.returnType);
                 }
             }
         }
 
-        let globalSetAccessors = typedb.FindScriptGlobalSymbols("Set"+node.value);
+        let globalSetAccessors = typedb.LookupGlobalSymbol(scope.getNamespace(), "Set"+node.value, typedb.DBAllowSymbol.Functions);
         if (globalSetAccessors)
         {
             for (let usedSymbol of globalSetAccessors)
@@ -4663,11 +4702,12 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 {
                     if (usedSymbol.isLocal && !usedSymbol.IsAccessibleFromModule(scope.module.modulename))
                         continue;
-                    let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor, usedSymbol.containingType, usedSymbol.name, parseContext.isWriteAccess);
-                    if (!ScriptSettings.automaticImports)
+                    let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalAccessor,
+                        usedSymbol.namespace.getQualifiedNamespace(), usedSymbol.name, parseContext.isWriteAccess);
+                    if (!ScriptSettings.automaticImports && usedSymbol.declaredModule && !scope.module.isModuleImported(usedSymbol.declaredModule))
                         addedSym.isUnimported = true;
                     scope.module.markDependencyFunction(usedSymbol);
-                    return typedb.GetType(usedSymbol.args[0].typename);
+                    return typedb.LookupType(usedSymbol.namespace, usedSymbol.args[0].typename);
                 }
             }
         }
@@ -4687,10 +4727,10 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
     if (node == statement.ast && scope.module.isEditingInside(statement.start_offset + node.start, statement.end_offset + node.end + 1))
     {
         // It could be a type as well
-        let symType = typedb.GetType(node.value);
+        let symType = typedb.LookupType(scope.getNamespace(), node.value);
         if (symType)
         {
-            let addedSymbol = AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, symType.typename);
+            let addedSymbol = AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, symType.name);
             if (symType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(symType.declaredModule))
                 addedSymbol.isUnimported = true;
 
@@ -4702,15 +4742,12 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         }
 
         // We could be typing a namespace
-        let nsType = typedb.GetType("__"+node.value);
+        let nsType = typedb.LookupNamespace(scope.getNamespace(), node.value);
         if (nsType)
         {
-            let symType = nsType.isEnum ? ASSymbolType.Typename : ASSymbolType.Namespace;
-            let addedSymbol = AddIdentifierSymbol(scope, statement, node, symType, null, nsType.typename);
-            if (nsType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(nsType.declaredModule))
-                addedSymbol.isUnimported = true;
-
-            scope.module.markDependencyType(nsType);
+            let symType = ASSymbolType.Namespace;
+            let addedSymbol = AddIdentifierSymbol(scope, statement, node, symType, null, nsType.getQualifiedNamespace());
+            scope.module.markDependencyNamespace(nsType);
 
             // We do not return the symbol here, because we tried to parse a namespace as an identifier
             // This should only happen on incomplete statements.
@@ -4758,24 +4795,26 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
         nsName += scopes[i];
     }
 
-    let dbtype = typedb.GetType("__"+nsName.trim());
-    if (!dbtype)
+    let refType = typedb.LookupType(scope.getNamespace(), nsName.trim());
+    let namespace = typedb.LookupNamespace(scope.getNamespace(), nsName.trim());
+
+    if (!refType && !namespace)
         return false;
 
     let nsSymbol = AddIdentifierSymbol(scope, statement, {
         start: identifier.start,
         end: identifier.start+nsName.length,
         value: nsName
-    }, ASSymbolType.Namespace, null, dbtype.typename);
+    }, ASSymbolType.Namespace, null, null);
     
-    if (dbtype.isShadowedNamespace())
+    if (refType && (namespace || refType.isEnum))
     {
         nsSymbol.type = ASSymbolType.Typename;
-        nsSymbol.symbol_name = dbtype.rawName;
+        nsSymbol.symbol_name = refType.name;
     }
-    else if (dbtype.isEnum)
+    else
     {
-        nsSymbol.type = ASSymbolType.Typename;
+        nsSymbol.symbol_name = namespace.getQualifiedNamespace();
     }
 
     // Could be a symbol inside the type
@@ -4786,32 +4825,46 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
         value: findName,
     };
 
-    let usedSymbol = dbtype.findFirstSymbol(findName, symbol_type);
-    if (usedSymbol)
+    if (refType && refType.isEnum)
     {
-        let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.GlobalVariable : ASSymbolType.GlobalFunction;
-        AddIdentifierSymbol(scope, statement, identifierNode, symType, usedSymbol.containingType, usedSymbol.name);
-        scope.module.markDependencySymbol(usedSymbol);
-        return true;
-    }
-
-    // Could be a property accessor
-    if (typedb.AllowsProperties(symbol_type))
-    {
-        let getAccessor = dbtype.findFirstSymbol("Get"+findName, typedb.DBAllowSymbol.FunctionOnly);
-        if (getAccessor && getAccessor instanceof typedb.DBMethod)
+        let usedSymbol = refType.findFirstSymbol(findName, symbol_type);
+        if (usedSymbol)
         {
-            AddIdentifierSymbol(scope, statement, identifierNode, ASSymbolType.GlobalAccessor, getAccessor.containingType, getAccessor.name);
-            scope.module.markDependencyFunction(getAccessor);
+            let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.MemberVariable : ASSymbolType.MemberFunction;
+            AddIdentifierSymbol(scope, statement, identifierNode, symType, usedSymbol.containingType, usedSymbol.name);
+            scope.module.markDependencySymbol(usedSymbol);
+            return true;
+        }
+    }
+    else
+    {
+        let usedSymbol = namespace.findFirstSymbol(findName, symbol_type);
+        if (usedSymbol)
+        {
+            let symType = (usedSymbol instanceof typedb.DBProperty) ? ASSymbolType.GlobalVariable : ASSymbolType.GlobalFunction;
+            AddIdentifierSymbol(scope, statement, identifierNode, symType, namespace.getQualifiedNamespace(), usedSymbol.name);
+            scope.module.markDependencySymbol(usedSymbol);
             return true;
         }
 
-        let setAccessor = dbtype.findFirstSymbol("Set"+findName, typedb.DBAllowSymbol.FunctionOnly);
-        if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
+        // Could be a property accessor
+        if (typedb.AllowsProperties(symbol_type))
         {
-            AddIdentifierSymbol(scope, statement, identifierNode, ASSymbolType.GlobalAccessor, setAccessor.containingType, setAccessor.name);
-            scope.module.markDependencyFunction(setAccessor);
-            return true;
+            let getAccessor = namespace.findFirstSymbol("Get"+findName, typedb.DBAllowSymbol.Functions);
+            if (getAccessor && getAccessor instanceof typedb.DBMethod)
+            {
+                AddIdentifierSymbol(scope, statement, identifierNode, ASSymbolType.GlobalAccessor, namespace.getQualifiedNamespace(), getAccessor.name);
+                scope.module.markDependencyFunction(getAccessor);
+                return true;
+            }
+
+            let setAccessor = namespace.findFirstSymbol("Set"+findName, typedb.DBAllowSymbol.Functions);
+            if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
+            {
+                AddIdentifierSymbol(scope, statement, identifierNode, ASSymbolType.GlobalAccessor, namespace.getQualifiedNamespace(), setAccessor.name);
+                scope.module.markDependencyFunction(setAccessor);
+                return true;
+            }
         }
     }
 
@@ -4822,7 +4875,10 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
         if (scope.module.isEditingNode(statement, identifier))
         {
             // Check if the symbol that we're editing can still complete to something valid later
-            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInType(scope, statement, dbtype, findName, typedb.DBAllowSymbol.PropertiesAndFunctions);
+            if (refType && refType.isEnum)
+                hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInType(scope, statement, refType, findName, typedb.DBAllowSymbol.PropertiesAndFunctions);
+            else
+                hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInNamespace(scope, statement, namespace, findName, typedb.DBAllowSymbol.PropertiesAndFunctions);
         }
 
         AddUnknownSymbol(scope, statement, identifierNode, hasPotentialCompletions);
@@ -4850,7 +4906,7 @@ function DetectSymbolFromDelegateBindFunctionName(scope : ASScope, statement : A
             funcName = funcName.substring(1, funcName.length-1);
         }
 
-        let foundFunc = insideType.findFirstSymbol(funcName, typedb.DBAllowSymbol.FunctionOnly);
+        let foundFunc = insideType.findFirstSymbol(funcName, typedb.DBAllowSymbol.Functions);
         if (!foundFunc)
         {
             if (!scope.module.isEditingNode(statement, nameNode))
@@ -4864,7 +4920,7 @@ function DetectSymbolFromDelegateBindFunctionName(scope : ASScope, statement : A
         }
         else
         {
-            let symbol = AddIdentifierSymbol(scope, statement, nameNode, ASSymbolType.MemberFunction, foundFunc.containingType.typename, foundFunc.name);
+            let symbol = AddIdentifierSymbol(scope, statement, nameNode, ASSymbolType.MemberFunction, foundFunc.containingType.name, foundFunc.name);
             if (symbol)
             {
                 symbol.start += symbolOffset;
@@ -4905,43 +4961,19 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
 
         if (typedb.AllowsProperties(symbol_type))
         {
-            let getAccessor = insideType.findFirstSymbolWithPrefix("Get"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+            let getAccessor = insideType.findFirstSymbolWithPrefix("Get"+identifierPrefix, typedb.DBAllowSymbol.Functions);
             if (getAccessor && getAccessor instanceof typedb.DBMethod)
                 return true;
 
-            let setAccessor = insideType.findFirstSymbol("Set"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
-            if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
-                return true;
-        }
-    }
-
-    // Find a symbol in global scope
-    for (let globalType of scope.getAvailableGlobalTypes())
-    {
-        let usedSymbol = globalType.findFirstSymbolWithPrefix(identifierPrefix, symbol_type);
-        if (usedSymbol)
-            return true;
-
-        if (typedb.AllowsProperties(symbol_type))
-        {
-            let getAccessor = globalType.findFirstSymbol("Get"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
-            if (getAccessor && getAccessor instanceof typedb.DBMethod)
-                return true;
-
-            let setAccessor = globalType.findFirstSymbol("Set"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+            let setAccessor = insideType.findFirstSymbol("Set"+identifierPrefix, typedb.DBAllowSymbol.Functions);
             if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
                 return true;
         }
     }
 
     // It could be a type as well
-    for (let dbtype of typedb.GetAllTypes())
-    {
-        if (dbtype[1].typename.startsWith(identifierPrefix))
-            return true;
-        if (dbtype[1].typename.startsWith("__"+identifierPrefix))
-            return true;
-    }
+    if (typedb.HasTypeWithPrefix(scope.getNamespace(), identifierPrefix))
+        return true;
 
     // Maybe we're typing a keyword?
     for (let kw of ASKeywords)
@@ -4962,7 +4994,7 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
 
     // We could be typing a global in a module we haven't imported yet
     {
-        let prefixed = typedb.FindScriptGlobalSymbolsWithPrefix(identifierPrefix);
+        let prefixed = typedb.LookupGlobalSymbolsWithPrefix(scope.getNamespace(), identifierPrefix);
         if (prefixed)
         {
             for (let func of prefixed)
@@ -4981,7 +5013,7 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
     // We could be typing a global get accessor from a module we haven't imported yet
     if (typedb.AllowsProperties(symbol_type))
     {
-        let getAccessors = typedb.FindScriptGlobalSymbolsWithPrefix("Get"+identifierPrefix);
+        let getAccessors = typedb.LookupGlobalSymbolsWithPrefix(scope.getNamespace(), "Get"+identifierPrefix, typedb.DBAllowSymbol.Functions);
         if (getAccessors)
         {
             for (let func of getAccessors)
@@ -4991,7 +5023,7 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
             }
         }
 
-        let setAccessors = typedb.FindScriptGlobalSymbolsWithPrefix("Set"+identifierPrefix);
+        let setAccessors = typedb.LookupGlobalSymbolsWithPrefix(scope.getNamespace(), "Set"+identifierPrefix, typedb.DBAllowSymbol.Functions);
         if (setAccessors)
         {
             for (let func of setAccessors)
@@ -5015,12 +5047,11 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
     if (inSymbol instanceof typedb.DBType)
         dbtype = inSymbol;
     else if (inSymbol instanceof typedb.DBProperty)
-        dbtype = typedb.GetType(inSymbol.typename);
+        dbtype = typedb.LookupType(inSymbol.namespace, inSymbol.typename);
 
     if (!dbtype)
         return null;
 
-    let isGlobal = dbtype.isNamespaceOrGlobalScope();
     let symType : ASSymbolType = ASSymbolType.UnknownError;
 
     // Could be a symbol inside the type
@@ -5028,17 +5059,11 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
     if (usedSymbol)
     {
         if (usedSymbol instanceof typedb.DBProperty)
-            symType = isGlobal ? ASSymbolType.GlobalVariable : ASSymbolType.MemberVariable;
+            symType = ASSymbolType.MemberVariable;
         else
-            symType = isGlobal ? ASSymbolType.GlobalFunction : ASSymbolType.MemberFunction;
+            symType = ASSymbolType.MemberFunction;
 
         let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.containingType, usedSymbol.name);
-        if (isGlobal && !ScriptSettings.automaticImports && usedSymbol.declaredModule != dbtype.declaredModule)
-        {
-            if (!scope.module.isModuleImported(usedSymbol.declaredModule))
-                identifierSym.isUnimported = true;
-        }
-
         scope.module.markDependencySymbol(usedSymbol);
         return usedSymbol;
     }
@@ -5046,58 +5071,29 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
     // Could be a property accessor
     if (typedb.AllowsProperties(symbol_type))
     {
-        let getAccessor = dbtype.findFirstSymbol("Get"+node.value, typedb.DBAllowSymbol.FunctionOnly);
+        let getAccessor = dbtype.findFirstSymbol("Get"+node.value, typedb.DBAllowSymbol.Functions);
         if (getAccessor && getAccessor instanceof typedb.DBMethod)
         {
-            symType = isGlobal ? ASSymbolType.GlobalAccessor : ASSymbolType.MemberAccessor;
+            symType = ASSymbolType.MemberAccessor;
             let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, getAccessor.containingType, getAccessor.name);
-            if (isGlobal && !ScriptSettings.automaticImports && getAccessor.declaredModule != dbtype.declaredModule)
-            {
-                if (!scope.module.isModuleImported(getAccessor.declaredModule))
-                    identifierSym.isUnimported = true;
-            }
-
             scope.module.markDependencyFunction(getAccessor);
-            return typedb.GetType(getAccessor.returnType);
+            return typedb.LookupType(getAccessor.namespace, getAccessor.returnType);
         }
 
-        let setAccessor = dbtype.findFirstSymbol("Set"+node.value, typedb.DBAllowSymbol.FunctionOnly);
+        let setAccessor = dbtype.findFirstSymbol("Set"+node.value, typedb.DBAllowSymbol.Functions);
         if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
         {
-            symType = isGlobal ? ASSymbolType.GlobalAccessor : ASSymbolType.MemberAccessor;
+            symType = ASSymbolType.MemberAccessor;
             let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, setAccessor.containingType, setAccessor.name);
-            if (isGlobal && !ScriptSettings.automaticImports && setAccessor.declaredModule != dbtype.declaredModule)
-            {
-                if (!scope.module.isModuleImported(setAccessor.declaredModule))
-                    identifierSym.isUnimported = true;
-            }
-
             scope.module.markDependencyFunction(setAccessor);
-            return typedb.GetType(setAccessor.args[0].typename);
+            return typedb.LookupType(setAccessor.namespace, setAccessor.args[0].typename);
         }
     }
 
     if (typedb.AllowsFunctions(symbol_type))
     {
-        // Check if this is an imported mixin call
-        for (let globalType of scope.getAvailableGlobalTypes())
-        {
-            let usedType = globalType.findFirstSymbol(node.value, typedb.DBAllowSymbol.FunctionsAndMixins);
-            if (usedType instanceof typedb.DBMethod)
-            {
-                if (!usedType.isMixin)
-                    continue;
-                if (usedType.args.length != 0 && dbtype.inheritsFrom(usedType.args[0].typename))
-                {
-                    AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, usedType.containingType, usedType.name);
-                    scope.module.markDependencyFunction(usedType);
-                    return usedType;
-                }
-            }
-        }
-
         // Check if this is a mixin call in an unimported global scope
-        let mixinFunctions = typedb.FindScriptGlobalSymbols(node.value);
+        let mixinFunctions = typedb.LookupGlobalSymbol(scope.getNamespace(), node.value, typedb.DBAllowSymbol.Mixins);
         if (mixinFunctions)
         {
             for (let symbol of mixinFunctions)
@@ -5108,8 +5104,8 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
                         continue;
                     if (symbol.args.length != 0 && dbtype.inheritsFrom(symbol.args[0].typename))
                     {
-                        let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, symbol.containingType, symbol.name);
-                        if (!ScriptSettings.automaticImports)
+                        let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction, symbol.namespace.getQualifiedNamespace(), symbol.name);
+                        if (!ScriptSettings.automaticImports && symbol.declaredModule && !scope.module.isModuleImported(symbol.declaredModule))
                             addedSym.isUnimported = true;
                         scope.module.markDependencyFunction(symbol);
                         return symbol;
@@ -5149,11 +5145,11 @@ function CheckIdentifierIsPrefixForValidSymbolInType(scope : ASScope, statement 
     // Could be a property accessor
     if (typedb.AllowsProperties(symbol_type))
     {
-        let getAccessor = dbtype.findFirstSymbolWithPrefix("Get"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+        let getAccessor = dbtype.findFirstSymbolWithPrefix("Get"+identifierPrefix, typedb.DBAllowSymbol.Functions);
         if (getAccessor && getAccessor instanceof typedb.DBMethod)
             return true;
 
-        let setAccessor = dbtype.findFirstSymbolWithPrefix("Set"+identifierPrefix, typedb.DBAllowSymbol.FunctionOnly);
+        let setAccessor = dbtype.findFirstSymbolWithPrefix("Set"+identifierPrefix, typedb.DBAllowSymbol.Functions);
         if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
             return true;
     }
@@ -5161,7 +5157,7 @@ function CheckIdentifierIsPrefixForValidSymbolInType(scope : ASScope, statement 
     if (typedb.AllowsFunctions(symbol_type))
     {
         // Could be a mixin function in global scope
-        let mixinFunctions = typedb.FindScriptGlobalSymbolsWithPrefix(identifierPrefix);
+        let mixinFunctions = typedb.LookupGlobalSymbolsWithPrefix(scope.getNamespace(), identifierPrefix, typedb.DBAllowSymbol.Mixins);
         if (mixinFunctions)
         {
             for (let usedSymbol of mixinFunctions)
@@ -5183,6 +5179,101 @@ function CheckIdentifierIsPrefixForValidSymbolInType(scope : ASScope, statement 
 
     return false;
 }
+
+function DetectSymbolsInNamespace(scope : ASScope, statement : ASStatement, namespace : typedb.DBNamespace, node : any, parseContext : ASParseContext, symbol_type : typedb.DBAllowSymbol) : typedb.DBSymbol | typedb.DBType
+{
+    if (!namespace)
+        return null;
+
+    let symType : ASSymbolType = ASSymbolType.UnknownError;
+
+    // Could be a symbol inside the type
+    let usedSymbol = namespace.findFirstSymbol(node.value, symbol_type);
+    if (usedSymbol)
+    {
+        if (usedSymbol instanceof typedb.DBProperty)
+            symType = ASSymbolType.GlobalVariable;
+        else
+            symType = ASSymbolType.GlobalFunction;
+
+        let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, usedSymbol.namespace.getQualifiedNamespace(), usedSymbol.name);
+        if (!ScriptSettings.automaticImports && usedSymbol.declaredModule && !scope.module.isModuleImported(usedSymbol.declaredModule))
+            identifierSym.isUnimported = true;
+
+        scope.module.markDependencySymbol(usedSymbol);
+        return usedSymbol;
+    }
+
+    // Could be a property accessor
+    if (typedb.AllowsProperties(symbol_type))
+    {
+        let getAccessor = namespace.findFirstSymbol("Get"+node.value, typedb.DBAllowSymbol.Functions);
+        if (getAccessor && getAccessor instanceof typedb.DBMethod)
+        {
+            symType = ASSymbolType.GlobalAccessor;
+            let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, getAccessor.namespace.getQualifiedNamespace(), getAccessor.name);
+            if (!ScriptSettings.automaticImports && getAccessor.declaredModule && !scope.module.isModuleImported(getAccessor.declaredModule))
+                identifierSym.isUnimported = true;
+
+            scope.module.markDependencyFunction(getAccessor);
+            return typedb.LookupType(getAccessor.namespace, getAccessor.returnType);
+        }
+
+        let setAccessor = namespace.findFirstSymbol("Set"+node.value, typedb.DBAllowSymbol.Functions);
+        if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
+        {
+            symType = ASSymbolType.GlobalAccessor;
+            let identifierSym = AddIdentifierSymbol(scope, statement, node, symType, setAccessor.namespace.getQualifiedNamespace(), setAccessor.name);
+            if (!ScriptSettings.automaticImports && getAccessor.declaredModule && !scope.module.isModuleImported(setAccessor.declaredModule))
+                identifierSym.isUnimported = true;
+
+            scope.module.markDependencyFunction(setAccessor);
+            return typedb.LookupType(setAccessor.namespace, setAccessor.args[0].typename);
+        }
+    }
+
+    // This symbol is entirely unknown, maybe emit an invalid symbol so the user knows
+    if (parseContext.allow_errors)
+    {
+        let hasPotentialCompletions = false;
+        if (scope.module.isEditingNode(statement, node))
+        {
+            // Check if the symbol that we're editing can still complete to something valid later
+            hasPotentialCompletions = CheckIdentifierIsPrefixForValidSymbolInNamespace(scope, statement, namespace, node.value, typedb.DBAllowSymbol.PropertiesAndFunctions);
+        }
+
+        AddUnknownSymbol(scope, statement, node, hasPotentialCompletions);
+        scope.module.markDependencyIdentifier(node.value);
+    }
+
+    return null;
+}
+
+function CheckIdentifierIsPrefixForValidSymbolInNamespace(scope : ASScope, statement : ASStatement, namespace : typedb.DBNamespace, identifierPrefix : string, symbol_type : typedb.DBAllowSymbol) : boolean
+{
+    if (identifierPrefix.length < 2)
+        return true;
+
+    // Could be a symbol inside the type
+    let usedSymbol = namespace.findFirstSymbolWithPrefix(identifierPrefix, true, symbol_type);
+    if (usedSymbol)
+        return true;
+
+    // Could be a property accessor
+    if (typedb.AllowsProperties(symbol_type))
+    {
+        let getAccessor = namespace.findFirstSymbolWithPrefix("Get"+identifierPrefix, true, typedb.DBAllowSymbol.Functions);
+        if (getAccessor && getAccessor instanceof typedb.DBMethod)
+            return true;
+
+        let setAccessor = namespace.findFirstSymbolWithPrefix("Set"+identifierPrefix, true, typedb.DBAllowSymbol.Functions);
+        if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
+            return true;
+    }
+
+    return false;
+}
+
 
 let re_equalsspecifier = /^(.*)=\s*$/;
 let re_formatspecifier = /^(.*)=?:(.?[=<>^])?[0-9dxXbconeEfFgG,+-\.%#\s]*$/;
@@ -5273,7 +5364,7 @@ function DetectFormatStringSymbols(scope : ASScope, statement : ASStatement, nod
 
         // Detect symbols in the parsed expression
         if (fakeStatement.ast)
-            DetectNodeSymbols(scope, fakeStatement, fakeStatement.ast, parseContext, typedb.DBAllowSymbol.PropertyOnly);
+            DetectNodeSymbols(scope, fakeStatement, fakeStatement.ast, parseContext, typedb.DBAllowSymbol.Properties);
     }
 }
 

@@ -157,7 +157,7 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
                 let label : string | ASInlayLabelPart[] = null;
                 label = "["+scopevar.typename+"]";
 
-                let varType = typedb.GetType(scopevar.typename);
+                let varType = typedb.LookupType(scope.getNamespace(), scopevar.typename);
                 if (varType && varType.declaredModule)
                 {
                     let varModule = scriptfiles.GetModule(varType.declaredModule);
@@ -250,7 +250,7 @@ function ShouldLabelConstantNode(node : any, argName : string) : boolean
             // and we should label it as a constant
             if (node.children[0] && node.children[0].type == node_types.Identifier)
             {
-                let nsType = typedb.GetType(node.children[0].value);
+                let nsType = typedb.GetTypeByName(node.children[0].value);
                 if (nsType && nsType.isStruct)
                     return true;
             }

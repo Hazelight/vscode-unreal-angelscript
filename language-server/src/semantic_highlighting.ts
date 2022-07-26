@@ -68,7 +68,7 @@ export function HighlightSymbolsDelta(asmodule : scriptfiles.ASModule, previousI
 
 function BuildSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTokensBuilder)
 {
-    for (let symbol of asmodule.symbols)
+    for (let symbol of asmodule.semanticSymbols)
     {
         if (symbol.noColor)
             continue;
@@ -88,12 +88,28 @@ function BuildSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTokensB
             if (symbol.type == scriptfiles.ASSymbolType.Namespace)
                 symName = symbol.symbol_name.substr(2);
             
-            let dbtype = typedb.GetType(symName);
             let classification = typedb.DBTypeClassification.Other;
-            if (dbtype)
-                classification = dbtype.getTypeClassification();
+
+            if (symbol.type == scriptfiles.ASSymbolType.Typename)
+            {
+                let dbtype = typedb.GetTypeByName(symbol.symbol_name);
+                if (dbtype)
+                    classification = dbtype.getTypeClassification();
+            }
+            else if (symbol.type == scriptfiles.ASSymbolType.Namespace)
+            {
+                let namespace = typedb.LookupNamespace(null, symbol.symbol_name);
+                if (namespace)
+                {
+                    let dbtype = namespace.getShadowedType();
+                    if (dbtype)
+                        classification = dbtype.getTypeClassification();
+                }
+            }
             else if (symbol.symbol_name == "auto")
+            {
                 classification = typedb.DBTypeClassification.Primitive;
+            }
 
             switch (classification)
             {
