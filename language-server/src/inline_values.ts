@@ -73,9 +73,9 @@ let WhitelistedInlineStructs = new Set<string>([
     "FText",
 ]);
 
-function CanTypeHaveInlineValue(typename : string) : boolean
+function CanTypeHaveInlineValue(scope : scriptfiles.ASScope, typename : string) : boolean
 {
-    let dbType = typedb.GetTypeByName(typename);
+    let dbType = typedb.LookupType(scope.getNamespace(), typename);
     if (!dbType)
         return false;
 
@@ -188,7 +188,7 @@ function AddScopeInlineValues(context : InlineValueContext, scope : scriptfiles.
     {
         if (scopeVar.start_offset_name >= context.offset)
             continue;
-        if (!CanTypeHaveInlineValue(scopeVar.typename))
+        if (!CanTypeHaveInlineValue(scope, scopeVar.typename))
             continue;
 
         if (scopeVar.isArgument)
@@ -236,7 +236,7 @@ function AddScopeInlineValues(context : InlineValueContext, scope : scriptfiles.
 
                         if (memberVar
                             && !context.shownMembers.has(memberVar.name)
-                            && CanTypeHaveInlineValue(memberVar.typename))
+                            && CanTypeHaveInlineValue(scope, memberVar.typename))
                         {
                             context.values.push({
                                 range: context.asmodule.getRange(

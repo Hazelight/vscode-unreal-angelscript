@@ -293,7 +293,7 @@ export function GetUnrealTypeFor(typename : string) : string
     // Walk through the typedb to find parent types until we find a C++ class
     let type = typedb.GetTypeByName(typename);
     while(type && type.declaredModule && type.supertype)
-        type = typedb.GetTypeByName(type.supertype);
+        type = type.getSuperType();
 
     if (!type)
         return null;
@@ -1107,6 +1107,7 @@ export function ResolveWorkspaceSymbol(symbol : WorkspaceSymbol) : WorkspaceSymb
                     symbol.location = asmodule.getLocationRange(dbtype.moduleOffset, dbtype.moduleScopeEnd);
                 else
                     symbol.location = asmodule.getLocation(dbtype.moduleOffset);
+                return symbol;
             }
         }
 
@@ -1125,6 +1126,7 @@ export function ResolveWorkspaceSymbol(symbol : WorkspaceSymbol) : WorkspaceSymb
                         symbol.location = asmodule.getLocationRange(scriptDecl.scopeOffsetStart, scriptDecl.scopeOffsetEnd);
                     else
                         symbol.location = asmodule.getLocation(scriptDecl.declaredOffset);
+                    return symbol;
                 }
             }
         }
@@ -1151,6 +1153,7 @@ export function ResolveWorkspaceSymbol(symbol : WorkspaceSymbol) : WorkspaceSymb
                 {
                     symbol.location = asmodule.getLocation(subSymbol.moduleOffset);
                 }
+                return symbol;
             }
         }
 
@@ -1177,6 +1180,7 @@ export function ResolveWorkspaceSymbol(symbol : WorkspaceSymbol) : WorkspaceSymb
                     {
                         symbol.location = asmodule.getLocation(subSymbol.moduleOffset);
                     }
+                    return symbol;
                 }
             }
         }

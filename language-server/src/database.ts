@@ -9,6 +9,7 @@ export enum DBAllowSymbol
     Types = 1 << 3,
 
     PropertiesAndFunctions = Properties | Functions,
+    FunctionsAndMixins = Functions | Mixins,
 };
 
 export function AllowsFunctions(allowSymbol : DBAllowSymbol)
@@ -781,41 +782,6 @@ export class DBType implements DBSymbol
         return null;
     }
 
-    getPropertyAccessorType(name : string) : string | null
-    {
-        let getter = this.getMethod("Get"+name);
-        if (getter)
-            return getter.returnType;
-        let setter = this.getMethod("Get"+name);
-        if (setter && setter.args.length >= 1)
-            return setter.args[0].typename;
-        return null;
-    }
-
-    allMethods() : Array<DBMethod>
-    {
-        if (!this.hasExtendTypes())
-            return this.methods;
-
-        let methodNames = new Map<string, DBType>();
-        let outMethods = new Array<DBMethod>();
-
-        for (let type of this.getCombineTypesList())
-        {
-            for (let mth of type.methods)
-            {
-                let declType = methodNames.get(mth.name);
-                if (declType && declType != type)
-                    continue;
-
-                outMethods.push(mth);
-                methodNames.set(mth.name, type);
-            }
-        }
-
-        return outMethods;
-    }
-
     getMethod(name : string, recurse : boolean = true) : DBMethod | null
     {
         for (let func of this.methods)
@@ -963,6 +929,10 @@ export class DBType implements DBSymbol
                 return true;
         }
         return false;
+    }
+
+    forEachSymbol(func : any)
+    {
     }
 
     findFirstSymbol(name : string, allow_symbols = DBAllowSymbol.All) : DBSymbol | null
@@ -1249,6 +1219,11 @@ export class DBNamespace
         return null;
     }
 
+    isRootNamespace() : boolean
+    {
+        return this.parentNamespace === null;
+    }
+
     forEachSymbol(func : any)
     {
     }
@@ -1376,6 +1351,11 @@ export class DBNamespace
     }
 
     getFirstScriptDeclaration() : DBNamespaceDeclaration | null
+    {
+        return null;
+    }
+
+    getCppDeclaration() : DBNamespaceDeclaration | null
     {
         return null;
     }

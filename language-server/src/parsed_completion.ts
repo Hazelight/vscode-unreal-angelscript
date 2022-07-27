@@ -77,7 +77,7 @@ class CompletionContext
     completingNode: any = null;
     priorExpression: any = null;
 
-    priorType: typedb.DBType = null;
+    priorType: typedb.DBType | typedb.DBNamespace = null;
     priorTypeWasNamespace : boolean = false;
 
     requiresPriorType : boolean = false;
@@ -123,13 +123,13 @@ class CompletionContext
             return false;
         if (!typename || typename == "void")
             return false;
-        if (this.expectedType.typename == typename)
+        if (this.expectedType.name == typename)
             return true;
            
-        let dbtype = typedb.GetType(typename);
+        let dbtype = typedb.GetTypeByName(typename);
         if (!dbtype)
             return false;
-        return dbtype.inheritsFrom(this.expectedType.typename);
+        return dbtype.inheritsFrom(this.expectedType.name);
     }
 }
 
@@ -182,7 +182,7 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
     if (context.completingSymbol == null)
         return null;
 
-    let searchTypes = new Array<typedb.DBType>();
+    let searchTypes = new Array<typedb.DBType | typedb.DBNamespace>();
     let insideType = context.scope ? context.scope.getParentType() : null;
 
     if (context.priorType)
@@ -207,8 +207,13 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
         if (insideType)
             searchTypes.push(insideType);
 
-        // Complete from global types available here
-        searchTypes = searchTypes.concat(context.scope.getAvailableGlobalTypes());
+        // Complete from available namespaces
+        let checkNamespace = context.scope.getNamespace();
+        while (checkNamespace)
+        {
+            searchTypes.push(checkNamespace);
+            checkNamespace = checkNamespace.parentNamespace;
+        }
 
         // Complete from local variables and parameters
         let checkscope = context.scope;
@@ -231,24 +236,14 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
     // Search for completions in all global and real types we are looking in
     for (let dbtype of searchTypes)
     {
-        let showEvents = !context.scope || context.scope.scopetype != scriptfiles.ASScopeType.Class || !insideType || dbtype.typename != dbtype.typename;
+        let showEvents = !context.scope || context.scope.scopetype != scriptfiles.ASScopeType.Class || !insideType;
         AddCompletionsFromType(context, dbtype, completions, showEvents);
     }
-
-    // Add completions for global functions we haven't imported
-    if (!context.isInsideType)
-        AddUnimportedCompletions(context, completions);
 
     // Add completions for mixin calls to global functions
     if (context.priorType || (!context.isInsideType && context.scope.getParentType()))
     {
         AddMixinCompletions(context, completions);
-    }
-
-    // Complete typenames if we're in a context where that is possible
-    if (!context.isInsideType && !context.isIncompleteNamespace)
-    {
-        AddTypenameCompletions(context, completions);
     }
 
     // Complete keywords if appropriate
@@ -264,6 +259,9 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
         && !context.isRightExpression && !context.isSubExpression && !context.isInsideType) {
         AddMethodOverrideSnippets(context, completions, position);
     }
+
+    // General completion shortcuts
+    AddShortcutCompletions(context, completions);
 
     // Add snippet completion for super call if we can
     AddSuperCallSnippet(context, completions);
@@ -377,11 +375,11 @@ function ScoreTypeMatch(wantedType : typedb.DBType, providedType : typedb.DBType
 
     if (wantedType.isPrimitive && providedType.isPrimitive)
     {
-        if (typedb.ArePrimitiveTypesEquivalent(wantedType.typename, providedType.typename))
+        if (typedb.ArePrimitiveTypesEquivalent(wantedType.name, providedType.name))
             return 2;
 
-        let wantedFloat = typedb.IsPrimitiveFloatType(wantedType.typename);
-        let providedFloat = typedb.IsPrimitiveFloatType(providedType.typename);
+        let wantedFloat = typedb.IsPrimitiveFloatType(wantedType.name);
+        let providedFloat = typedb.IsPrimitiveFloatType(providedType.name);
 
         if (wantedFloat && !providedFloat)
             return 1;
@@ -453,7 +451,7 @@ function ScoreMethodOverload(context: CompletionContext, func: typedb.DBMethod, 
         if (!argType)
             continue;
 
-        let wantedType = typedb.GetType(func.args[posArg].typename);
+        let wantedType = typedb.LookupType(func.namespace, func.args[posArg].typename);
         if (!wantedType)
             continue;
 
@@ -535,7 +533,7 @@ export function Signature(asmodule: scriptfiles.ASModule, position: Position): S
         }
 
         let skipFirstArg = false;
-        if (func.containingType && func.containingType.isNamespaceOrGlobalScope() && func.isMixin)
+        if (func.isMixin)
             skipFirstArg = true;
 
         let params = new Array<ParameterInformation>();
@@ -605,10 +603,10 @@ function AddCompletionsFromCallSignature(context: CompletionContext, completions
             {
                 completeDefinition = true;
 
-                let supertype = typedb.GetType(typeOfScope.supertype);
+                let supertype = typeOfScope.getSuperType();
                 if (supertype)
                 {
-                    let supersymbol = supertype.findFirstSymbol(activeMethod.name, typedb.DBAllowSymbol.FunctionOnly);
+                    let supersymbol = supertype.findFirstSymbol(activeMethod.name, typedb.DBAllowSymbol.Functions);
                     if (supersymbol instanceof typedb.DBMethod)
                         activeMethod = supersymbol;
                 }
@@ -815,7 +813,7 @@ function AddCompletionsFromUnrealMacro(context : CompletionContext, completions 
                         if (!prop.declaredModule)
                             continue;
 
-                        let propType = typedb.GetType(prop.typename);
+                        let propType = typedb.LookupType(prop.namespace, prop.typename);
                         if (!propType)
                             continue;
                         if (!propType.inheritsFrom("USceneComponent"))
@@ -1043,162 +1041,16 @@ function GetTypenameCommitChars(context : CompletionContext, typename : string, 
     }
 }
 
-function AddTypenameCompletions(context : CompletionContext, completions : Array<CompletionItem>)
+function AddShortcutCompletions(context : CompletionContext, completions : Array<CompletionItem>)
 {
-    for (let [typename, dbtype] of typedb.GetAllTypes())
-    {
-        // Ignore template instantations for completion
-        if (dbtype.isTemplateInstantiation)
-            continue;
-
-        let kind : CompletionItemKind = CompletionItemKind.Class;
-        if (dbtype.isNamespace())
-        {
-            typename = dbtype.rawName;
-            kind = CompletionItemKind.Module;
-
-            if ((!context.isSubExpression && !context.isRightExpression) || context.maybeTypename)
-            {
-                if (dbtype.isShadowedNamespace())
-                    continue;
-            }
-        }
-        else
-        {
-            if (!context.maybeTypename && (context.isSubExpression || context.isRightExpression))
-                continue;
-        }
-
-        if (typename.startsWith("//"))
-            continue;
-
-        if (dbtype.isEnum)
-        {
-            let canCompleteEnum = CanCompleteSymbol(context, dbtype);
-
-            // Allow completing to qualified enum values when appropriate
-            if ((context.isSubExpression && !context.isFunctionDeclaration) || context.isRightExpression)
-            {
-                if (context.expectedType == dbtype)
-                {
-                    for (let enumvalue of dbtype.properties)
-                    {
-                        let canCompleteValue = CanCompleteTo(context, enumvalue.name);
-                        if (!canCompleteEnum && !canCompleteValue)
-                            continue;
-
-                        let enumstr = typename+"::"+enumvalue.name;
-                        let complItem = <CompletionItem> {
-                                label: enumstr,
-                                kind: CompletionItemKind.EnumMember,
-                                data: ["enum", dbtype.typename, enumvalue.name],
-                        };
-
-                        let isMaxValue = enumvalue.name.includes("MAX");
-                        if (context.expectedType == dbtype)
-                        {
-                            if (isMaxValue)
-                            {
-                                complItem.sortText =  Sort.EnumValue_Max_Expected;
-                            }
-                            else
-                            {
-                                complItem.preselect = true;
-                                complItem.sortText = Sort.EnumValue_Expected;
-                                context.havePreselection = true;
-                            }
-                        }
-                        else
-                        {
-                            if (isMaxValue)
-                                complItem.sortText = Sort.EnumValue_Max;
-                            else
-                                complItem.sortText = Sort.EnumValue;
-                        }
-
-                        if (canCompleteEnum)
-                            completions.push(complItem);
-
-                        // Add secondary item for if we're just typing the enum value's name
-                        if (canCompleteValue && context.expectedType == dbtype && !isMaxValue)
-                        {
-                            completions.push({
-                                ...complItem,
-                                filterText: enumvalue.name,
-                            });
-                        }
-                    }
-                }
-            }
-
-            if (canCompleteEnum)
-            {
-                if (!context.expectedType || !context.expectedType.isEnum || context.expectedType == dbtype)
-                {
-                    let complItem = <CompletionItem> {
-                            label: typename,
-                            kind: CompletionItemKind.Enum,
-                            data: ["type", dbtype.typename],
-                            commitCharacters: [":"],
-                            filterText: GetSymbolFilterText(context, dbtype),
-                            sortText: Sort.Typename,
-                    };
-
-                    if (context.expectedType == dbtype)
-                    {
-                        complItem.sortText =  Sort.EnumName_Expected;
-                        complItem.preselect = true;
-                        context.havePreselection = true;
-                    }
-
-                    completions.push(complItem);
-                }
-            }
-        }
-        else
-        {
-            if (CanCompleteSymbol(context, dbtype))
-            {
-                let commitChars = [":"];
-                GetTypenameCommitChars(context, typename, commitChars);
-
-                let complItem = <CompletionItem> {
-                        label: typename,
-                        kind: kind,
-                        data: ["type", dbtype.typename],
-                        commitCharacters: commitChars,
-                        filterText: GetSymbolFilterText(context, dbtype),
-                        sortText: Sort.Typename,
-                };
-
-                if (dbtype.isShadowedNamespace() && context.expectedType && context.expectedType.typename == dbtype.rawName)
-                {
-                    if (context.expectedType.inheritsFrom("UActorComponent"))
-                    {
-                        // If we're expecting a component the namespace is high sort
-                        complItem.sortText = Sort.Typename_Expected;
-                        complItem.preselect = true;
-                        context.havePreselection = true;
-                    }
-                }
-                else if (context.maybeTypename && context.typenameExpected && context.typenameExpected == dbtype.typename)
-                {
-                    // We might be expecting a specific typename, in which case we should preselect it
-                    complItem.sortText = Sort.Typename_Expected;
-                    complItem.preselect = true;
-                    context.havePreselection = true;
-                }
-
-                completions.push(complItem);
-            }
-        }
-    }
+    if (context.isInsideType || context.isIncompleteNamespace)
+        return;
 
     // Special case completion for automatically completing FMath:: to Math::
     if (CanCompleteTo(context, "FMath"))
     {
-        let OldNamespace = typedb.GetType("__FMath");
-        let MathNamespace = typedb.GetType("__Math");
+        let OldNamespace = typedb.LookupNamespace(null, "FMath");
+        let MathNamespace = typedb.LookupNamespace(null, "Math");
         if (MathNamespace && !OldNamespace)
         {
             let commitChars = [":"];
@@ -1207,7 +1059,7 @@ function AddTypenameCompletions(context : CompletionContext, completions : Array
             completions.push({
                     label: "Math",
                     kind: CompletionItemKind.Module,
-                    data: ["type", "__Math"],
+                    data: ["namespace", "Math"],
                     commitCharacters: commitChars,
                     insertText: "Math",
                     filterText: "FMath",
@@ -1228,17 +1080,17 @@ export function AddCompletionsFromClassKeywords(context : CompletionContext, com
                 label: "this",
                 labelDetails: <CompletionItemLabelDetails>
                 {
-                    description: insideType.typename,
+                    description: insideType.name,
                 },
                 kind : CompletionItemKind.Keyword,
                 commitCharacters: [".", ";", ","],
-                sortText: context.isTypeExpected(insideType.typename) ? Sort.Keyword_Expected : Sort.Keyword,
+                sortText: context.isTypeExpected(insideType.name) ? Sort.Keyword_Expected : Sort.Keyword,
         });
     }
 
     if (context.scope.isInFunctionBody() && CanCompleteTo(context, "Super"))
     {
-        let supertype = typedb.GetType(insideType.supertype);
+        let supertype = insideType.getSuperType();
         // Don't complete to Super if it is a C++ class, that doesn't work
         if (supertype && supertype.declaredModule)
         {
@@ -1284,16 +1136,22 @@ export function AddCompletionsFromLocalVariables(context : CompletionContext, sc
     }
 }
 
-export function AddCompletionsFromType(context : CompletionContext, curtype : typedb.DBType, completions : Array<CompletionItem>, showEvents : boolean = true)
+export function AddCompletionsFromType(context : CompletionContext, curtype : typedb.DBType | typedb.DBNamespace, completions : Array<CompletionItem>, showEvents : boolean = true)
 {
     let scopeType = context.scope ? context.scope.getParentType() : null;
     let props = new Set<string>();
-    for (let prop of curtype.allProperties())
+
+    // Complete symbols
+    curtype.forEachSymbol(function(symbol : typedb.DBSymbol)
     {
-        if (CanCompleteSymbol(context, prop))
+        if (!CanCompleteSymbol(context, symbol))
+            return;
+
+        if (symbol instanceof typedb.DBProperty)
         {
+            let prop : typedb.DBProperty = symbol;
             if (!isPropertyAccessibleFromScope(curtype, prop, context.scope))
-                continue;
+                return;
             props.add(prop.name);
 
             let compl = <CompletionItem>{
@@ -1303,33 +1161,40 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                     {
                         description: prop.typename,
                     },
-                    data: ["prop", curtype.typename, prop.name],
                     commitCharacters: [".", ";", ","],
                     filterText: GetSymbolFilterText(context, prop),
             };
 
-            if (prop.containingType.isEnum)
+            if (prop.containingType)
             {
-                if (prop.name.includes("MAX"))
-                    compl.sortText = Sort.EnumValue_Max;
+                if (prop.containingType.isEnum)
+                {
+                    if (prop.name.includes("MAX"))
+                        compl.sortText = Sort.EnumValue_Max;
+                    else
+                        compl.sortText = Sort.EnumValue;
+                }
+                else if (prop.containingType == scopeType)
+                    compl.sortText = Sort.MemberProp_Direct;
                 else
-                    compl.sortText = Sort.EnumValue;
+                    compl.sortText = Sort.MemberProp_Parent;
+
+                compl.data = ["prop", prop.containingType.name, prop.name];
             }
-            else if (prop.containingType == scopeType)
-                compl.sortText = Sort.MemberProp_Direct;
-            else if (!prop.containingType.isNamespaceOrGlobalScope())
-                compl.sortText = Sort.MemberProp_Parent;
             else
+            {
                 compl.sortText = Sort.GlobalProp;
+                compl.data = ["global_prop", prop.namespace.getQualifiedNamespace(), prop.name];
+            }
 
             if (context.isTypeExpected(prop.typename))
             {
-                if (!prop.containingType.isGlobalScope)
+                if (prop.containingType || !prop.namespace.isRootNamespace())
                     context.completionsMatchingExpected.push(compl);
 
-                if (prop.containingType == scopeType)
+                if (prop.containingType && prop.containingType == scopeType)
                     compl.sortText = Sort.MemberProp_Direct_Expected;
-                else if (!prop.containingType.isNamespaceOrGlobalScope())
+                else if (prop.containingType)
                     compl.sortText = Sort.MemberProp_Parent_Expected;
                 else
                     compl.sortText = Sort.GlobalProp_Expected;
@@ -1339,252 +1204,171 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 compl.insertText = ":"+compl.label;
             completions.push(compl);
         }
-    }
-
-    let getterStr = "Get"+context.completingSymbol;
-    let setterStr = "Set"+context.completingSymbol;
-    for (let func of curtype.allMethods())
-    {
-        if (func.isMixin)
-            continue;
-        if (!CanCompleteSymbol(context, func))
-            continue;
-        if (!isFunctionAccessibleFromScope(curtype, func, context.scope))
-            continue;
-
-        // Don't show constructors if we're probably completing the name of a type
-        if (func.isConstructor && context.maybeTypename)
-            continue;
-
-        if (func.isProperty)
+        else if (symbol instanceof typedb.DBMethod)
         {
-            if (func.name.startsWith("Get"))
+            let func : typedb.DBMethod = symbol;
+            if (func.isMixin)
+                return;
+            if (!CanCompleteSymbol(context, func))
+                return;
+            if (!isFunctionAccessibleFromScope(curtype, func, context.scope))
+                return;
+
+            // Don't show constructors if we're probably completing the name of a type
+            if (func.isConstructor && context.maybeTypename)
+                return;
+
+            if (func.isProperty)
             {
-                let propname = func.name.substr(3);
-                if(!props.has(propname) && func.args.length == 0)
+                if (func.name.startsWith("Get"))
                 {
-                    let compl = <CompletionItem>{
-                            label: propname,
-                            kind: CompletionItemKind.Field,
-                            labelDetails: <CompletionItemLabelDetails>
-                            {
-                                description: func.returnType,
-                            },
-                            data: ["accessor", curtype.typename, propname],
-                            commitCharacters: [".", ";", ","],
-                            filterText: GetSymbolFilterText(context, func),
-                    };
-
-                    if (func.containingType == scopeType)
-                        compl.sortText = Sort.MemberProp_Direct;
-                    else if (!func.containingType.isNamespaceOrGlobalScope())
-                        compl.sortText = Sort.MemberProp_Parent;
-                    else
-                        compl.sortText = Sort.GlobalProp;
-
-                    if (context.isTypeExpected(func.returnType))
+                    let propname = func.name.substring(3);
+                    if(!props.has(propname) && func.args.length == 0)
                     {
-                        if (!func.containingType.isGlobalScope)
-                            context.completionsMatchingExpected.push(compl);
+                        let compl = <CompletionItem>{
+                                label: propname,
+                                kind: CompletionItemKind.Field,
+                                labelDetails: <CompletionItemLabelDetails>
+                                {
+                                    description: func.returnType,
+                                },
+                                commitCharacters: [".", ";", ","],
+                                filterText: GetSymbolFilterText(context, func),
+                        };
 
-                        if (func.containingType == scopeType)
-                            compl.sortText = Sort.MemberProp_Direct_Expected;
-                        else if (!func.containingType.isNamespaceOrGlobalScope())
-                            compl.sortText = Sort.MemberProp_Parent_Expected;
+                        if (func.containingType)
+                        {
+                            if (func.containingType == scopeType)
+                                compl.sortText = Sort.MemberProp_Direct;
+                            else
+                                compl.sortText = Sort.MemberProp_Parent;
+                            compl.data = ["accessor", func.containingType.name, propname];
+                        }
                         else
-                            compl.sortText = Sort.GlobalProp_Expected;
-                    }
+                        {
+                            compl.sortText = Sort.GlobalProp;
+                            compl.data = ["global_accessor", func.namespace.getQualifiedNamespace(), propname];
+                        }
 
-                    if (context.isIncompleteNamespace)
-                        compl.insertText = ":"+compl.label;
-                    completions.push(compl);
-                    props.add(propname);
+                        if (context.isTypeExpected(func.returnType))
+                        {
+                            if (func.containingType || !func.namespace.isRootNamespace())
+                                context.completionsMatchingExpected.push(compl);
+
+                            if (func.containingType && func.containingType == scopeType)
+                                compl.sortText = Sort.MemberProp_Direct_Expected;
+                            else if (func.containingType)
+                                compl.sortText = Sort.MemberProp_Parent_Expected;
+                            else
+                                compl.sortText = Sort.GlobalProp_Expected;
+                        }
+
+                        if (context.isIncompleteNamespace)
+                            compl.insertText = ":"+compl.label;
+                        completions.push(compl);
+                        props.add(propname);
+                    }
+                }
+                
+                if (func.name.startsWith("Set"))
+                {
+                    let propname = func.name.substring(3);
+                    if(!props.has(propname) && func.args.length == 1 && func.returnType == "void")
+                    {
+                        let compl = <CompletionItem> {
+                                label: propname,
+                                kind: CompletionItemKind.Field,
+                                labelDetails: <CompletionItemLabelDetails>
+                                {
+                                    description: func.args[0].typename,
+                                },
+                                commitCharacters: [".", ";", ","],
+                                filterText: GetSymbolFilterText(context, func),
+                                sortText: (func.containingType == scopeType) ? "a" : "b",
+                        };
+
+                        if (func.containingType)
+                        {
+                            if (func.containingType == scopeType)
+                                compl.sortText = Sort.MemberProp_Direct;
+                            else
+                                compl.sortText = Sort.MemberProp_Parent;
+                            compl.data = ["accessor", func.containingType.name, propname];
+                        }
+                        else
+                        {
+                            compl.sortText = Sort.GlobalProp;
+                            compl.data = ["global_accessor", func.namespace.getQualifiedNamespace(), propname];
+                        }
+
+                        if (context.isTypeExpected(func.args[0].typename))
+                        {
+                            if (func.containingType || !func.namespace.isRootNamespace())
+                                context.completionsMatchingExpected.push(compl);
+
+                            if (func.containingType && func.containingType == scopeType)
+                                compl.sortText = Sort.MemberProp_Direct_Expected;
+                            else if (func.containingType)
+                                compl.sortText = Sort.MemberProp_Parent_Expected;
+                            else
+                                compl.sortText = Sort.GlobalProp_Expected;
+                        }
+
+                        if (context.isIncompleteNamespace)
+                            compl.insertText = ":"+compl.label;
+                        completions.push(compl);
+                        props.add(propname);
+                    }
                 }
             }
-            
-            if (func.name.startsWith("Set"))
+
+            if(!func.name.startsWith("op") && (!func.isBlueprintEvent || showEvents))
             {
-                let propname = func.name.substr(3);
-                if(!props.has(propname) && func.args.length == 1 && func.returnType == "void")
+                let commitChars = ["("];
+                if (func.isConstructor)
+                    GetTypenameCommitChars(context, func.name, commitChars);
+
+                let compl = <CompletionItem>{
+                        label: func.name,
+                        kind: func.isBlueprintEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
+                        commitCharacters: commitChars,
+                        filterText: GetSymbolFilterText(context, func),
+                        sortText: (func.containingType == scopeType) ? "a" : "b",
+                };
+
+                if (func.containingType)
                 {
-                    let compl = <CompletionItem> {
-                            label: propname,
-                            kind: CompletionItemKind.Field,
-                            labelDetails: <CompletionItemLabelDetails>
-                            {
-                                description: func.args[0].typename,
-                            },
-                            data: ["accessor", curtype.typename, propname],
-                            commitCharacters: [".", ";", ","],
-                            filterText: GetSymbolFilterText(context, func),
-                            sortText: (func.containingType == scopeType) ? "a" : "b",
-                    };
-
                     if (func.containingType == scopeType)
-                        compl.sortText = Sort.MemberProp_Direct;
-                    else if (!func.containingType.isNamespaceOrGlobalScope())
-                        compl.sortText = Sort.MemberProp_Parent;
+                        compl.sortText = Sort.Method_Direct;
                     else
-                        compl.sortText = Sort.GlobalProp;
-
-                    if (context.isTypeExpected(func.args[0].typename))
-                    {
-                        if (!func.containingType.isGlobalScope)
-                            context.completionsMatchingExpected.push(compl);
-
-                        if (func.containingType == scopeType)
-                            compl.sortText = Sort.MemberProp_Direct_Expected;
-                        else if (!func.containingType.isNamespaceOrGlobalScope())
-                            compl.sortText = Sort.MemberProp_Parent_Expected;
-                        else
-                            compl.sortText = Sort.GlobalProp_Expected;
-                    }
-
-                    if (context.isIncompleteNamespace)
-                        compl.insertText = ":"+compl.label;
-                    completions.push(compl);
-                    props.add(propname);
+                        compl.sortText = Sort.Method_Parent;
+                    compl.data = ["func", func.containingType.name, func.name, func.id];
                 }
-            }
-
-            // If it's explicitly declared with 'property' in script we don't complete
-            // to the function call version. We still do for C++ ones because property
-            // is implicit there.
-            //if (func.declaredModule)
-                //continue;
-        }
-
-        if(!func.name.startsWith("op") && (!func.isBlueprintEvent || showEvents))
-        {
-            let commitChars = ["("];
-            if (func.isConstructor)
-                GetTypenameCommitChars(context, func.name, commitChars);
-
-            let compl = <CompletionItem>{
-                    label: func.name,
-                    kind: func.isBlueprintEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
-                    data: ["func", curtype.typename, func.name, func.id],
-                    commitCharacters: commitChars,
-                    filterText: GetSymbolFilterText(context, func),
-                    sortText: (func.containingType == scopeType) ? "a" : "b",
-            };
-
-            if (func.containingType == scopeType)
-                compl.sortText = Sort.Method_Direct;
-            else if (!func.containingType.isNamespaceOrGlobalScope())
-                compl.sortText = Sort.Method_Parent;
-            else
-                compl.sortText = Sort.Global;
-
-            if (context.isTypeExpected(func.returnType))
-            {
-                if (!func.containingType.isGlobalScope || func.isConstructor)
-                    context.completionsMatchingExpected.push(compl);
-
-                if (func.containingType == scopeType)
-                    compl.sortText = Sort.Method_Direct_Expected;
-                else if (!func.containingType.isNamespaceOrGlobalScope())
-                    compl.sortText = Sort.Method_Parent_Expected;
                 else
-                    compl.sortText = Sort.Global_Expected;
-            }
-
-            if (context.isIncompleteNamespace)
-                compl.insertText = ":"+compl.label;
-
-            compl.labelDetails = <CompletionItemLabelDetails>
-            {
-                detail: (func.args && func.args.length > 0) ? FunctionLabelWithParamsSuffix : FunctionLabelSuffix,
-            };
-
-            compl.command = <Command> {
-                title: "",
-                command: "angelscript.paren",
-            };
-
-            if (func.returnType && func.returnType != "void")
-            {
-                compl.labelDetails.description = func.returnType;
-
-                if (!typedb.IsPrimitive(func.returnType))
-                    compl.commitCharacters.push(".");
-            }
-            
-            completions.push(compl);
-        }
-    }
-}
-
-export function AddUnimportedCompletions(context : CompletionContext, completions : Array<CompletionItem>)
-{
-    if (!context.scope)
-        return;
-
-    // Not yet imported global symbols
-    for (let [name, globalSymbols] of typedb.ScriptGlobals)
-    {
-        for (let sym of globalSymbols)
-        {
-            if (!sym.containingType)
-                continue;
-            if (sym instanceof typedb.DBProperty)
-            {
-                if (context.scope.module.isModuleImported(sym.declaredModule))
-                    continue;
-                if (!CanCompleteSymbol(context, sym))
-                    continue;
-
-                let compl = <CompletionItem>{
-                    label: sym.name,
-                    kind : CompletionItemKind.Field,
-                    labelDetails: <CompletionItemLabelDetails>
-                    {
-                        description: sym.typename,
-                    },
-                    data: ["prop", sym.containingType.typename, sym.name],
-                    commitCharacters: [".", ";", ","],
-                    filterText: GetSymbolFilterText(context, sym),
-                    sortText: Sort.Unimported,
-                };
-
-                if (context.isTypeExpected(sym.typename))
-                    context.completionsMatchingExpected.push(compl);
-
-                completions.push(compl);
-            }
-            else if (sym instanceof typedb.DBMethod)
-            {
-                if (sym.isMixin)
-                    continue;
-                if (context.scope.module.isModuleImported(sym.declaredModule))
-                    continue;
-                if (!CanCompleteSymbol(context, sym))
-                    continue;
-                if (!sym.IsAccessibleFromModule(context.scope.module.modulename))
-                    continue;
-
-                // Don't show constructors if we're probably completing the name of a type
-                if (sym.isConstructor && context.maybeTypename)
-                    continue;
-
-                let compl = <CompletionItem>{
-                    label: sym.name,
-                    kind: sym.isBlueprintEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
-                    data: ["func", sym.containingType.typename, sym.name, sym.id],
-                    commitCharacters: ["("],
-                    filterText: GetSymbolFilterText(context, sym),
-                    sortText: Sort.Unimported,
-                };
-
-                if (context.isTypeExpected(sym.returnType))
                 {
-                    if (!sym.containingType.isGlobalScope || sym.isConstructor)
-                        context.completionsMatchingExpected.push(compl);
+                    compl.sortText = Sort.Global;
+                    compl.data = ["global_func", func.namespace.getQualifiedNamespace(), func.name, func.id];
                 }
+
+                if (context.isTypeExpected(func.returnType))
+                {
+                    if (func.containingType || !func.namespace.isRootNamespace() || func.isConstructor)
+                        context.completionsMatchingExpected.push(compl);
+
+                    if (func.containingType && func.containingType == scopeType)
+                        compl.sortText = Sort.Method_Direct_Expected;
+                    else if (func.containingType)
+                        compl.sortText = Sort.Method_Parent_Expected;
+                    else
+                        compl.sortText = Sort.Global_Expected;
+                }
+
+                if (context.isIncompleteNamespace)
+                    compl.insertText = ":"+compl.label;
 
                 compl.labelDetails = <CompletionItemLabelDetails>
                 {
-                    detail: (sym.args && sym.args.length > 0) ? FunctionLabelWithParamsSuffix : FunctionLabelSuffix,
+                    detail: (func.args && func.args.length > 0) ? FunctionLabelWithParamsSuffix : FunctionLabelSuffix,
                 };
 
                 compl.command = <Command> {
@@ -1592,14 +1376,193 @@ export function AddUnimportedCompletions(context : CompletionContext, completion
                     command: "angelscript.paren",
                 };
 
-                if (sym.returnType && sym.returnType != "void")
+                if (func.returnType && func.returnType != "void")
                 {
-                    compl.labelDetails.description = sym.returnType;
-                    if (!typedb.IsPrimitive(sym.returnType))
+                    compl.labelDetails.description = func.returnType;
+
+                    if (!typedb.IsPrimitive(func.returnType))
                         compl.commitCharacters.push(".");
                 }
-
+                
                 completions.push(compl);
+            }
+        }
+        else if (symbol instanceof typedb.DBType)
+        {
+            let dbtype : typedb.DBType = symbol;
+            if (context.isInsideType || context.isIncompleteNamespace)
+                return;
+
+            // Ignore template instantations for completion
+            if (dbtype.isTemplateInstantiation)
+                return;
+
+            let kind : CompletionItemKind = CompletionItemKind.Class;
+            if (!context.maybeTypename && (context.isSubExpression || context.isRightExpression))
+                return;
+
+            if (dbtype.isEnum)
+            {
+                let canCompleteEnum = CanCompleteSymbol(context, dbtype);
+
+                // Allow completing to qualified enum values when appropriate
+                if ((context.isSubExpression && !context.isFunctionDeclaration) || context.isRightExpression)
+                {
+                    if (context.expectedType == dbtype)
+                    {
+                        for (let enumvalue of dbtype.properties)
+                        {
+                            let canCompleteValue = CanCompleteTo(context, enumvalue.name);
+                            if (!canCompleteEnum && !canCompleteValue)
+                                continue;
+
+                            let enumstr = dbtype.name+"::"+enumvalue.name;
+                            let complItem = <CompletionItem> {
+                                    label: enumstr,
+                                    kind: CompletionItemKind.EnumMember,
+                                    data: ["enum", dbtype.name, enumvalue.name],
+                            };
+
+                            let isMaxValue = enumvalue.name.includes("MAX");
+                            if (context.expectedType == dbtype)
+                            {
+                                if (isMaxValue)
+                                {
+                                    complItem.sortText =  Sort.EnumValue_Max_Expected;
+                                }
+                                else
+                                {
+                                    complItem.preselect = true;
+                                    complItem.sortText = Sort.EnumValue_Expected;
+                                    context.havePreselection = true;
+                                }
+                            }
+                            else
+                            {
+                                if (isMaxValue)
+                                    complItem.sortText = Sort.EnumValue_Max;
+                                else
+                                    complItem.sortText = Sort.EnumValue;
+                            }
+
+                            if (canCompleteEnum)
+                                completions.push(complItem);
+
+                            // Add secondary item for if we're just typing the enum value's name
+                            if (canCompleteValue && context.expectedType == dbtype && !isMaxValue)
+                            {
+                                completions.push({
+                                    ...complItem,
+                                    filterText: enumvalue.name,
+                                });
+                            }
+                        }
+                    }
+                }
+
+                if (canCompleteEnum)
+                {
+                    if (!context.expectedType || !context.expectedType.isEnum || context.expectedType == dbtype)
+                    {
+                        let complItem = <CompletionItem> {
+                                label: dbtype.name,
+                                kind: CompletionItemKind.Enum,
+                                data: ["type", dbtype.name],
+                                commitCharacters: [":"],
+                                filterText: GetSymbolFilterText(context, dbtype),
+                                sortText: Sort.Typename,
+                        };
+
+                        if (context.expectedType == dbtype)
+                        {
+                            complItem.sortText =  Sort.EnumName_Expected;
+                            complItem.preselect = true;
+                            context.havePreselection = true;
+                        }
+
+                        completions.push(complItem);
+                    }
+                }
+            }
+            else
+            {
+                if (CanCompleteSymbol(context, dbtype))
+                {
+                    let commitChars = [":"];
+                    GetTypenameCommitChars(context, dbtype.name, commitChars);
+
+                    let complItem = <CompletionItem> {
+                            label: dbtype.name,
+                            kind: kind,
+                            data: ["type", dbtype.name],
+                            commitCharacters: commitChars,
+                            filterText: GetSymbolFilterText(context, dbtype),
+                            sortText: Sort.Typename,
+                    };
+
+                    if (context.maybeTypename && context.typenameExpected && context.typenameExpected == dbtype.name)
+                    {
+                        // We might be expecting a specific typename, in which case we should preselect it
+                        complItem.sortText = Sort.Typename_Expected;
+                        complItem.preselect = true;
+                        context.havePreselection = true;
+                    }
+
+                    completions.push(complItem);
+                }
+            }
+        }
+    });
+
+    // Complete child namespaces
+    if (curtype instanceof typedb.DBNamespace)
+    {
+        for (let [_, namespace] of curtype.childNamespaces)
+        {
+            if (context.isInsideType || context.isIncompleteNamespace)
+                continue;
+            if (!namespace.name || namespace.name.length == 0)
+                continue;
+
+            let kind : CompletionItemKind = CompletionItemKind.Module;
+            if ((!context.isSubExpression && !context.isRightExpression) || context.maybeTypename)
+            {
+                if (namespace.isShadowingType())
+                    continue;
+            }
+
+            if (CanCompleteSymbol(context, namespace))
+            {
+                let commitChars = [":"];
+                GetTypenameCommitChars(context, namespace.name, commitChars);
+
+                let complItem = <CompletionItem> {
+                        label: namespace.name,
+                        kind: kind,
+                        data: ["namespace", namespace.getQualifiedNamespace()],
+                        commitCharacters: commitChars,
+                        sortText: Sort.Typename,
+                };
+
+                if (namespace.isShadowingType() && context.expectedType && context.expectedType.name == namespace.name)
+                {
+                    if (context.expectedType.inheritsFrom("UActorComponent"))
+                    {
+                        // If we're expecting a component the namespace is high sort
+                        complItem.sortText = Sort.Typename_Expected;
+                        complItem.preselect = true;
+                        context.havePreselection = true;
+                    }
+                }
+                else if (context.maybeTypename && context.typenameExpected && context.typenameExpected == namespace.name)
+                {
+                    // We might be expecting a specific typename, in which case we should preselect it
+                    complItem.sortText = Sort.Typename_Expected;
+                    complItem.preselect = true;
+                    context.havePreselection = true;
+                }
+
+                completions.push(complItem);
             }
         }
     }
@@ -1609,30 +1572,32 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
 {
     if (!context.scope)
         return;
+    if (context.priorType instanceof typedb.DBNamespace)
+        return;
 
     // Not yet imported mixin functions
-    let mixinsForType = context.priorType;
+    let mixinsForType : typedb.DBType = context.priorType;
     if (!mixinsForType)
         mixinsForType = context.scope.getParentType();
-    
-    for (let [name, globalSymbols] of typedb.ScriptGlobals)
+
+    // Complete from available namespaces
+    let checkNamespace = context.scope.getNamespace();
+    while (checkNamespace)
     {
-        for (let sym of globalSymbols)
+        checkNamespace.forEachSymbol(function (sym : typedb.DBSymbol)
         {
-            if (!sym.containingType)
-                continue;
             if (sym instanceof typedb.DBMethod)
             {
                 if (!sym.isMixin)
-                    continue;
+                    return;
                 if (!CanCompleteSymbol(context, sym))
-                    continue;
+                    return;
                 if (sym.args && sym.args.length != 0 && mixinsForType.inheritsFrom(sym.args[0].typename))
                 {
                     let compl = <CompletionItem>{
                         label: sym.name,
                         kind: sym.isBlueprintEvent ? CompletionItemKind.Event : CompletionItemKind.Method,
-                        data: ["func_mixin", sym.containingType.typename, sym.name, sym.id],
+                        data: ["func_mixin", sym.namespace.getQualifiedNamespace(), sym.name, sym.id],
                         commitCharacters: ["("],
                         filterText: GetSymbolFilterText(context, sym),
                         sortText: Sort.Method_Parent,
@@ -1650,7 +1615,7 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
 
                     if (context.isTypeExpected(sym.returnType))
                     {
-                        if (!sym.containingType.isGlobalScope || sym.isConstructor)
+                        if (!checkNamespace.isRootNamespace() || sym.isConstructor)
                             context.completionsMatchingExpected.push(compl);
                     }
 
@@ -1664,7 +1629,9 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
                     completions.push(compl);
                 }
             }
-        }
+        });
+
+        checkNamespace = checkNamespace.parentNamespace;
     }
 }
 
@@ -1724,22 +1691,19 @@ function CanCompleteToOnlyStart(context : CompletionContext, suggestion : string
     return suggestion.toLowerCase().startsWith(context.completingSymbolLowerCase);
 }
 
-function CanCompleteSymbol(context : CompletionContext, symbol : typedb.DBSymbol | typedb.DBType) : boolean
+function CanCompleteSymbol(context : CompletionContext, symbol : typedb.DBSymbol | typedb.DBType | typedb.DBNamespace) : boolean
 {
     if (symbol instanceof typedb.DBType)
     {
-        if( symbol.isNamespace())
-        {
-            return CanCompleteToOnlyStart(context, symbol.rawName);
-        }
-        else
-        {
-            if (symbol.keywords)
-                return CanCompleteToOnlyStart(context, GetSymbolFilterText(context, symbol));
-            return CanCompleteToOnlyStart(context, symbol.typename);
-        }
+        if (symbol.keywords)
+            return CanCompleteToOnlyStart(context, GetSymbolFilterText(context, symbol));
+        return CanCompleteToOnlyStart(context, symbol.name);
     }
-    else if (symbol.containingType.isGlobalScope)
+    else if (symbol instanceof typedb.DBNamespace)
+    {
+        return CanCompleteToOnlyStart(context, symbol.name);
+    }
+    else if (!symbol.containingType && symbol.namespace.isRootNamespace())
     {
         if (symbol.keywords)
             return CanCompleteToOnlyStart(context, GetSymbolFilterText(context, symbol));
@@ -1755,18 +1719,9 @@ function CanCompleteSymbol(context : CompletionContext, symbol : typedb.DBSymbol
 
 function GetSymbolFilterText(context : CompletionContext, symbol : typedb.DBSymbol | typedb.DBType) : string | undefined
 {
-    if (symbol instanceof typedb.DBType)
-    {
-        if (!symbol.keywords)
-            return undefined;
-        return [symbol.typename, ...symbol.keywords].join(" ");
-    }
-    else
-    {
-        if (!symbol.keywords)
-            return undefined;
-        return [symbol.name, ...symbol.keywords].join(" ");
-    }
+    if (!symbol.keywords)
+        return undefined;
+    return [symbol.name, ...symbol.keywords].join(" ");
 }
 
 function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : number) : CompletionContext
@@ -1946,7 +1901,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             // Parse as a variable declaration if we can
             if (context.subOuterStatement.ast.type == scriptfiles.node_types.VariableDecl)
             {
-                let dbVarType = typedb.GetType(context.subOuterStatement.ast.typename.value);
+                let dbVarType = typedb.LookupType(context.scope.getNamespace(), context.subOuterStatement.ast.typename.value);
                 if (dbVarType
                     && (i == subCandidates.length-1)
                     && (!context.baseStatement
@@ -1956,7 +1911,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
                 {
                     if (context.subOuterStatement.ast.name || !context.scope.isInFunctionBody())
                     {
-                        scriptfiles.ResolveFunctionOverloadsFromIdentifier(context.scope, dbVarType.typename, context.subOuterFunctions);
+                        scriptfiles.ResolveFunctionOverloadsFromIdentifier(context.scope, dbVarType.name, context.subOuterFunctions);
                         if (context.subOuterFunctions.length != 0)
                             break;
                     }
@@ -2040,7 +1995,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
                 {
                     if (arg.name == argContext.currentArgumentName)
                     {
-                        let argType = typedb.GetType(arg.typename);
+                        let argType = typedb.LookupType(candidateFunction.namespace, arg.typename);
                         if (argType && !context.expectedType)
                         {
                             context.expectedType = argType;
@@ -2062,7 +2017,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
 
             if (candidateFunction.args.length <= candidateArgumentIndex)
                 continue;
-            let argType = typedb.GetType(candidateFunction.args[candidateArgumentIndex].typename);
+            let argType = typedb.LookupType(candidateFunction.namespace, candidateFunction.args[candidateArgumentIndex].typename);
             if (argType && !context.expectedType)
                 context.expectedType = argType;
         }
@@ -2101,7 +2056,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             // If this is a variable declaration we expect the type of the variable
             if (context.leftStatement.ast.type == scriptfiles.node_types.VariableDecl)
             {
-                context.leftType = typedb.GetType(context.leftStatement.ast.typename.value);
+                context.leftType = typedb.LookupType(context.scope.getNamespace(), context.leftStatement.ast.typename.value);
                 if (context.leftType)
                     break;
             }
@@ -2133,7 +2088,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             if (context.rightOperator == "&&" || context.rightOperator == "||" || context.rightOperator == "!")
             {
                 // On the right of a boolean operator should always be a bool
-                context.expectedType = typedb.GetType("bool");
+                context.expectedType = typedb.GetTypeByName("bool");
             }
         }
 
@@ -2155,12 +2110,12 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
                 let overloadMethod = scriptfiles.GetOverloadMethodForOperator(context.rightOperator);
                 if (overloadMethod)
                 {
-                    let overloadFunc = context.leftType.findFirstSymbol(overloadMethod, typedb.DBAllowSymbol.FunctionOnly);
+                    let overloadFunc = context.leftType.findFirstSymbol(overloadMethod, typedb.DBAllowSymbol.Functions);
                     if (overloadFunc instanceof typedb.DBMethod)
                     {
                         if (overloadFunc.args && overloadFunc.args.length >= 1)
                         {
-                            context.expectedType = typedb.GetType(overloadFunc.args[0].typename);
+                            context.expectedType = typedb.LookupType(overloadFunc.namespace, overloadFunc.args[0].typename);
                         }
                     }
                 }
@@ -2181,7 +2136,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         {
             if (!context.isRightExpression && !context.expectedType)
             {
-                context.expectedType = typedb.GetType("bool");
+                context.expectedType = typedb.GetTypeByName("bool");
             }
         }
     }
@@ -2216,7 +2171,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         context.maybeTypename = true;
 
         if (context.expectedType)
-            context.typenameExpected = context.expectedType.typename;
+            context.typenameExpected = context.expectedType.name;
     }
 
     // Check if we're completing in a type, maybe invalid
@@ -2238,12 +2193,12 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
         {
             if (leftNode.type == scriptfiles.node_types.Typename)
             {
-                leftAsType = typedb.GetType(leftNode.value);
+                leftAsType = typedb.LookupType(context.scope.getNamespace(), leftNode.value);
             }
             else if (leftNode.type == scriptfiles.node_types.VariableDecl)
             {
                 if (!leftNode.name)
-                    leftAsType = typedb.GetType(leftNode.typename.value);
+                    leftAsType = typedb.LookupType(context.scope.getNamespace(), leftNode.typename.value);
             }
             else if (leftNode.type == scriptfiles.node_types.CastOperation)
             {
@@ -2359,9 +2314,9 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                 context.completingSymbol = "";
             context.completingNode = node.children[1];
             if (node.children[0].value == "Super" && context.scope.getParentType())
-                context.priorType = typedb.GetType(context.scope.getParentType().supertype);
+                context.priorType = context.scope.getParentType().getSuperType();
             else
-                context.priorType = typedb.GetType("__"+node.children[0].value);
+                context.priorType = typedb.LookupNamespace(context.scope.getNamespace(), node.children[0].value);
             context.priorTypeWasNamespace = true;
             context.requiresPriorType = true;
             if (context.priorType)
@@ -2408,7 +2363,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             {
                 let dbFunc = context.scope.getParentFunction();
                 if (dbFunc && dbFunc.returnType)
-                    context.expectedType = typedb.GetType(dbFunc.returnType);
+                    context.expectedType = typedb.LookupType(dbFunc.namespace, dbFunc.returnType);
             }
             return ExtractPriorExpressionAndSymbol(context, node.children[0]);
         case scriptfiles.node_types.CaseStatement:
@@ -2433,7 +2388,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                         if (nsNode.children[1].value)
                             typeName += "::"+nsNode.children[1].value;
                         
-                        context.priorType = typedb.GetType("__"+typeName);
+                        context.priorType = typedb.LookupType(context.scope.getNamespace(), typeName);
                         context.priorTypeWasNamespace = true;
                         context.requiresPriorType = true;
                         context.isIncompleteNamespace = true;
@@ -2450,7 +2405,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         {
             if (node.typename)
             {
-                let declType = typedb.GetType(node.typename.value);
+                let declType = typedb.LookupType(context.scope.getNamespace(), node.typename.value);
                 context.priorExpression = null;
                 if (node.name)
                 {
@@ -3207,9 +3162,11 @@ function isEditScope(inScope : scriptfiles.ASScope) : boolean
     return true;
 }
 
-function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DBProperty, inScope : scriptfiles.ASScope) : boolean
+function isPropertyAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamespace, prop : typedb.DBProperty, inScope : scriptfiles.ASScope) : boolean
 {
     if (!prop.containingType)
+        return true;
+    if (curtype instanceof typedb.DBNamespace)
         return true;
 
     if (prop.isPrivate || prop.isProtected)
@@ -3223,13 +3180,13 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DB
         if (prop.isPrivate)
         {
             // Needs to be in this class to have access
-            if (!curtype || dbtype.typename != prop.containingType.typename)
+            if (!curtype || dbtype.name != prop.containingType.name)
                 return false;
         }
         else if (prop.isProtected)
         {
             // Needs to be in a subclass to have access
-            if (!curtype || !dbtype.inheritsFrom(prop.containingType.typename))
+            if (!curtype || !dbtype.inheritsFrom(prop.containingType.name))
                 return false;
         }
     }
@@ -3259,9 +3216,11 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType, prop : typedb.DB
     return true;
 }
 
-function isFunctionAccessibleFromScope(curtype : typedb.DBType, func : typedb.DBMethod, inScope : scriptfiles.ASScope) : boolean
+function isFunctionAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamespace, func : typedb.DBMethod, inScope : scriptfiles.ASScope) : boolean
 {
     if (!func.containingType)
+        return true;
+    if (curtype instanceof typedb.DBNamespace)
         return true;
 
     if (func.isPrivate || func.isProtected)
@@ -3275,13 +3234,13 @@ function isFunctionAccessibleFromScope(curtype : typedb.DBType, func : typedb.DB
         if (func.isPrivate)
         {
             // Needs to be in this class to have access
-            if (!curtype || dbtype.typename != func.containingType.typename)
+            if (!curtype || dbtype.name != func.containingType.name)
                 return false;
         }
         else if (func.isProtected)
         {
             // Needs to be in a subclass to have access
-            if (!curtype || !dbtype.inheritsFrom(func.containingType.typename))
+            if (!curtype || !dbtype.inheritsFrom(func.containingType.name))
                 return false;
         }
     }
@@ -3612,7 +3571,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
                     filterText: method.name+"(...)",
                     insertText: complStr+"{\n"+currentIndent+superStr,
                     kind: CompletionItemKind.Snippet,
-                    data: ["decl_snippet", checktype.typename, method.name, method.id],
+                    data: ["decl_snippet", checktype.name, method.name, method.id],
                     additionalTextEdits: complEdits,
                     sortText: Sort.Method_Override_Snippet,
                 });
@@ -3623,7 +3582,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
                     label: method.returnType+" "+method.name+"(...)",
                     insertText: method.returnType+" "+complStr+"{\n"+currentIndent+superStr,
                     kind: CompletionItemKind.Snippet,
-                    data: ["decl_snippet", checktype.typename, method.name, method.id],
+                    data: ["decl_snippet", checktype.name, method.name, method.id],
                     additionalTextEdits: complEdits,
                     sortText: Sort.Method_Override_Snippet,
                 });
@@ -3717,20 +3676,38 @@ export function Resolve(item : CompletionItem) : CompletionItem
     let dataArray = item.data as Array<any>;
     let kind = dataArray[0];
 
-    let type = typedb.GetType(dataArray[1]);
-    if (type == null)
-        return null;
-
     if (kind == "type")
     {
+        let type = typedb.GetTypeByName(dataArray[1]);
+        if (type == null)
+            return null;
         if (type.documentation)
             item.documentation = type.documentation.replace(/\n/g,"\n\n");
         return item;
     }
-    else if (kind == "enum" || kind == "prop")
+    else if (kind == "namespace")
     {
-        let prop = type.getProperty(dataArray[2]);
-        if (prop)
+        let type = typedb.LookupNamespace(null, dataArray[1]);
+        if (type == null)
+            return null;
+        if (type.documentation)
+            item.documentation = type.documentation.replace(/\n/g,"\n\n");
+        return item;
+    }
+    else if (kind == "enum" || kind == "prop" || kind == "global_prop")
+    {
+        let type : typedb.DBType | typedb.DBNamespace;
+        if (kind == "global_prop")
+            type = typedb.LookupNamespace(null, dataArray[1]);
+        else
+            type = typedb.GetTypeByName(dataArray[1]);
+        if (type == null)
+            return null;
+
+        if (type == null)
+            return null;
+        let prop = type.findFirstSymbol(dataArray[2], typedb.DBAllowSymbol.Properties);
+        if (prop instanceof typedb.DBProperty)
         {
             item.documentation = <MarkupContent> {
                 kind: MarkupKind.Markdown,
@@ -3748,10 +3725,18 @@ export function Resolve(item : CompletionItem) : CompletionItem
             }
         }
     }
-    else if (kind == "accessor")
+    else if (kind == "accessor" || kind == "global_accessor")
     {
-        let getFunc = type.getMethod("Get"+dataArray[2]);
-        let setFunc = type.getMethod("Set"+dataArray[2]);
+        let type : typedb.DBType | typedb.DBNamespace;
+        if (kind == "global_accessor")
+            type = typedb.LookupNamespace(null, dataArray[1]);
+        else
+            type = typedb.GetTypeByName(dataArray[1]);
+        if (type == null)
+            return null;
+
+        let getFunc = type.findFirstSymbol("Get"+dataArray[2], typedb.DBAllowSymbol.Functions) as typedb.DBMethod;
+        let setFunc = type.findFirstSymbol("Set"+dataArray[2], typedb.DBAllowSymbol.Functions) as typedb.DBMethod;
 
         let docStr = "";
         if (getFunc)
@@ -3784,9 +3769,33 @@ export function Resolve(item : CompletionItem) : CompletionItem
             value: docStr,
         };
     }
-    else if (kind == "func" || kind == "func_mixin")
+    else if (kind == "func" || kind == "func_mixin" || kind == "global_func")
     {
-        let func = type.getMethodWithIdHint(dataArray[2], dataArray[3]);
+        let type : typedb.DBType | typedb.DBNamespace;
+        if (kind == "global_func" || kind == "func_mixin")
+            type = typedb.LookupNamespace(null, dataArray[1]);
+        else
+            type = typedb.GetTypeByName(dataArray[1]);
+        if (type == null)
+            return null;
+
+        let func : typedb.DBMethod = null;
+        for (let checkMethod of type.findSymbols(dataArray[2]))
+        {
+            if (checkMethod instanceof typedb.DBMethod)
+            {
+                if (checkMethod.id == dataArray[3])
+                {
+                    func = checkMethod;
+                    break;
+                }
+                else if (!func)
+                {
+                    func = checkMethod;
+                }
+            }
+        }
+
         if (func)
         {
             let isMixin = (kind == "func_mixin");
@@ -3816,6 +3825,9 @@ export function Resolve(item : CompletionItem) : CompletionItem
     }
     else if (kind == "decl_snippet")
     {
+        let type = typedb.GetTypeByName(dataArray[1]);
+        if (type == null)
+            return null;
         let func = type.getMethodWithIdHint(dataArray[2], dataArray[3]);
         if (func)
         {
@@ -3851,11 +3863,11 @@ function AddSuperCallSnippet(context : CompletionContext, completions : Array<Co
     if (!scopeType || !scopeFunction)
         return;
 
-    let superType = typedb.GetType(scopeType.supertype);
+    let superType = scopeType.getSuperType();
     if (!superType)
         return;
 
-    let superFunction = superType.findFirstSymbol(scopeFunction.name, typedb.DBAllowSymbol.FunctionOnly);
+    let superFunction = superType.findFirstSymbol(scopeFunction.name, typedb.DBAllowSymbol.Functions);
     if (!(superFunction instanceof typedb.DBMethod))
         return;
 
@@ -3891,9 +3903,9 @@ export function AddMathShortcutCompletions(context : CompletionContext, completi
     if (!CompletionSettings.mathCompletionShortcuts)
         return;
 
-    let mathNamespace = typedb.GetType("__Math");
+    let mathNamespace = typedb.LookupNamespace(null, "Math");
     if (!mathNamespace)
-        mathNamespace = typedb.GetType("__FMath");
+        mathNamespace = typedb.LookupNamespace(null, "FMath");
     if (!mathNamespace)
         return;
 
@@ -3903,18 +3915,20 @@ export function AddMathShortcutCompletions(context : CompletionContext, completi
     let unexpectedCompletions = new Array<CompletionItem>();
     let completionNames = new Set<string>();
 
-    mathNamespace.resolveNamespace();
-    for (let func of mathNamespace.methods)
+    mathNamespace.forEachSymbol(function (symbol : typedb.DBSymbol)
     {
+        if (!(symbol instanceof typedb.DBMethod))
+            return;
+        let func = symbol;
         if (!CanCompleteToOnlyStart(context, func.name))
-            continue;
+            return;
 
         let commitChars = ["("];
 
         let compl = <CompletionItem>{
-            label: mathNamespace.rawName+"::"+func.name,
+            label: mathNamespace.name+"::"+func.name,
             kind: CompletionItemKind.Method,
-            data: ["func", mathNamespace.typename, func.name, func.id],
+            data: ["global_func", mathNamespace.name, func.name, func.id],
             commitCharacters: commitChars,
             filterText: func.name,
             sortText: Sort.Math_Shortcut,
@@ -3941,12 +3955,12 @@ export function AddMathShortcutCompletions(context : CompletionContext, completi
         if (context.expectedType && !context.isTypeExpected(func.returnType))
         {
             unexpectedCompletions.push(compl);
-            continue;
+            return;
         }
 
         completions.push(compl);
         completionNames.add(compl.label);
-    }
+    });
 
     // Any functions where we _don't_ have an expected overload for, add them still
     for (let compl of unexpectedCompletions)
@@ -3985,16 +3999,10 @@ function AddCompletionsFromAccessSpecifiers(context : CompletionContext, complet
         ], completions);
 
         // Add completions for all types
-        for (let [typename, dbtype] of typedb.GetAllTypes())
+        for (let [_, dbtype] of typedb.GetAllTypesById())
         {
             // Ignore template instantations for completion
             if (dbtype.isTemplateInstantiation)
-                continue;
-            if (dbtype.isNamespace())
-                continue;
-            if (dbtype.isShadowedNamespace())
-                continue;
-            if (typename.startsWith("//"))
                 continue;
             if (dbtype.isEnum)
                 continue;
@@ -4002,9 +4010,9 @@ function AddCompletionsFromAccessSpecifiers(context : CompletionContext, complet
             if (CanCompleteSymbol(context, dbtype))
             {
                 let complItem = <CompletionItem> {
-                        label: typename,
+                        label: dbtype.name,
                         kind: CompletionItemKind.Class,
-                        data: ["type", dbtype.typename],
+                        data: ["type", dbtype.name],
                         commitCharacters: [",", ";"],
                         sortText: Sort.Typename,
                 };
@@ -4014,21 +4022,17 @@ function AddCompletionsFromAccessSpecifiers(context : CompletionContext, complet
         }
 
         // Add completions for all global functions
-        for (let [name, globalSymbols] of typedb.ScriptGlobals)
+        let checkNamespace = context.scope.getNamespace();
+        while (checkNamespace)
         {
-            if (!CanCompleteToOnlyStart(context, name))
-                continue;
-
-            for (let sym of globalSymbols)
+            checkNamespace.forEachSymbol(function (sym : typedb.DBSymbol)
             {
-                if (!sym.containingType)
-                    continue;
                 if (sym instanceof typedb.DBMethod)
                 {
                     let compl = <CompletionItem>{
                         label: sym.name,
                         kind: CompletionItemKind.Method,
-                        data: ["func", sym.containingType.typename, sym.name, sym.id],
+                        data: ["global_func", sym.namespace.getQualifiedNamespace(), sym.name, sym.id],
                         commitCharacters: [",", ";"],
                         sortText: Sort.Unimported,
                     };
@@ -4043,7 +4047,9 @@ function AddCompletionsFromAccessSpecifiers(context : CompletionContext, complet
 
                     completions.push(compl);
                 }
-            }
+            });
+
+            checkNamespace = checkNamespace.parentNamespace;
         }
 
         return true;
@@ -4098,9 +4104,9 @@ export function HandleFloatLiteralHelper(asmodule : scriptfiles.ASModule) : Prom
                 let expectingDoubleFloat = false;
                 if (context.expectedType)
                 {
-                    if (typedb.ArePrimitiveTypesEquivalent(context.expectedType.typename, "float64"))
+                    if (typedb.ArePrimitiveTypesEquivalent(context.expectedType.name, "float64"))
                         expectingDoubleFloat = true;
-                    else if (context.expectedType.typename == "FVector")
+                    else if (context.expectedType.name == "FVector")
                         expectingDoubleFloat = true;
                 }
 
