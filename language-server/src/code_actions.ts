@@ -448,44 +448,45 @@ function AddMethodOverrideSnippets(context : CodeActionContext)
         return;
 
     let foundOverrides = new Set<string>();
-    for (let checktype of typeOfScope.getInheritanceTypes())
+    typeOfScope.forEachSymbol(function (sym : typedb.DBSymbol)
     {
-        for (let method of checktype.methods)
-        {
-            if (checktype.isUnrealType() && !method.isBlueprintEvent)
-                continue;
-            if (foundOverrides.has(method.name))
-                continue;
+        if (!(sym instanceof typedb.DBMethod))
+            return;
+        let method = sym;
 
-            // Ignore methods we've already overridden
-            let existingSymbol = typeOfScope.findFirstSymbol(method.name, typedb.DBAllowSymbol.Functions);
-            if (!existingSymbol || !existingSymbol.containingType)
-                continue;
-            if (existingSymbol.containingType == typeOfScope)
-                continue;
+        if (method.containingType.isUnrealType() && !method.isBlueprintEvent)
+            return;
+        if (foundOverrides.has(method.name))
+            return;
 
-            // Ignore private methods
-            if (method.isPrivate)
-                continue;
+        // Ignore methods we've already overridden
+        let existingSymbol = typeOfScope.findFirstSymbol(method.name, typedb.DBAllowSymbol.Functions);
+        if (!existingSymbol || !existingSymbol.containingType)
+            return;
+        if (existingSymbol.containingType == typeOfScope)
+            return;
 
-            foundOverrides.add(method.name);
-            if (method.isFinal)
-                continue;
+        // Ignore private methods
+        if (method.isPrivate)
+            return;
 
-            context.actions.push(<CodeAction> {
-                kind: CodeActionKind.RefactorRewrite,
-                title: "Override: "+method.name+"()",
-                source: "angelscript",
-                data: {
-                    uri: context.module.uri,
-                    type: "methodOverride",
-                    inside: method.containingType.name,
-                    name: method.name,
-                    position: context.module.getPosition(context.range_start),
-                }
-            });
-        }
-    }
+        foundOverrides.add(method.name);
+        if (method.isFinal)
+            return;
+
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.RefactorRewrite,
+            title: "Override: "+method.name+"()",
+            source: "angelscript",
+            data: {
+                uri: context.module.uri,
+                type: "methodOverride",
+                inside: method.containingType.name,
+                name: method.name,
+                position: context.module.getPosition(context.range_start),
+            }
+        });
+    });
 }
 
 function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
@@ -1294,17 +1295,21 @@ function AddSwitchCaseActions(context : CodeActionContext)
 
     // Check if there are any missing cases left
     let missingCases = new Array<string>();
-    for (let prop of switchOnType.properties)
+    switchOnType.forEachSymbol(function (sym : typedb.DBSymbol)
     {
+        if (!(sym instanceof typedb.DBProperty))
+            return;
+        let prop = sym;
+
         if (prop.name == "MAX")
-            continue;
+            return;
         if (prop.name.endsWith("_MAX"))
-            continue;
+            return;
 
         let label = switchOnType.getDisplayName()+"::"+prop.name;
         if (!implementedCases.includes(label))
             missingCases.push(label);
-    }
+    });
 
     // Add code action for adding all missing cases
     if (missingCases.length >= 2)

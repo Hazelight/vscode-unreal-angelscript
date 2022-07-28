@@ -1598,8 +1598,6 @@ function AddDBType(scope : ASScope, typename : string, addToDatabase = true) : t
     let dbtype = new typedb.DBType();
     dbtype.name = typename;
     dbtype.supertype = null;
-    dbtype.properties = new Array<typedb.DBProperty>();
-    dbtype.methods = new Array<typedb.DBMethod>();
     dbtype.declaredModule = scope.module.modulename;
     dbtype.documentation = null;
     dbtype.isStruct = false;
@@ -1852,7 +1850,6 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
 
         if (scope.dbtype)
         {
-            scope.dbtype.properties.push(dbprop);
             scope.dbtype.addSymbol(dbprop);
         }
         else
@@ -2094,7 +2091,6 @@ function GenerateTypeInformation(scope : ASScope)
 
             if (scope.parentscope && scope.parentscope.dbtype)
             {
-                scope.parentscope.dbtype.methods.push(dbfunc);
                 scope.parentscope.dbtype.addSymbol(dbfunc);
             }
             else
@@ -2150,7 +2146,6 @@ function GenerateTypeInformation(scope : ASScope)
 
             if (scope.parentscope && scope.parentscope.dbtype)
             {
-                scope.parentscope.dbtype.methods.push(dbfunc);
                 scope.parentscope.dbtype.addSymbol(dbfunc);
             }
         }
@@ -2334,7 +2329,6 @@ function GenerateTypeInformation(scope : ASScope)
                         dbprop.moduleOffset = statement.start_offset + enumValue.name.start;
                         dbprop.moduleOffsetEnd = statement.start_offset + enumValue.name.end;
 
-                        scope.dbtype.properties.push(dbprop);
                         scope.dbtype.addSymbol(dbprop);
                     }
                 }
@@ -3781,93 +3775,178 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         // X:
         case node_types.NamespaceAccess:
         {
-            if (!node.children[0] || !node.children[0].value)
+            if (!node.children[0])
                 return null;
 
-            let insideType = scope.getParentType();
-            let parentType : typedb.DBType = null;
-            let shadowedType : typedb.DBType = null;
-            let namespace : typedb.DBNamespace = null;
-            if (insideType)
+            if (node.children[0].type == node_types.Identifier)
             {
-                if (node.children[0].value == "Super")
+                let insideType = scope.getParentType();
+                let parentType : typedb.DBType = null;
+                let shadowedType : typedb.DBType = null;
+                let namespace : typedb.DBNamespace = null;
+                if (insideType)
                 {
-                    parentType = scope.getParentType().getSuperType();
+                    if (node.children[0].value == "Super")
+                    {
+                        parentType = scope.getParentType().getSuperType();
+                    }
+                    else
+                    {
+                        // We might be calling a function on one of our super classes
+                        if (typedb.AllowsFunctions(symbol_type))
+                        {
+                            if (insideType.inheritsFrom(node.children[0].value))
+                                parentType = typedb.LookupType(scope.getNamespace(), node.children[0].value);
+                        }
+                    }
                 }
                 else
                 {
-                    // We might be calling a function on one of our super classes
-                    if (typedb.AllowsFunctions(symbol_type))
+                    namespace = typedb.LookupNamespace(scope.getNamespace(), node.children[0].value);
+                }
+
+                // See if we're accessing an enum value
+                if (!parentType)
+                    shadowedType = typedb.LookupType(scope.getNamespace(), node.children[0].value);
+
+                if (!namespace && !parentType && !shadowedType)
+                {
+                    scope.module.markDependencyIdentifier(node.children[0].value);
+                    if (parseContext.allow_errors)
                     {
-                        if (insideType.inheritsFrom(node.children[0].value))
-                            parentType = typedb.LookupType(scope.getNamespace(), node.children[0].value);
+                        AddUnknownSymbol(scope, statement, node.children[0], false);
+                        AddUnknownSymbol(scope, statement, node.children[1], false);
+                    }
+                    return null;
+                }
+
+                let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, null);
+                if (shadowedType && (namespace || shadowedType.isEnum))
+                {
+                    scope.module.markDependencyType(shadowedType);
+                    addedSymbol.symbol_name = shadowedType.name;
+                    addedSymbol.type = ASSymbolType.Typename;
+                }
+                else if (namespace)
+                {
+                    scope.module.markDependencyNamespace(namespace);
+                    addedSymbol.symbol_name = namespace.getQualifiedNamespace();
+                }
+                else if (parentType)
+                {
+                    scope.module.markDependencyType(parentType);
+                    addedSymbol.symbol_name = parentType.name;
+                    addedSymbol.type = ASSymbolType.Typename;
+                }
+
+                if (node.children[1])
+                {
+                    if (parentType)
+                    {
+                        // Check if we're calling a function in the super type
+                        let prevErrors = parseContext.allow_errors;
+                        parseContext.isWriteAccess = outerWriteAccess;
+                        parseContext.allow_errors = false;
+                        let parentSymbol = DetectSymbolsInType(scope, statement, parentType, node.children[1], parseContext, symbol_type);
+                        parseContext.allow_errors = prevErrors;
+
+                        if (parentSymbol)
+                        {
+                            let scopeFunc = scope.getParentFunction();
+                            if (scopeFunc && parentSymbol instanceof typedb.DBMethod && parentSymbol.name == scopeFunc.name)
+                                scopeFunc.hasSuperCall = true;
+                            return parentSymbol;
+                        }
+                    }
+                    else if (shadowedType && shadowedType.isEnum)
+                    {
+                        parseContext.isWriteAccess = outerWriteAccess;
+                        return DetectSymbolsInType(scope, statement, shadowedType, node.children[1], parseContext, symbol_type);
+                    }
+
+                    if (namespace)
+                    {
+                        parseContext.isWriteAccess = outerWriteAccess;
+                        return DetectSymbolsInNamespace(scope, statement, namespace, node.children[1], parseContext, symbol_type);
                     }
                 }
             }
             else
             {
-                namespace = typedb.LookupNamespace(scope.getNamespace(), node.children[0].value);
-            }
-
-            // See if we're accessing an enum value
-            if (!parentType)
-                shadowedType = typedb.LookupType(scope.getNamespace(), node.children[0].value);
-
-            if (!namespace && !parentType && !shadowedType)
-            {
-                scope.module.markDependencyIdentifier(node.children[0].value);
-                if (parseContext.allow_errors)
+                let identifierNodes : Array<any> = [];
+                let checkNode = node;
+                while (checkNode)
                 {
-                    AddUnknownSymbol(scope, statement, node.children[0], false);
-                    AddUnknownSymbol(scope, statement, node.children[1], false);
-                }
-                return null;
-            }
-
-            let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, null);
-            if (shadowedType && (namespace || shadowedType.isEnum))
-            {
-                scope.module.markDependencyType(shadowedType);
-                addedSymbol.symbol_name = shadowedType.name;
-                addedSymbol.type = ASSymbolType.Typename;
-            }
-            else if (namespace)
-            {
-                scope.module.markDependencyNamespace(namespace);
-                addedSymbol.symbol_name = namespace.getQualifiedNamespace();
-            }
-            else if (parentType)
-            {
-                scope.module.markDependencyType(parentType);
-                addedSymbol.symbol_name = parentType.name;
-                addedSymbol.type = ASSymbolType.Typename;
-            }
-
-            if (node.children[1])
-            {
-                if (parentType)
-                {
-                    // Check if we're calling a function in the super type
-                    let prevErrors = parseContext.allow_errors;
-                    parseContext.isWriteAccess = outerWriteAccess;
-                    parseContext.allow_errors = false;
-                    let parentSymbol = DetectSymbolsInType(scope, statement, parentType, node.children[1], parseContext, symbol_type);
-                    parseContext.allow_errors = prevErrors;
-
-                    if (parentSymbol)
+                    if (checkNode.type == node_types.Identifier)
                     {
-                        let scopeFunc = scope.getParentFunction();
-                        if (scopeFunc && parentSymbol instanceof typedb.DBMethod && parentSymbol.name == scopeFunc.name)
-                            scopeFunc.hasSuperCall = true;
-                        return parentSymbol;
+                        identifierNodes.splice(0, 0, checkNode);
+                        break;
+                    }
+                    else if (checkNode.type == node_types.NamespaceAccess)
+                    {
+                        identifierNodes.splice(0, 0, checkNode.children[1]);
+                        checkNode = checkNode.children[0];
+                    }
+                    else
+                    {
+                        break;
                     }
                 }
-                else if (shadowedType && shadowedType.isEnum)
+                
+                // Find the actual namespace we're looking in
+                let qualifiedNamespace = "";
+                for (let i = 0, count = identifierNodes.length - 1; i < count; ++i)
                 {
-                    parseContext.isWriteAccess = outerWriteAccess;
-                    return DetectSymbolsInType(scope, statement, shadowedType, node.children[1], parseContext, symbol_type);
+                    if (identifierNodes[i])
+                    {
+                        if (qualifiedNamespace.length != 0)
+                            qualifiedNamespace += "::";
+                        qualifiedNamespace += identifierNodes[i].value;
+                    }
                 }
-                else if (namespace)
+
+                // TODO: This doesn't take into account enums at the moment. It's possible to have Namespace::Enum::Value
+                let resolveNamespace = "";
+                for (let i = 0, count = identifierNodes.length - 1; i < count; ++i)
+                {
+                    if (identifierNodes[i])
+                    {
+                        if (resolveNamespace.length != 0)
+                            resolveNamespace += "::";
+                        resolveNamespace += identifierNodes[i].value;
+
+                        let subNamespace = typedb.LookupNamespace(scope.getNamespace(), resolveNamespace);
+                        if (subNamespace)
+                        {
+                            let addedSymbol = AddIdentifierSymbol(scope, statement, identifierNodes[i], ASSymbolType.Namespace, null, null);
+                            let shadowedType = subNamespace.getShadowedType();
+
+                            if (shadowedType)
+                            {
+                                scope.module.markDependencyType(shadowedType);
+                                addedSymbol.symbol_name = shadowedType.name;
+                                addedSymbol.type = ASSymbolType.Typename;
+                            }
+                            else
+                            {
+                                scope.module.markDependencyNamespace(subNamespace);
+                                addedSymbol.symbol_name = subNamespace.getQualifiedNamespace();
+                            }
+                        }
+                        else
+                        {
+                            AddUnknownSymbol(scope, statement, identifierNodes[i], false);
+                        }
+                    }
+                }
+
+                let namespace = typedb.LookupNamespace(scope.getNamespace(), qualifiedNamespace);
+                if (!namespace)
+                {
+                    AddUnknownSymbol(scope, statement, node.children[1], false);
+                    return null;
+                }
+                else
                 {
                     parseContext.isWriteAccess = outerWriteAccess;
                     return DetectSymbolsInNamespace(scope, statement, namespace, node.children[1], parseContext, symbol_type);
@@ -5010,6 +5089,11 @@ function CheckIdentifierIsPrefixForValidSymbol(scope : ASScope, statement : ASSt
         }
     }
 
+    // We could be typing a namespace
+    let namespaces = typedb.LookupNamespacesWithPrefix(scope.getNamespace(), identifierPrefix);
+    if (namespaces && namespaces.length != 0)
+        return true;
+
     // We could be typing a global get accessor from a module we haven't imported yet
     if (typedb.AllowsProperties(symbol_type))
     {
@@ -5255,21 +5339,26 @@ function CheckIdentifierIsPrefixForValidSymbolInNamespace(scope : ASScope, state
         return true;
 
     // Could be a symbol inside the type
-    let usedSymbol = namespace.findFirstSymbolWithPrefix(identifierPrefix, true, symbol_type);
+    let usedSymbol = namespace.findFirstSymbolWithPrefix(identifierPrefix, symbol_type, true);
     if (usedSymbol)
         return true;
 
     // Could be a property accessor
     if (typedb.AllowsProperties(symbol_type))
     {
-        let getAccessor = namespace.findFirstSymbolWithPrefix("Get"+identifierPrefix, true, typedb.DBAllowSymbol.Functions);
+        let getAccessor = namespace.findFirstSymbolWithPrefix("Get"+identifierPrefix, typedb.DBAllowSymbol.Functions, true);
         if (getAccessor && getAccessor instanceof typedb.DBMethod)
             return true;
 
-        let setAccessor = namespace.findFirstSymbolWithPrefix("Set"+identifierPrefix, true, typedb.DBAllowSymbol.Functions);
+        let setAccessor = namespace.findFirstSymbolWithPrefix("Set"+identifierPrefix, typedb.DBAllowSymbol.Functions, true);
         if (setAccessor && setAccessor instanceof typedb.DBMethod && setAccessor.isProperty && setAccessor.args.length != 0)
             return true;
     }
+
+    // Could be a child namespace we're typing
+    let childNS = namespace.findChildNamespacesWithPrefix(identifierPrefix);
+    if (childNS)
+        return true;
 
     return false;
 }

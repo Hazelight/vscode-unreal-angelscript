@@ -805,21 +805,24 @@ function AddCompletionsFromUnrealMacro(context : CompletionContext, completions 
                 let dbtype = context.scope.getDatabaseType();
                 if (dbtype && dbtype.inheritsFrom("AActor"))
                 {
-                    let properties = dbtype.allProperties();
-                    for (let prop of properties)
+                    dbtype.forEachSymbol(function (sym : typedb.DBSymbol)
                     {
+                        if (!(sym instanceof typedb.DBProperty))
+                            return;
+                        let prop = sym;
+
                         // We can't complete to C++ components unfortunately because we only know the variable
                         // name, not the name of the component, and we need the name of the component.
                         if (!prop.declaredModule)
-                            continue;
+                            return;
 
                         let propType = typedb.LookupType(prop.namespace, prop.typename);
                         if (!propType)
-                            continue;
+                            return;
                         if (!propType.inheritsFrom("USceneComponent"))
-                            continue;
+                            return;
                         if (!prop.macroSpecifiers || !prop.macroSpecifiers.has("DefaultComponent"))
-                            continue;
+                            return;
 
                         if (!context.completingSymbol || CanCompleteTo(context, prop.name))
                         {
@@ -834,7 +837,7 @@ function AddCompletionsFromUnrealMacro(context : CompletionContext, completions 
                                 sortText: Sort.Keyword,
                             });
                         }
-                    }
+                    });
 
                     foundSubSpecifier = true;
                 }
@@ -1410,11 +1413,14 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 {
                     if (context.expectedType == dbtype)
                     {
-                        for (let enumvalue of dbtype.properties)
+                        dbtype.forEachSymbol(function (sym : typedb.DBSymbol)
                         {
+                            if (!(sym instanceof typedb.DBProperty))
+                                return;
+                            let enumvalue = sym;
                             let canCompleteValue = CanCompleteTo(context, enumvalue.name);
                             if (!canCompleteEnum && !canCompleteValue)
-                                continue;
+                                return;
 
                             let enumstr = dbtype.name+"::"+enumvalue.name;
                             let complItem = <CompletionItem> {
@@ -1456,7 +1462,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                                     filterText: enumvalue.name,
                                 });
                             }
-                        }
+                        });
                     }
                 }
 
@@ -1519,8 +1525,6 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
     {
         for (let [_, namespace] of curtype.childNamespaces)
         {
-            if (context.isInsideType || context.isIncompleteNamespace)
-                continue;
             if (!namespace.name || namespace.name.length == 0)
                 continue;
 
@@ -1533,8 +1537,9 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
             if (CanCompleteSymbol(context, namespace))
             {
-                let commitChars = [":"];
-                GetTypenameCommitChars(context, namespace.name, commitChars);
+                let commitChars = [];
+                if (!context.isIncompleteNamespace)
+                    commitChars.push(":");
 
                 let complItem = <CompletionItem> {
                         label: namespace.name,
@@ -3494,7 +3499,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
     ));
 
     // Add the UFUNCTION() macro if we don't have one
-    let textEditsForEvent = [];
+    let textEditsForEvent = new Array<TextEdit>();
     if (!hasUFunctionMacro)
     {
         textEditsForEvent.push(TextEdit.insert(
@@ -3504,91 +3509,90 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
     }
 
     let foundOverrides = new Set<string>();
-    for (let checktype of typeOfScope.getInheritanceTypes())
+    typeOfScope.forEachSymbol(function (sym : typedb.DBSymbol)
     {
-        if (checktype == typeOfScope)
-            continue;
-        for (let method of checktype.methods)
+        if (!(sym instanceof typedb.DBMethod))
+            return;
+        let method = sym;
+
+        let includeReturnType = false;
+        let includeParamsOnly = false;
+
+        if (method.name && CanCompleteTo(context, method.name))
+            includeParamsOnly = true;
+        if (method.returnType && CanCompleteTo(context, method.returnType))
+            includeReturnType = true;
+        if (method.isPrivate)
+            return;
+
+        if (!includeParamsOnly && !includeReturnType)
+            return;
+
+        if (sym.containingType.isUnrealType() && !method.isBlueprintEvent)
+            return;
+        if (foundOverrides.has(method.name))
+            return;
+
+        foundOverrides.add(method.name);
+        if (method.isFinal)
+            return;
+
+        let complStr = GetDeclarationSnippet(method, currentIndent, false);
+        let complEdits = textEdits;
+
+        if (method.isBlueprintEvent)
+            complEdits = complEdits.concat(textEditsForEvent);
+
+        let superStr = "";
+        if (method.declaredModule && (!method.returnType || method.returnType == "void"))
         {
-            let includeReturnType = false;
-            let includeParamsOnly = false;
-
-            if (method.name && CanCompleteTo(context, method.name))
-                includeParamsOnly = true;
-            if (method.returnType && CanCompleteTo(context, method.returnType))
-                includeReturnType = true;
-            if (method.isPrivate)
-                continue;
-
-            if (!includeParamsOnly && !includeReturnType)
-                continue;
-
-            if (checktype.isUnrealType() && !method.isBlueprintEvent)
-                continue;
-            if (foundOverrides.has(method.name))
-                continue;
-
-            foundOverrides.add(method.name);
-            if (method.isFinal)
-                continue;
-
-            let complStr = GetDeclarationSnippet(method, currentIndent, false);
-            let complEdits = textEdits;
-
-            if (method.isBlueprintEvent)
-                complEdits = complEdits.concat(textEditsForEvent);
-
-            let superStr = "";
-            if (method.declaredModule && (!method.returnType || method.returnType == "void"))
+            superStr += "Super::"+method.name+"(";
+            for (let i = 0; i < method.args.length; ++i)
             {
-                superStr += "Super::"+method.name+"(";
-                for (let i = 0; i < method.args.length; ++i)
-                {
-                    if (i != 0)
-                        superStr += ", ";
-                    superStr += method.args[i].name;
-                }
-                superStr += ");\n"+currentIndent;
+                if (i != 0)
+                    superStr += ", ";
+                superStr += method.args[i].name;
             }
-
-            if (includeParamsOnly)
-            {
-                if (!hasReturnType)
-                {
-                    complEdits = complEdits.concat(
-                        TextEdit.replace(
-                            Range.create(
-                                Position.create(position.line, 0),
-                                Position.create(position.line, position.character-1),
-                            ),
-                            currentIndent + method.returnType+" "
-                        )
-                    );
-                }
-
-                completions.push({
-                    label: method.returnType+" "+method.name+"(...)",
-                    filterText: method.name+"(...)",
-                    insertText: complStr+"{\n"+currentIndent+superStr,
-                    kind: CompletionItemKind.Snippet,
-                    data: ["decl_snippet", checktype.name, method.name, method.id],
-                    additionalTextEdits: complEdits,
-                    sortText: Sort.Method_Override_Snippet,
-                });
-            }
-            else if (includeReturnType)
-            {
-                completions.push({
-                    label: method.returnType+" "+method.name+"(...)",
-                    insertText: method.returnType+" "+complStr+"{\n"+currentIndent+superStr,
-                    kind: CompletionItemKind.Snippet,
-                    data: ["decl_snippet", checktype.name, method.name, method.id],
-                    additionalTextEdits: complEdits,
-                    sortText: Sort.Method_Override_Snippet,
-                });
-            }
+            superStr += ");\n"+currentIndent;
         }
-    }
+
+        if (includeParamsOnly)
+        {
+            if (!hasReturnType)
+            {
+                complEdits = complEdits.concat(
+                    TextEdit.replace(
+                        Range.create(
+                            Position.create(position.line, 0),
+                            Position.create(position.line, position.character-1),
+                        ),
+                        currentIndent + method.returnType+" "
+                    )
+                );
+            }
+
+            completions.push({
+                label: method.returnType+" "+method.name+"(...)",
+                filterText: method.name+"(...)",
+                insertText: complStr+"{\n"+currentIndent+superStr,
+                kind: CompletionItemKind.Snippet,
+                data: ["decl_snippet", method.containingType.name, method.name, method.id],
+                additionalTextEdits: complEdits,
+                sortText: Sort.Method_Override_Snippet,
+            });
+        }
+        else if (includeReturnType)
+        {
+            completions.push({
+                label: method.returnType+" "+method.name+"(...)",
+                insertText: method.returnType+" "+complStr+"{\n"+currentIndent+superStr,
+                kind: CompletionItemKind.Snippet,
+                data: ["decl_snippet", method.containingType.name, method.name, method.id],
+                additionalTextEdits: complEdits,
+                sortText: Sort.Method_Override_Snippet,
+            });
+        }
+    });
 }
 
 function GetDeclarationSnippet(method : typedb.DBMethod, indent : string, includeReturnType : boolean) : string

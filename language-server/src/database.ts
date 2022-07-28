@@ -22,6 +22,35 @@ export function AllowsProperties(allowSymbol : DBAllowSymbol)
     return (allowSymbol & DBAllowSymbol.Properties) != 0;
 }
 
+export function FilterAllowsSymbol(symbol : DBSymbol, allowSymbol : DBAllowSymbol) : boolean
+{
+    if (symbol instanceof DBProperty)
+    {
+        if ((allowSymbol & DBAllowSymbol.Properties) != 0)
+            return true;
+    }
+    else if (symbol instanceof DBMethod)
+    {
+        if (symbol.isMixin)
+        {
+            if ((allowSymbol & DBAllowSymbol.Mixins) != 0)
+                return true;
+        }
+        else
+        {
+            if ((allowSymbol & DBAllowSymbol.Functions) != 0)
+                return true;
+        }
+    }
+    else if (symbol instanceof DBType)
+    {
+        if ((allowSymbol & DBAllowSymbol.Types) != 0)
+            return true;
+    }
+
+    return false;
+}
+
 export enum DBTypeClassification
 {
     Unknown,
@@ -464,8 +493,6 @@ export class DBType implements DBSymbol
     typeid : number = -1;
     name : string;
     supertype : string;
-    properties : Array<DBProperty>;
-    methods : Array<DBMethod>;
     unrealsuper : string;
     documentation : string;
     namespace : DBNamespace;
@@ -516,21 +543,20 @@ export class DBType implements DBSymbol
         inst.isTemplateInstantiation = true;
         inst.templateSubTypes = null;
 
-        inst.properties = [];
-        for (let prop of this.properties)
+        let baseType = this;
+        this.forEachSymbol(function (sym : DBSymbol)
         {
-            let newProp = prop.createTemplateInstance(this.templateSubTypes, actualTypes);
-            inst.properties.push(newProp);
-            inst.addSymbol(newProp);
-        }
-
-        inst.methods = [];
-        for (let mth of this.methods)
-        {
-            let newMethod = mth.createTemplateInstance(this.templateSubTypes, actualTypes);
-            inst.methods.push(newMethod);
-            inst.addSymbol(newMethod);
-        }
+            if (sym instanceof DBProperty)
+            {
+                let newProp = sym.createTemplateInstance(baseType.templateSubTypes, actualTypes);
+                inst.addSymbol(newProp);
+            }
+            else if (sym instanceof DBMethod)
+            {
+                let newMethod = sym.createTemplateInstance(baseType.templateSubTypes, actualTypes);
+                inst.addSymbol(newMethod);
+            }
+        });
 
         return inst;
     }
@@ -538,28 +564,22 @@ export class DBType implements DBSymbol
     initEmpty(name : string) : DBType
     {
         this.name = name;
-        this.methods = new Array<DBMethod>();
-        this.properties = new Array<DBProperty>();
         return this;
     }
 
     fromJSON(name : string, input : any)
     {
         this.name = name;
-        this.properties = new Array<DBProperty>();
         for (let key in input.properties)
         {
             let prop = new DBProperty();
             prop.fromJSON(key, input.properties[key]);
-            this.properties.push(prop);
             this.addSymbol(prop);
         }
-        this.methods = new Array<DBMethod>();
         for (let key in input.methods)
         {
             let func = new DBMethod();
             func.fromJSON(input.methods[key]);
-            this.methods.push(func);
             this.addSymbol(func);
         }
 
@@ -696,45 +716,34 @@ export class DBType implements DBSymbol
         return false;
     }
 
-    combineTypes : Array<DBType> = null;
-    combineTypesId : number = -1;
-    getCombineTypesList() : Array<DBType>
+    extendTypes : Array<DBType> = null;
+    extendTypesId : number = -1;
+    getExtendTypesList() : Array<DBType>
     {
-        if (this.combineTypes)
+        if (this.extendTypes)
         {
-            if (this.combineTypesId == DirtyTypeCacheId)
-                return this.combineTypes;
+            if (this.extendTypesId == DirtyTypeCacheId)
+                return this.extendTypes;
         }
 
-        this.combineTypes = [ this ];
-        this.combineTypesId = DirtyTypeCacheId;
+        this.extendTypes = [ this ];
+        this.extendTypesId = DirtyTypeCacheId;
         let checkIndex = 0;
-        while (checkIndex < this.combineTypes.length)
+        while (checkIndex < this.extendTypes.length)
         {
-            let checkType = this.combineTypes[checkIndex];
+            let checkType = this.extendTypes[checkIndex];
 
             if (checkType.supertype)
             {
                 let dbsuper = LookupType(checkType.namespace, checkType.supertype);
-                if(dbsuper && !this.combineTypes.includes(dbsuper))
-                    this.combineTypes.push(dbsuper);
+                if(dbsuper && !this.extendTypes.includes(dbsuper))
+                    this.extendTypes.push(dbsuper);
             }
 
             checkIndex += 1;
         }
 
-        return this.combineTypes;
-    }
-
-    allProperties() : Array<DBProperty>
-    {
-        if (!this.hasExtendTypes())
-            return this.properties;
-
-        let props : Array<DBProperty> = [];
-        for(let extend of this.getCombineTypesList())
-            props = props.concat(extend.properties);
-        return props;
+        return this.extendTypes;
     }
 
     formatDelegateSignature() : string
@@ -756,87 +765,78 @@ export class DBType implements DBSymbol
         return decl;
     }
 
-    getProperty(name : string, recurse : boolean = true) : DBProperty | null
+    getProperty(name : string, recurseSuper : boolean = true) : DBProperty | null
     {
-        for (let prop of this.properties)
+        if (!recurseSuper || !this.hasExtendTypes())
         {
-            if (prop.name == name)
-            {
+            let prop = this.findFirstSymbol(name, DBAllowSymbol.Properties);
+            if (prop instanceof DBProperty)
                 return prop;
-            }
         }
-
-        if (!recurse)
-            return null;
-
-        if (!this.hasExtendTypes())
-            return null;
-
-        for(let extend of this.getCombineTypesList())
+        else
         {
-            let prop = extend.getProperty(name, false);
-            if(prop)
-                return prop;
+            for (let extendType of this.getExtendTypesList())
+            {
+                let prop = extendType.findFirstSymbol(name, DBAllowSymbol.Properties);
+                if (prop instanceof DBProperty)
+                    return prop;
+            }
         }
 
         return null;
     }
 
-    getMethod(name : string, recurse : boolean = true) : DBMethod | null
+    getMethod(name : string, recurseSuper : boolean = true) : DBMethod | null
     {
-        for (let func of this.methods)
+        if (!recurseSuper || !this.hasExtendTypes())
         {
-            if (func.name == name)
-            {
-                return func;
-            }
+            let method = this.findFirstSymbol(name, DBAllowSymbol.Functions);
+            if (method instanceof DBMethod)
+                return method;
         }
-
-        if (!recurse)
-            return null;
-
-        if (!this.hasExtendTypes())
-            return null;
-
-        for(let extend of this.getCombineTypesList())
+        else
         {
-            let mth = extend.getMethod(name, false);
-            if(mth)
-                return mth;
+            for (let extendType of this.getExtendTypesList())
+            {
+                let method = extendType.findFirstSymbol(name, DBAllowSymbol.Functions);
+                if (method instanceof DBMethod)
+                    return method;
+            }
         }
 
         return null;
     }
 
-    getMethodWithIdHint(name : string, idHint : number, recurse : boolean = true) : DBMethod | null
+    getMethodWithIdHint(name : string, id : number, recurseSuper = true) : DBMethod | null
     {
         let fallback : DBMethod = null;
-        for (let func of this.methods)
+
+        let method = this.findFirstSymbol(name, DBAllowSymbol.Functions);
+        if (method instanceof DBMethod)
         {
-            if (func.name == name)
-            {
-                if (func.id == idHint)
-                    return func;
-                else if (!fallback)
-                    fallback = func;
-            }
+            if (method.id == id)
+                return method;
+            else
+                fallback = method;
         }
 
-        if (!recurse)
+        if (!recurseSuper)
             return fallback;
 
         if (!this.hasExtendTypes())
             return fallback;
 
-        for(let extend of this.getCombineTypesList())
+        for (let extend of this.getExtendTypesList())
         {
-            let mth = extend.getMethodWithIdHint(name, idHint, false);
-            if (mth)
+            if (extend == this)
+                continue;
+            let extendMethod = extend.getMethodWithIdHint(name, id, false);
+            if (extendMethod)
             {
-                if (mth.id == idHint)
-                    return mth;
+                if (extendMethod.id == id)
+                    return extendMethod;
                 else if (!fallback)
-                    fallback = mth;
+                    fallback = extendMethod;
             }
         }
 
@@ -921,55 +921,60 @@ export class DBType implements DBSymbol
         return false;
     }
 
-    hasOverriddenMethod(methodname : string) : boolean
+    forEachSymbol(func : (symbol : DBSymbol) => void, recurseSuper = true)
     {
-        for (let func of this.methods)
+        if (!recurseSuper || !this.hasExtendTypes())
         {
-            if (func.name == methodname)
-                return true;
+            for (let [_, syms] of this.symbols)
+            {
+                if (syms instanceof Array)
+                {
+                    for (let sym of syms)
+                        func(sym);
+                }
+                else
+                {
+                    func(syms);
+                }
+            }
         }
-        return false;
+        else
+        {
+            for (let extendType of this.getExtendTypesList())
+            {
+                for (let [_, syms] of extendType.symbols)
+                {
+                    if (syms instanceof Array)
+                    {
+                        for (let sym of syms)
+                            func(sym);
+                    }
+                    else
+                    {
+                        func(syms);
+                    }
+                }
+            }
+        }
     }
 
-    forEachSymbol(func : any)
+    findFirstSymbol(name : string, allowSymbols = DBAllowSymbol.All) : DBSymbol | null
     {
-    }
-
-    findFirstSymbol(name : string, allow_symbols = DBAllowSymbol.All) : DBSymbol | null
-    {
-        for (let type of this.getCombineTypesList())
+        for (let type of this.getExtendTypesList())
         {
             let syms = type.symbols.get(name);
             if (syms instanceof Array)
             {
                 for (let sym of syms)
                 {
-                    if (sym instanceof DBProperty)
-                    {
-                        if ((allow_symbols & DBAllowSymbol.Properties) == 0)
-                            continue;
+                    if (FilterAllowsSymbol(sym, allowSymbols))
                         return sym;
-                    }
-                    else if (sym instanceof DBMethod)
-                    {
-                        if (sym.isMixin)
-                        {
-                            if ((allow_symbols & DBAllowSymbol.Mixins) == 0)
-                                continue;
-                        }
-                        else
-                        {
-                            if ((allow_symbols & DBAllowSymbol.Functions) == 0)
-                                continue;
-                        }
-
-                        return sym;
-                    }
                 }
             }
             else
             {
-                return syms;
+                if (FilterAllowsSymbol(syms, allowSymbols))
+                    return syms;
             }
         }
 
@@ -977,37 +982,21 @@ export class DBType implements DBSymbol
     }
 
     // NOTE: Prefix must be at least 2 characters
-    findFirstSymbolWithPrefix(prefix : string, allow_symbols = DBAllowSymbol.All, caseSensitive = true, depth = 100) : DBSymbol | null
+    findFirstSymbolWithPrefix(prefix : string, allowSymbols = DBAllowSymbol.All, caseSensitive = true, depth = 100) : DBSymbol | null
     {
         if (prefix.length < 2)
             return null;
 
         let charPrefix = prefix.substring(0, 2).toLowerCase();
-        for (let type of this.getCombineTypesList())
+        for (let type of this.getExtendTypesList())
         {
             let syms = type.symbolsByPrefix.get(charPrefix);
             if (syms && syms.length != 0)
             {
                 for (let sym of syms)
                 {
-                    if (sym instanceof DBProperty)
-                    {
-                        if ((allow_symbols & DBAllowSymbol.Properties) == 0)
-                            continue;
-                    }
-                    else if (sym instanceof DBMethod)
-                    {
-                        if (sym.isMixin)
-                        {
-                            if ((allow_symbols & DBAllowSymbol.Mixins) == 0)
-                                continue;
-                        }
-                        else
-                        {
-                            if ((allow_symbols & DBAllowSymbol.Functions) == 0)
-                                continue;
-                        }
-                    }
+                    if (!FilterAllowsSymbol(sym, allowSymbols))
+                        continue;
 
                     if (caseSensitive)
                     {
@@ -1029,25 +1018,22 @@ export class DBType implements DBSymbol
     findSymbols(name : string) : Array<DBSymbol>
     {
         let result : Array<DBSymbol> = [];
-        this.findSymbolsInternal(result, name);
-        return result;
-    }
-
-    private findSymbolsInternal(result : Array<DBSymbol>, name : string)
-    {
-        for (let type of this.getCombineTypesList())
+        for (let type of this.getExtendTypesList())
         {
             let syms = type.symbols.get(name);
             if (syms instanceof Array)
             {
                 for (let sym of syms)
+                {
                     result.push(sym);
+                }
             }
             else
             {
                 result.push(syms);
             }
         }
+        return result;
     }
 
     addSymbol(symbol : DBSymbol)
@@ -1073,7 +1059,7 @@ export class DBType implements DBSymbol
 
         if (symbol.name.length > 2)
         {
-            let prefix = symbol.name.substr(0, 2).toLowerCase();
+            let prefix = symbol.name.substring(0, 2).toLowerCase();
             let prefixSyms = this.symbolsByPrefix.get(prefix);
             if (!prefixSyms)
             {
@@ -1106,7 +1092,7 @@ export class DBType implements DBSymbol
 
         if (symbol.name.length > 2)
         {
-            let prefix = symbol.name.substr(0, 2).toLowerCase();
+            let prefix = symbol.name.substring(0, 2).toLowerCase();
             let prefixSyms = this.symbolsByPrefix.get(prefix);
             if (prefixSyms)
             {
@@ -1179,8 +1165,9 @@ export class DBNamespaceDeclaration
 
 export class DBNamespace
 {
-    name : string;
+    name : string = "";
     documentation : string;
+    qualifiedNamespace : string | null = null;
 
     parentNamespace : DBNamespace | null = null;
 
@@ -1195,7 +1182,20 @@ export class DBNamespace
     // Get the full namespace starting at the root
     getQualifiedNamespace() : string
     {
-        return "";
+        if (this.qualifiedNamespace !== null)
+            return this.qualifiedNamespace;
+
+        this.qualifiedNamespace = this.name;
+
+        let checkParent = this.parentNamespace;
+        while (checkParent)
+        {
+            if (!checkParent.isRootNamespace())
+                this.qualifiedNamespace = checkParent.name + "::" +this.qualifiedNamespace;
+            checkParent = checkParent.parentNamespace;
+        }
+
+        return this.qualifiedNamespace;
     }
 
     // Whether this namespace shadows a declared type
@@ -1224,38 +1224,155 @@ export class DBNamespace
         return this.parentNamespace === null;
     }
 
-    forEachSymbol(func : any)
+    forEachSymbol(func : (symbol : DBSymbol) => void)
     {
+        for (let [_, syms] of this.symbols)
+        {
+            if (syms instanceof Array)
+            {
+                for (let sym of syms)
+                    func(sym);
+            }
+            else
+            {
+                func(syms);
+            }
+        }
     }
 
-    findFirstSymbol(name : string, allowSymbol : DBAllowSymbol = DBAllowSymbol.All) : DBSymbol | null
+    findFirstSymbol(name : string, allowSymbols : DBAllowSymbol = DBAllowSymbol.All) : DBSymbol | null
     {
+        let syms = this.symbols.get(name);
+        if (syms instanceof Array)
+        {
+            for (let sym of syms)
+            {
+                if (FilterAllowsSymbol(sym, allowSymbols))
+                    return sym;
+            }
+        }
+        else
+        {
+            if (FilterAllowsSymbol(syms, allowSymbols))
+                return syms;
+        }
+
         return null;
     }
 
-    findFirstSymbolWithPrefix(prefix : string, caseSensitive = true, allowSymbol : DBAllowSymbol = DBAllowSymbol.All) : DBSymbol | null
+    findFirstSymbolWithPrefix(prefix : string, allowSymbols : DBAllowSymbol = DBAllowSymbol.All, caseSensitive = true) : DBSymbol | null
     {
+        if (prefix.length < 2)
+            return null;
+
+        let charPrefix = prefix.substring(0, 2).toLowerCase();
+        let syms = this.symbolsByPrefix.get(charPrefix);
+        if (syms && syms.length != 0)
+        {
+            for (let sym of syms)
+            {
+                if (!FilterAllowsSymbol(sym, allowSymbols))
+                    continue;
+
+                if (caseSensitive)
+                {
+                    if (sym.name.startsWith(prefix))
+                        return sym;
+                }
+                else
+                {
+                    if (sym.name.toLowerCase().startsWith(prefix.toLowerCase()))
+                        return sym;
+                }
+            }
+        }
+
         return null;
     }
 
     findSymbols(name : string, allowSymbol : DBAllowSymbol = DBAllowSymbol.All) : Array<DBSymbol>
     {
-        return null;
+        let result : Array<DBSymbol> = [];
+        let syms = this.symbols.get(name);
+        if (syms instanceof Array)
+        {
+            for (let sym of syms)
+            {
+                if (FilterAllowsSymbol(sym, allowSymbol))
+                    result.push(sym);
+            }
+        }
+        else
+        {
+            if (FilterAllowsSymbol(syms, allowSymbol))
+                result.push(syms);
+        }
+        return result;
     }
 
-    findSymbolsWithPrefix(prefix : string, caseSensitive = true, allowSymbol : DBAllowSymbol = DBAllowSymbol.All) : Array<DBSymbol>
+    findSymbolsWithPrefix(prefix : string, allowSymbols : DBAllowSymbol = DBAllowSymbol.All, caseSensitive = true) : Array<DBSymbol> | null
     {
-        return null;
+        if (prefix.length < 2)
+            return null;
+
+        let result = [];
+        let charPrefix = prefix.substring(0, 2).toLowerCase();
+        let syms = this.symbolsByPrefix.get(charPrefix);
+        if (syms && syms.length != 0)
+        {
+            for (let sym of syms)
+            {
+                if (!FilterAllowsSymbol(sym, allowSymbols))
+                    continue;
+
+                if (caseSensitive)
+                {
+                    if (sym.name.startsWith(prefix))
+                        result.push(sym);
+                }
+                else
+                {
+                    if (sym.name.toLowerCase().startsWith(prefix.toLowerCase()))
+                        result.push(sym);
+                }
+            }
+        }
+
+        return result;
     }
 
     findChildNamespace(name : string) : DBNamespace | null
     {
-        return null;
+        let childNamespace = this.childNamespaces.get(name);
+        return childNamespace;
     }
 
     findChildNamespacesWithPrefix(prefix : string, caseSensitive = true) : Array<DBNamespace>
     {
-        return null;
+        if (prefix.length < 2)
+            return null;
+
+        let result = new Array<DBNamespace>();
+        let charPrefix = prefix.substring(0, 2).toLowerCase();
+        let namespaces = this.childNamespacesByPrefix.get(charPrefix);
+        if (namespaces && namespaces.length != 0)
+        {
+            for (let ns of namespaces)
+            {
+                if (caseSensitive)
+                {
+                    if (ns.name.startsWith(prefix))
+                        result.push(ns);
+                }
+                else
+                {
+                    if (ns.name.toLowerCase().startsWith(prefix.toLowerCase()))
+                        result.push(ns);
+                }
+            }
+        }
+
+        return result;
     }
 
     addSymbol(symbol : DBSymbol)
@@ -1327,36 +1444,95 @@ export class DBNamespace
 
     addChildNamespace(childNS : DBNamespace)
     {
+        childNS.parentNamespace = this;
+        this.childNamespaces.set(childNS.name, childNS);
+        NamespacesByFullName.set(childNS.getQualifiedNamespace(), childNS);
     }
 
     removeChildNamespace(childNS : DBNamespace)
     {
+        let existingChild = this.childNamespaces.get(childNS.name);
+        if (existingChild == childNS)
+            this.childNamespaces.delete(childNS.name);
+
+        let existingNS = NamespacesByFullName.get(childNS.getQualifiedNamespace());
+        if (existingNS == childNS)
+        {
+            NamespacesByFullName.delete(childNS.getQualifiedNamespace());
+        }
+
+        childNS.parentNamespace = null;
+        childNS.qualifiedNamespace = null;
     }
 
     addScriptDeclaration(decl : DBNamespaceDeclaration)
     {
+        this.declarations.push(decl);
     }
 
-    removeScriptDeclaration(moduleName : string)
+    removeScriptDeclarations(moduleName : string)
     {
+        for (let i = this.declarations.length - 1; i >= 0; --i)
+        {
+            if (this.declarations[i].declaredModule == moduleName)
+                this.declarations.splice(i, 1);
+        }
     }
 
-    removeDeclaredSymbols(declaredModule : string)
+    removeSymbolsDeclaredIn(declaredModule : string)
     {
+        let oldSymbols = this.symbols;
+
+        this.symbols = new Map<string, DBSymbol | Array<DBSymbol>>();
+        this.symbolsByPrefix = new Map<string, Array<DBSymbol>>();
+
+        for (let [_, syms] of oldSymbols)
+        {
+            if (syms instanceof Array)
+            {
+                for (let sym of syms)
+                {
+                    if (sym.declaredModule == declaredModule)
+                        continue;
+                    this.addSymbol(sym);
+                }
+            }
+            else
+            {
+                if (syms.declaredModule == declaredModule)
+                    continue;
+                this.addSymbol(syms);
+            }
+        }
     }
 
     getDeclarationInModule(declaredModule : string) : DBNamespaceDeclaration | null
     {
+        for (let decl of this.declarations)
+        {
+            if (decl.declaredModule == declaredModule)
+                return decl;
+        }
         return null;
     }
 
     getFirstScriptDeclaration() : DBNamespaceDeclaration | null
     {
+        for (let decl of this.declarations)
+        {
+            if (decl.declaredModule)
+                return decl;
+        }
         return null;
     }
 
     getCppDeclaration() : DBNamespaceDeclaration | null
     {
+        for (let decl of this.declarations)
+        {
+            if (decl.declaredModule === null)
+                return decl;
+        }
         return null;
     }
 };
@@ -1579,6 +1755,11 @@ export function GetAllNamespaces() : Map<string, DBNamespace>
     return NamespacesByFullName;
 }
 
+function SplitNamespace(identifier : string) : Array<string>
+{
+    return identifier.split("::");
+}
+
 export function LookupNamespace(namespace : DBNamespace, name : string) : DBNamespace | null
 {
     if (!namespace)
@@ -1587,10 +1768,56 @@ export function LookupNamespace(namespace : DBNamespace, name : string) : DBName
     if (!name || name.length == 0)
         return namespace;
 
-    // TODO: Split :: in namespace
-    // TODO: Recursively search up in namespaces
+    if (name.startsWith("::"))
+    {
+        namespace = RootNamespace;
+        name = name.substring(2);
+    }
 
-    return namespace.findChildNamespace(name);
+    let nameParts = SplitNamespace(name);
+    let checkNamespace = namespace;
+
+    while (checkNamespace)
+    {
+        let targetNamespace = checkNamespace;
+        for (let part of nameParts)
+        {
+            targetNamespace = targetNamespace.findChildNamespace(part.trim());
+            if (!targetNamespace)
+                break;
+        }
+        if (targetNamespace)
+            return targetNamespace;
+
+        checkNamespace = checkNamespace.parentNamespace;
+    }
+}
+
+export function LookupNamespacesWithPrefix(namespace : DBNamespace, prefix : string, caseSensitive = true) : Array<DBNamespace> | null
+{
+    if (!namespace)
+        namespace = RootNamespace;
+
+    if (!prefix || prefix.length < 2)
+        return null;
+
+    let checkNamespace = namespace;
+    let result : Array<DBNamespace> = null;
+    while (checkNamespace)
+    {
+        let children = checkNamespace.findChildNamespacesWithPrefix(prefix);
+        if (children)
+        {
+            if (result)
+                result = result.concat(children);
+            else
+                result = children;
+        }
+
+        checkNamespace = checkNamespace.parentNamespace;
+    }
+
+    return result;
 }
 
 export function GetRootNamespace() : DBNamespace
@@ -1619,7 +1846,7 @@ export function DeclareNamespace(namespace : DBNamespace, name : string, decl : 
 
 export function RemoveNamespaceDeclaration(namespace : DBNamespace, moduleName : string)
 {
-    namespace.removeScriptDeclaration(moduleName);
+    namespace.removeScriptDeclarations(moduleName);
     if (namespace.declarations.length == 0)
         namespace.parentNamespace.removeChildNamespace(namespace);
 }
@@ -1628,22 +1855,44 @@ export function LookupType(namespace : DBNamespace, typename : string) : DBType 
 {
     if (!typename)
         return null;
-    typename = CleanTypeName(typename);
+    let identifier = CleanTypeName(typename);
 
     if (!namespace)
         namespace = RootNamespace;
 
-    // TODO: Resolve :: in typename
-    // TODO: Recursively search up in namespaces
+    if (identifier.startsWith("::"))
+    {
+        namespace = RootNamespace;
+        identifier = identifier.substring(2);
+    }
 
-    let foundType = namespace.findFirstSymbol(typename, DBAllowSymbol.Types);
-    if (foundType instanceof DBType)
-        return foundType;
+    let nameParts = SplitNamespace(identifier);
+    let finalIdentifier = nameParts[nameParts.length - 1];
+
+    let checkNamespace = namespace;
+    while (checkNamespace)
+    {
+        let targetNamespace = checkNamespace;
+        for (let i = 0, count = nameParts.length - 1; i < count; ++i)
+        {
+            targetNamespace = targetNamespace.findChildNamespace(nameParts[i].trim());
+            if (!targetNamespace)
+                break;
+        }
+        if (targetNamespace)
+        {
+            let type = targetNamespace.findFirstSymbol(finalIdentifier, DBAllowSymbol.Types);
+            if (type instanceof DBType)
+                return type;
+        }
+
+        checkNamespace = checkNamespace.parentNamespace;
+    }
 
     // See if we have to create a template instance
-    if (typename.indexOf('<') != -1)
+    if (identifier.indexOf('<') != -1)
     {
-        let match = typename.match(re_template);
+        let match = identifier.match(re_template);
         if (match != null)
         {
             let basetype = match[1];
@@ -1660,7 +1909,7 @@ export function LookupType(namespace : DBNamespace, typename : string) : DBType 
             let inst = dbbasetype.createTemplateInstance(subtypes);
             if (!inst)
                 return null;
-            inst.name = typename;
+            inst.name = identifier;
             if (!inst)
                 return null;
 
@@ -1677,45 +1926,98 @@ export function LookupGlobalSymbol(namespace : DBNamespace, name : string, allow
     if (!name)
         return [];
 
+    let identifier = name;
     if (!namespace)
         namespace = RootNamespace;
 
-    // TODO: Resolve :: in typename
-    // TODO: Recursively search up in namespaces
+    if (!namespace)
+        namespace = RootNamespace;
 
-    let foundSymbols = namespace.findSymbols(name, allowSymbol);
-    return foundSymbols;
+    if (identifier.startsWith("::"))
+    {
+        namespace = RootNamespace;
+        identifier = identifier.substring(2);
+    }
+
+    let nameParts = SplitNamespace(identifier);
+    let finalIdentifier = nameParts[nameParts.length - 1];
+
+    let result : Array<DBSymbol> = null;
+    let checkNamespace = namespace;
+    while (checkNamespace)
+    {
+        let targetNamespace = checkNamespace;
+        for (let i = 0, count = nameParts.length - 1; i < count; ++i)
+        {
+            targetNamespace = targetNamespace.findChildNamespace(nameParts[i].trim());
+            if (!targetNamespace)
+                break;
+        }
+        if (targetNamespace)
+        {
+            let symbols = targetNamespace.findSymbols(finalIdentifier, allowSymbol);
+            if (symbols)
+            {
+                if (result)
+                    result = result.concat(symbols);
+                else
+                    result = symbols;
+            }
+        }
+
+        checkNamespace = checkNamespace.parentNamespace;
+    }
+
+    return result;
 }
 
-export function LookupGlobalSymbolsWithPrefix(namespace : DBNamespace, prefix : string, allowSymbol = DBAllowSymbol.All) : Array<DBSymbol>
+export function LookupGlobalSymbolsWithPrefix(namespace : DBNamespace, prefix : string, allowSymbol = DBAllowSymbol.All, caseSensitive = true) : Array<DBSymbol>
 {
-    if (!prefix)
+    if (!prefix || prefix.length < 2)
         return [];
 
     if (!namespace)
         namespace = RootNamespace;
 
-    // TODO: Resolve :: in typename
-    // TODO: Recursively search up in namespaces
+    if (!namespace)
+        namespace = RootNamespace;
 
-    return [];
+    let result : Array<DBSymbol> = null;
+    let checkNamespace = namespace;
+    while (checkNamespace)
+    {
+        let symbols = checkNamespace.findSymbolsWithPrefix(prefix, allowSymbol, caseSensitive);
+        if (symbols)
+        {
+            if (result)
+                result = result.concat(symbols);
+            else
+                result = symbols;
+        }
+
+        checkNamespace = checkNamespace.parentNamespace;
+    }
+
+    return result;
 }
 
 export function HasTypeWithPrefix(namespace : DBNamespace, typenamePrefix : string, caseSensitive = true) : boolean
 {
+    if (!typenamePrefix || typenamePrefix.length < 2)
+        return true;
+
     if (!namespace)
         namespace = RootNamespace;
 
-    // TODO: Resolve :: in typename
-    // TODO: Recursively search up in namespaces
+    let checkNamespace = namespace;
+    while (checkNamespace)
+    {
+        let symbols = checkNamespace.findSymbolsWithPrefix(typenamePrefix, DBAllowSymbol.Types, caseSensitive);
+        if (symbols && symbols.length != 0)
+            return true;
 
-    let charPrefix = GetTypenameCharPrefix(typenamePrefix);
-    if (!charPrefix)
-        return true;
-
-    let foundSym = namespace.findFirstSymbolWithPrefix(charPrefix, caseSensitive, DBAllowSymbol.Types);
-    if (foundSym)
-        return true;
+        checkNamespace = checkNamespace.parentNamespace;
+    }
 
     return false;
 }
@@ -1792,16 +2094,19 @@ export function AddTypesFromUnreal(input : any)
 
         if (type.name.startsWith("__"))
         {
+            let decl = new DBNamespaceDeclaration();
+            decl.declaredModule = null;
+
             let ns = LookupNamespace(null, type.name.substring(2));
             if (!ns)
             {
-                let decl = new DBNamespaceDeclaration();
-                decl.declaredModule = null;
                 ns = DeclareNamespace(null, type.name.substring(2), decl);
             }
             else
             {
-                ns.removeDeclaredSymbols(null);
+                ns.removeSymbolsDeclaredIn(null);
+                ns.removeScriptDeclarations(null);
+                ns.addScriptDeclaration(decl);
             }
 
             for (let [name, sym] of type.symbols)
