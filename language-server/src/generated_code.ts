@@ -8,7 +8,7 @@ export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType, asmodule 
     if (dbtype.isEvent || dbtype.isDelegate)
         AddGeneratedCodeForDelegate(dbtype, asmodule);
 
-    if (!dbtype.isStruct)
+    if (!dbtype.isStruct && !dbtype.isEnum)
     {
         let decl = new typedb.DBNamespaceDeclaration;
         decl.declaredModule = dbtype.declaredModule;

@@ -33,6 +33,7 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
 
     // Determine which symbols overlap the range
     let foundSymbol = false;
+    context.last_symbol = context.module.semanticSymbols.length;
     for (let i = 0, count = context.module.semanticSymbols.length; i < count; ++i)
     {
         let symbol = context.module.semanticSymbols[i];
@@ -48,6 +49,12 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
             context.first_symbol = i;
             foundSymbol = true;
         }
+    }
+
+    if (!foundSymbol)
+    {
+        context.first_symbol = 0;
+        context.last_symbol = 0;
     }
 
     // Actions for adding missing imports
@@ -814,13 +821,11 @@ function AddAutoActions(context : CodeActionContext)
         if (!symbol.isAuto)
             continue;
 
-        let realTypename = symbol.symbol_name;
-        if (realTypename.startsWith("__"))
-            realTypename = realTypename.substr(2);
-
-        let dbtype = typedb.LookupType(context.scope.getNamespace(), realTypename);
+        let dbtype = typedb.GetTypeByName(symbol.symbol_name);
         if (!dbtype)
             continue;
+
+        let realTypename = dbtype.getQualifiedTypenameInNamespace(context.scope.getNamespace());
 
         context.actions.push(<CodeAction> {
             kind: CodeActionKind.RefactorInline,
@@ -1306,7 +1311,7 @@ function AddSwitchCaseActions(context : CodeActionContext)
         if (prop.name.endsWith("_MAX"))
             return;
 
-        let label = switchOnType.getDisplayName()+"::"+prop.name;
+        let label = switchOnType.getQualifiedTypenameInNamespace(context.scope.getNamespace())+"::"+prop.name;
         if (!implementedCases.includes(label))
             missingCases.push(label);
     });

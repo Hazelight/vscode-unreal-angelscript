@@ -1152,6 +1152,20 @@ export class DBType implements DBSymbol
 
         return null;
     }
+
+    getQualifiedTypenameInNamespace(accessNamespace : DBNamespace) : string
+    {
+        if (!this.namespace || this.namespace.isRootNamespace())
+            return this.name;
+        let typename = this.namespace.getQualifiedNamespace() + "::" + this.name;
+        if (accessNamespace && !accessNamespace.isRootNamespace())
+        {
+            let accessPrefix = accessNamespace.getQualifiedNamespace() + "::";
+            if (typename.startsWith(accessPrefix))
+                typename = typename.substring(accessPrefix.length);
+        }
+        return typename;
+    }
 };
 
 export class DBNamespaceDeclaration

@@ -297,14 +297,14 @@ statement -> %case_token _ %identifier {%
 
 statement -> %case_token _ %identifier _ %colon {%
     function (d) { return Compound(d, n.CaseStatement, [{
-        ...Compound(d, n.NamespaceAccess, [d[2], null]),
+        ...Compound(d, n.NamespaceAccess, [Identifier(d[2]), null]),
         incomplete_colon: true,
     }, null]); }
 %}
 
 statement -> %case_token _ %identifier _ %ns {%
     function (d) { return Compound(d, n.CaseStatement, [{
-        ...Compound(d, n.NamespaceAccess, [d[2], null]),
+        ...Compound(d, n.NamespaceAccess, [Identifier(d[2]), null]),
     }, null]); }
 %}
 
@@ -945,12 +945,24 @@ lvalue -> %identifier _ "::" {%
     function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]); }
 %}
 # INCOMPLETE: Attempts to parse an incomplete namespace access while the user is typing
+lvalue -> namespace_access _ "::" {%
+    function (d) { return Compound(d, n.NamespaceAccess, [d[0], null]); }
+%}
+# INCOMPLETE: Attempts to parse an incomplete namespace access while the user is typing
 lvalue -> %identifier _ ":" {%
     function (d) { return {
         ...Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]),
         incomplete_colon: true
      } }
 %}
+# INCOMPLETE: Attempts to parse an incomplete namespace access while the user is typing
+lvalue -> namespace_access _ ":" {%
+    function (d) { return {
+        ...Compound(d, n.NamespaceAccess, [d[0], null]),
+        incomplete_colon: true
+     } }
+%}
+
 # INCOMPLETE: Attempts to parse an incomplete member access while the user is typing
 lvalue -> lvalue _ %dot {%
     function (d) { return Compound(d, n.MemberAccess, [d[0], null]); }

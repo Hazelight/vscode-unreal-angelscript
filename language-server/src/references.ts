@@ -251,7 +251,7 @@ export function PrepareRename(uri : string, position : Position) : Range | Respo
         {
             let namespace = typedb.LookupNamespace(null, findSymbol.symbol_name);
             // We can only edit typenames that are declared in a script file
-            if (!namespace.getCppDeclaration())
+            if (namespace.getCppDeclaration())
                 return new ResponseError<void>(0, "Cannot rename symbols declared in C++");
         }
         break;

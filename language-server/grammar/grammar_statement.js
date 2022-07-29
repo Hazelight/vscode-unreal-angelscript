@@ -291,13 +291,13 @@ var grammar = {
         },
     {"name": "statement", "symbols": [(lexer.has("case_token") ? {type: "case_token"} : case_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", (lexer.has("colon") ? {type: "colon"} : colon)], "postprocess": 
         function (d) { return Compound(d, n.CaseStatement, [{
-            ...Compound(d, n.NamespaceAccess, [d[2], null]),
+            ...Compound(d, n.NamespaceAccess, [Identifier(d[2]), null]),
             incomplete_colon: true,
         }, null]); }
         },
     {"name": "statement", "symbols": [(lexer.has("case_token") ? {type: "case_token"} : case_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", (lexer.has("ns") ? {type: "ns"} : ns)], "postprocess": 
         function (d) { return Compound(d, n.CaseStatement, [{
-            ...Compound(d, n.NamespaceAccess, [d[2], null]),
+            ...Compound(d, n.NamespaceAccess, [Identifier(d[2]), null]),
         }, null]); }
         },
     {"name": "statement", "symbols": [(lexer.has("case_token") ? {type: "case_token"} : case_token), "_", "case_label"], "postprocess": 
@@ -989,9 +989,18 @@ var grammar = {
     {"name": "lvalue", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"::"}], "postprocess": 
         function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]); }
         },
+    {"name": "lvalue", "symbols": ["namespace_access", "_", {"literal":"::"}], "postprocess": 
+        function (d) { return Compound(d, n.NamespaceAccess, [d[0], null]); }
+        },
     {"name": "lvalue", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":":"}], "postprocess": 
         function (d) { return {
             ...Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]),
+            incomplete_colon: true
+         } }
+        },
+    {"name": "lvalue", "symbols": ["namespace_access", "_", {"literal":":"}], "postprocess": 
+        function (d) { return {
+            ...Compound(d, n.NamespaceAccess, [d[0], null]),
             incomplete_colon: true
          } }
         },

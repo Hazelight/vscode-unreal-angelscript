@@ -1393,16 +1393,24 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
         else if (symbol instanceof typedb.DBType)
         {
             let dbtype : typedb.DBType = symbol;
-            if (context.isInsideType || context.isIncompleteNamespace)
-                return;
 
             // Ignore template instantations for completion
             if (dbtype.isTemplateInstantiation)
                 return;
 
             let kind : CompletionItemKind = CompletionItemKind.Class;
-            if (!context.maybeTypename && (context.isSubExpression || context.isRightExpression))
-                return;
+            if (dbtype.isEnum)
+            {
+                if (context.isInsideType && !context.priorTypeWasNamespace)
+                    return;
+            }
+            else
+            {
+                if (context.isInsideType || context.isIncompleteNamespace)
+                    return;
+                if (!context.maybeTypename && (context.isSubExpression || context.isRightExpression))
+                    return;
+            }
 
             if (dbtype.isEnum)
             {
@@ -1451,6 +1459,9 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                                     complItem.sortText = Sort.EnumValue;
                             }
 
+                            if (context.isIncompleteNamespace)
+                                complItem.insertText = ":"+complItem.label;
+
                             if (canCompleteEnum)
                                 completions.push(complItem);
 
@@ -1470,11 +1481,15 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 {
                     if (!context.expectedType || !context.expectedType.isEnum || context.expectedType == dbtype)
                     {
+                        let commitChars : Array<string> = [];
+                        if (!context.isIncompleteNamespace)
+                            commitChars.push(":");
+
                         let complItem = <CompletionItem> {
                                 label: dbtype.name,
                                 kind: CompletionItemKind.Enum,
                                 data: ["type", dbtype.name],
-                                commitCharacters: [":"],
+                                commitCharacters: commitChars,
                                 filterText: GetSymbolFilterText(context, dbtype),
                                 sortText: Sort.Typename,
                         };
@@ -1486,6 +1501,9 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                             context.havePreselection = true;
                         }
 
+                        if (context.isIncompleteNamespace)
+                            complItem.insertText = ":"+complItem.label;
+
                         completions.push(complItem);
                     }
                 }
@@ -1494,7 +1512,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             {
                 if (CanCompleteSymbol(context, dbtype))
                 {
-                    let commitChars = [":"];
+                    let commitChars : Array<string> = [];
                     GetTypenameCommitChars(context, dbtype.name, commitChars);
 
                     let complItem = <CompletionItem> {
@@ -1513,6 +1531,9 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                         complItem.preselect = true;
                         context.havePreselection = true;
                     }
+
+                    if (context.isIncompleteNamespace)
+                        complItem.insertText = ":"+complItem.label;
 
                     completions.push(complItem);
                 }
@@ -1566,6 +1587,9 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                     complItem.preselect = true;
                     context.havePreselection = true;
                 }
+
+                if (context.isIncompleteNamespace)
+                    complItem.insertText = ":"+complItem.label;
 
                 completions.push(complItem);
             }
@@ -2310,18 +2334,35 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         break;
         case scriptfiles.node_types.NamespaceAccess:
         {
-            if (!node.children[0].value)
+            if (!node.children[0])
                 return false;
+
             context.priorExpression = node.children[0];
-            if(node.children[1])
+            if (node.children[1])
                 context.completingSymbol = node.children[1].value;
             else
                 context.completingSymbol = "";
+
             context.completingNode = node.children[1];
-            if (node.children[0].value == "Super" && context.scope.getParentType())
+
+            let fullNamespace = scriptfiles.CollapseNamespaceFromNode(node.children[0]);
+
+            // We could be calling a function in the Super class
+            if (fullNamespace == "Super" && context.scope.getParentType())
                 context.priorType = context.scope.getParentType().getSuperType();
-            else
-                context.priorType = typedb.LookupNamespace(context.scope.getNamespace(), node.children[0].value);
+
+            // We could be typing an enum value
+            if (!context.priorType)
+            {
+                let enumType = typedb.LookupType(context.scope.getNamespace(), fullNamespace);
+                if (enumType && enumType.isEnum)
+                    context.priorType = enumType;
+            }
+
+            // We could be typing something in a namespace
+            if (!context.priorType)
+                context.priorType = typedb.LookupNamespace(context.scope.getNamespace(), fullNamespace);
+
             context.priorTypeWasNamespace = true;
             context.requiresPriorType = true;
             if (context.priorType)
