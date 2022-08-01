@@ -85,9 +85,6 @@ function BuildSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTokensB
             || symbol.type == scriptfiles.ASSymbolType.Namespace)
         {
             let symName = symbol.symbol_name;
-            if (symbol.type == scriptfiles.ASSymbolType.Namespace)
-                symName = symbol.symbol_name.substr(2);
-            
             let classification = typedb.DBTypeClassification.Other;
 
             if (symbol.type == scriptfiles.ASSymbolType.Typename)

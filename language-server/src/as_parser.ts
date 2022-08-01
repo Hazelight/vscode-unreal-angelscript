@@ -6,6 +6,7 @@ import * as nearley from 'nearley';
 
 import * as typedb from './database';
 import { ProcessScriptTypeGeneratedCode } from "./generated_code";
+//import { performance } from "perf_hooks";
 
 let grammar_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_statement.js"));
 let grammar_class_statement = nearley.Grammar.fromCompiled(require("../grammar/grammar_class_statement.js"));
@@ -458,6 +459,7 @@ export class ASScope extends ASElement
     dbtype : typedb.DBType = null;
     dbfunc : typedb.DBMethod = null;
 
+    resolvedNamespace : typedb.DBNamespace = null;
     available_global_types : Array<typedb.DBType> = null;
 
     isInFunctionBody() : boolean
@@ -589,15 +591,7 @@ export class ASScope extends ASElement
 
     getNamespace() : typedb.DBNamespace
     {
-        let checkscope : ASScope = this;
-        while (checkscope != null)
-        {
-            let dbNS = checkscope.dbnamespace;
-            if (dbNS && checkscope.scopetype == ASScopeType.Namespace)
-                return dbNS;
-            checkscope = checkscope.parentscope;
-        }
-        return typedb.GetRootNamespace();
+        return this.resolvedNamespace;
     }
 
     getDatabaseType() : typedb.DBType
@@ -763,7 +757,9 @@ export function ParseModule(module : ASModule, debug : boolean = false)
     // Traverse syntax trees to lift out functions, variables and imports during this first parse step
     GenerateTypeInformation(module.rootscope);
 
-    //console.log("Parse "+module.modulename+" " + (performance.now() - startTime) + " ms - "+module.loadedFromCacheCount+" cached, "+module.parsedStatementCount+" parsed")
+    //let parseTime = performance.now() - startTime;
+    //if (parseTime > 50)
+        //console.log("Parse "+module.modulename+" " + (parseTime) + " ms - "+module.loadedFromCacheCount+" cached, "+module.parsedStatementCount+" parsed")
 }
 
 // Parse the specified module and all its unparsed dependencies
@@ -1868,6 +1864,7 @@ function ExtendScopeToStatement(scope : ASScope, statement : ASStatement)
 
 function GenerateTypeInformation(scope : ASScope)
 {
+    scope.resolvedNamespace = scope.parentscope ? scope.parentscope.resolvedNamespace : typedb.GetRootNamespace();
     if (scope.previous && scope.previous instanceof ASStatement && scope.previous.ast)
     {
         // Class definition in global scope
@@ -1942,7 +1939,7 @@ function GenerateTypeInformation(scope : ASScope)
         {
             scope.declaration = scope.previous;
 
-            let parentNamespace = null;
+            let parentNamespace = typedb.GetRootNamespace();
             if (scope.parentscope)
                 parentNamespace = scope.parentscope.getNamespace();
 
@@ -1955,7 +1952,23 @@ function GenerateTypeInformation(scope : ASScope)
             decl.scopeOffsetStart = scope.start_offset;
             decl.scopeOffsetEnd = scope.end_offset;
 
-            scope.dbnamespace = typedb.DeclareNamespace(parentNamespace, nsdef.name.value, decl)
+            // Generate all parent namespaces first
+            let identifier = nsdef.name.value;
+            let namespaceIndex = identifier.indexOf("::");
+            if (namespaceIndex != -1)
+            {
+                let parts = identifier.split("::");
+                identifier = parts[parts.length-1];
+
+                for (let i = 0, count = parts.length - 1; i < count; ++i)
+                {
+                    parentNamespace = typedb.DeclareNamespace(parentNamespace, parts[i], decl);
+                    scope.module.namespaces.push(parentNamespace);
+                }
+            }
+
+            scope.dbnamespace = typedb.DeclareNamespace(parentNamespace, identifier, decl)
+            scope.resolvedNamespace = scope.dbnamespace;
 
             if (nsdef.documentation)
                 scope.dbnamespace.documentation = typedb.FormatDocumentationComment(nsdef.documentation);
@@ -2658,16 +2671,70 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
         }
         else
         {
-            let addSymbol = AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
-            if (exists instanceof typedb.DBType)
+            // Typenames can contain namespaces, which should emit individual symbols
+            let namespaceIndex = node.name.value.indexOf("::");
+            if (namespaceIndex != -1)
             {
-                if (exists.isEnum)
-                    addSymbol.symbol_name = exists.name;
-                if (exists.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(exists.declaredModule))
-                    addSymbol.isUnimported = true;
-                scope.module.markDependencyType(exists);
+                let prevNamespaceIndex = 0;
+                let lookupNamespace = scope.getNamespace();
+
+                if (namespaceIndex == 0)
+                {
+                    prevNamespaceIndex = 2;
+                    namespaceIndex = node.name.value.indexOf("::", prevNamespaceIndex);
+                    lookupNamespace = null;
+                }
+
+                while (namespaceIndex != -1)
+                {
+                    // Add a symbol for this namespace
+                    let symbol = new ASSemanticSymbol;
+                    symbol.start = node.start + statement.start_offset + prevNamespaceIndex;
+                    symbol.end = node.start + statement.start_offset + namespaceIndex;
+
+                    let namespace = typedb.LookupNamespace(lookupNamespace, node.name.value.substring(0, namespaceIndex));
+                    if (namespace)
+                    {
+                        symbol.type = ASSymbolType.Namespace;
+                        symbol.container_type = null;
+                        symbol.symbol_name = namespace.getQualifiedNamespace();
+                    }
+                    else
+                    {
+                        symbol.type = ASSymbolType.UnknownError;
+                    }
+
+                    scope.module.semanticSymbols.push(symbol);
+
+                    // Find the next separator
+                    prevNamespaceIndex = namespaceIndex + 2;
+                    namespaceIndex = node.name.value.indexOf("::", prevNamespaceIndex);
+                }
+
+                // Add a symbol for the actual typename
+                {
+                    let symbol = new ASSemanticSymbol;
+                    symbol.start = node.start + statement.start_offset + prevNamespaceIndex;
+                    symbol.end = node.end + statement.start_offset;
+                    symbol.type = ASSymbolType.Typename;
+                    symbol.container_type = null;
+                    symbol.symbol_name = node.name.value.substring(prevNamespaceIndex);
+                    scope.module.semanticSymbols.push(symbol);
+                }
             }
-            return addSymbol;
+            else
+            {
+                let addSymbol = AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
+                if (exists instanceof typedb.DBType)
+                {
+                    if (exists.isEnum)
+                        addSymbol.symbol_name = exists.name;
+                    if (exists.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(exists.declaredModule))
+                        addSymbol.isUnimported = true;
+                    scope.module.markDependencyType(exists);
+                }
+                return addSymbol;
+            }
         }
     }
 }
@@ -2845,7 +2912,7 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
         // X::Y()
         case node_types.NamespaceAccess:
         {
-            if (!node.children[0] || !node.children[1])
+            if (!node.children[1])
                 return null;
 
             let fullNamespace = CollapseNamespaceFromNode(node.children[0]);
@@ -3097,7 +3164,7 @@ function ResolvePropertyType(dbtype : typedb.DBType, name : string) : typedb.DBT
         return typedb.LookupType(dbtype.namespace, usedSymbol.typename);
 
     // Find get accessor
-    let getAccessor = dbtype.findFirstSymbol("Get"+name, typedb.DBAllowSymbol.Properties);
+    let getAccessor = dbtype.findFirstSymbol("Get"+name, typedb.DBAllowSymbol.Functions);
     if (getAccessor && getAccessor instanceof typedb.DBMethod)
     {
         if (getAccessor.isProperty)
@@ -3105,7 +3172,7 @@ function ResolvePropertyType(dbtype : typedb.DBType, name : string) : typedb.DBT
     }
 
     // Find set accessor
-    let setAccessor = dbtype.findFirstSymbol("Set"+name, typedb.DBAllowSymbol.Properties);
+    let setAccessor = dbtype.findFirstSymbol("Set"+name, typedb.DBAllowSymbol.Functions);
     if (setAccessor && setAccessor instanceof typedb.DBMethod)
     {
         if (setAccessor.isProperty && setAccessor.args.length != 0)
@@ -3117,6 +3184,8 @@ function ResolvePropertyType(dbtype : typedb.DBType, name : string) : typedb.DBT
 
 export function CollapseNamespaceFromNode(node : any) : string
 {
+    if (!node)
+        return "::";
     if (node.type == node_types.Identifier)
         return node.value;
 
@@ -3168,7 +3237,7 @@ function ResolveNamespacePropertyType(dbnamespace : typedb.DBNamespace, nsPrefix
     if (nsPrefix && nsPrefix.length != 0)
         getterName = nsPrefix + "::" + getterName;
 
-    let getAccessors = typedb.LookupGlobalSymbol(dbnamespace, getterName, typedb.DBAllowSymbol.Properties);
+    let getAccessors = typedb.LookupGlobalSymbol(dbnamespace, getterName, typedb.DBAllowSymbol.Functions);
     if (getAccessors && getAccessors.length != 0 && getAccessors[0] instanceof typedb.DBMethod)
     {
         if (getAccessors[0].isProperty)
@@ -3180,7 +3249,7 @@ function ResolveNamespacePropertyType(dbnamespace : typedb.DBNamespace, nsPrefix
     if (nsPrefix && nsPrefix.length != 0)
         setterName = nsPrefix + "::" + getterName;
 
-    let setAccessors = typedb.LookupGlobalSymbol(dbnamespace, setterName, typedb.DBAllowSymbol.Properties);
+    let setAccessors = typedb.LookupGlobalSymbol(dbnamespace, setterName, typedb.DBAllowSymbol.Functions);
     if (setAccessors && setAccessors.length != 0 && setAccessors[0] instanceof typedb.DBMethod)
     {
         if (setAccessors[0].isProperty && setAccessors[0].args.length != 0)
@@ -3341,7 +3410,7 @@ export function ResolveFunctionFromExpression(scope : ASScope, node : any) : typ
         // X::Y()
         case node_types.NamespaceAccess:
         {
-            if (!node.children[0] || !node.children[1])
+            if (!node.children[1])
                 return null;
 
             let fullNamespace = CollapseNamespaceFromNode(node.children[0]);
@@ -3520,7 +3589,7 @@ export function ResolveFunctionOverloadsFromExpression(scope : ASScope, node : a
         // X::Y()
         case node_types.NamespaceAccess:
         {
-            if (!node.children[0] || !node.children[1])
+            if (!node.children[1])
                 return;
 
             let fullNamespace = CollapseNamespaceFromNode(node.children[0]);
@@ -3819,16 +3888,19 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         // X:
         case node_types.NamespaceAccess:
         {
-            if (!node.children[0])
-                return null;
-
-            if (node.children[0].type == node_types.Identifier)
+            if (!node.children[0] || node.children[0].type == node_types.Identifier)
             {
                 let insideType = scope.getParentType();
                 let parentType : typedb.DBType = null;
                 let shadowedType : typedb.DBType = null;
+
                 let namespace : typedb.DBNamespace = null;
-                if (insideType)
+                if (node.children[0])
+                    namespace = typedb.LookupNamespace(scope.getNamespace(), node.children[0].value);
+                else
+                    namespace = typedb.GetRootNamespace();
+
+                if (insideType && node.children[0])
                 {
                     if (node.children[0].value == "Super")
                     {
@@ -3844,43 +3916,44 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         }
                     }
                 }
-                else
-                {
-                    namespace = typedb.LookupNamespace(scope.getNamespace(), node.children[0].value);
-                }
 
                 // See if we're accessing an enum value
-                if (!parentType)
+                if (!parentType && node.children[0])
                     shadowedType = typedb.LookupType(scope.getNamespace(), node.children[0].value);
 
                 if (!namespace && !parentType && !shadowedType)
                 {
-                    scope.module.markDependencyIdentifier(node.children[0].value);
+                    if (node.children[0])
+                        scope.module.markDependencyIdentifier(node.children[0].value);
                     if (parseContext.allow_errors)
                     {
-                        AddUnknownSymbol(scope, statement, node.children[0], false);
+                        if (node.children[0])
+                            AddUnknownSymbol(scope, statement, node.children[0], false);
                         AddUnknownSymbol(scope, statement, node.children[1], false);
                     }
                     return null;
                 }
 
-                let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, null);
-                if (shadowedType && (namespace || shadowedType.isEnum))
+                if (node.children[0])
                 {
-                    scope.module.markDependencyType(shadowedType);
-                    addedSymbol.symbol_name = shadowedType.name;
-                    addedSymbol.type = ASSymbolType.Typename;
-                }
-                else if (namespace)
-                {
-                    scope.module.markDependencyNamespace(namespace);
-                    addedSymbol.symbol_name = namespace.getQualifiedNamespace();
-                }
-                else if (parentType)
-                {
-                    scope.module.markDependencyType(parentType);
-                    addedSymbol.symbol_name = parentType.name;
-                    addedSymbol.type = ASSymbolType.Typename;
+                    let addedSymbol = AddIdentifierSymbol(scope, statement, node.children[0], ASSymbolType.Namespace, null, null);
+                    if (shadowedType && (namespace || shadowedType.isEnum))
+                    {
+                        scope.module.markDependencyType(shadowedType);
+                        addedSymbol.symbol_name = shadowedType.name;
+                        addedSymbol.type = ASSymbolType.Typename;
+                    }
+                    else if (namespace)
+                    {
+                        scope.module.markDependencyNamespace(namespace);
+                        addedSymbol.symbol_name = namespace.getQualifiedNamespace();
+                    }
+                    else if (parentType)
+                    {
+                        scope.module.markDependencyType(parentType);
+                        addedSymbol.symbol_name = parentType.name;
+                        addedSymbol.type = ASSymbolType.Typename;
+                    }
                 }
 
                 if (node.children[1])
@@ -4683,7 +4756,13 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         {
             let namespace = typedb.LookupNamespace(scope.getNamespace(), node.name.value);
             if (namespace)
-                AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Namespace, null, namespace.getQualifiedNamespace());
+            {
+                let shadowedType = typedb.LookupType(scope.getNamespace(), node.name.value);
+                if (shadowedType)
+                    AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, namespace.name);
+                else
+                    AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Namespace, null, namespace.getQualifiedNamespace());
+            }
         }
         break;
         // Named argument
@@ -4821,7 +4900,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
         }
     }
 
-    // Find an unimproted global accessor
+    // Find an unimpoted global accessor
     if (typedb.AllowsProperties(symbol_type))
     {
         let globalGetAccessors = typedb.LookupGlobalSymbol(scope.getNamespace(), "Get"+node.value, typedb.DBAllowSymbol.Functions);

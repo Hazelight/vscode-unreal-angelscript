@@ -125,12 +125,27 @@ export function* FindReferences(uri : string, position : Position) : any
     // See if there's any auxiliary symbols we need to check for
     let auxSymbols : Array<typedb.DBAuxiliarySymbol> = null;
     {
-        let insideType = typedb.GetTypeByName(findSymbol.container_type);
-        if (insideType)
+        if (findSymbol.type == scriptfiles.ASSymbolType.GlobalFunction
+            || findSymbol.type == scriptfiles.ASSymbolType.GlobalVariable
+            || findSymbol.type == scriptfiles.ASSymbolType.GlobalAccessor)
         {
-            let findDbSym = insideType.findFirstSymbol(findSymbol.symbol_name);
-            if (findDbSym)
-                auxSymbols = findDbSym.auxiliarySymbols;
+            let insideNamespace = typedb.LookupNamespace(null, findSymbol.container_type);
+            if (insideNamespace)
+            {
+                let findDbSym = insideNamespace.findFirstSymbol(findSymbol.symbol_name);
+                if (findDbSym)
+                    auxSymbols = findDbSym.auxiliarySymbols;
+            }
+        }
+        else
+        {
+            let insideType = typedb.GetTypeByName(findSymbol.container_type);
+            if (insideType)
+            {
+                let findDbSym = insideType.findFirstSymbol(findSymbol.symbol_name);
+                if (findDbSym)
+                    auxSymbols = findDbSym.auxiliarySymbols;
+            }
         }
 
         if (auxSymbols)

@@ -445,10 +445,14 @@ global_declaration -> "settings" _ %identifier _ "for" _ typename {%
     }; }
 %}
 
-global_declaration -> %namespace_token _ %identifier {%
+namespace_definition_name -> %identifier (_ %ns _ %identifier):* {%
+    function (d) { return CompoundIdentifier(d, null); }
+%}
+
+global_declaration -> %namespace_token _ namespace_definition_name {%
     function (d) { return {
         ...Compound(d, n.NamespaceDefinition, null),
-        name: Identifier(d[2]),
+        name: d[2],
     }; }
 %}
 
@@ -786,7 +790,7 @@ macro_value -> (%identifier _ "|" _):+ %identifier {%
     }
 %}
 
-macro_value -> (%identifier _ "::" _):+ %identifier {%
+macro_value -> (%identifier _ %ns _):+ %identifier {%
     function (d) {
         return CompoundIdentifier(d, null);
     }
@@ -817,41 +821,41 @@ expr_ternary -> expr_binary_logic _ %ternary _ expr_ternary _ %colon _ expr_tern
 %}
 expr_ternary -> expr_binary_logic {% id %}
 
-expr_binary_logic -> expr_binary_logic _ %op_binary_logic _ expr_binary_bitwise {%
+expr_binary_logic -> expr_binary_logic _ %op_binary_logic (_ expr_binary_bitwise):? {%
     function (d) { return {
-        ...Compound(d, n.BinaryOperation, [d[0], d[4]]),
+        ...Compound(d, n.BinaryOperation, [d[0], d[3] ? d[3][1] : null]),
         operator: Operator(d[2]),
     };}
 %}
 expr_binary_logic -> expr_binary_bitwise {% id %}
 
-expr_binary_bitwise -> expr_binary_bitwise _ %op_binary_bitwise _ expr_binary_compare {%
+expr_binary_bitwise -> expr_binary_bitwise _ %op_binary_bitwise (_ expr_binary_compare):? {%
     function (d) { return {
-        ...Compound(d, n.BinaryOperation, [d[0], d[4]]),
+        ...Compound(d, n.BinaryOperation, [d[0], d[3] ? d[3][1] : null]),
         operator: Operator(d[2]),
     };}
 %}
 expr_binary_bitwise -> expr_binary_compare {% id %}
 
-expr_binary_compare -> expr_binary_compare _ %op_binary_compare _ expr_binary_sum {%
+expr_binary_compare -> expr_binary_compare _ %op_binary_compare (_ expr_binary_sum):? {%
     function (d) { return {
-        ...Compound(d, n.BinaryOperation, [d[0], d[4]]),
+        ...Compound(d, n.BinaryOperation, [d[0], d[3] ? d[3][1] : null]),
         operator: Operator(d[2]),
     };}
 %}
 expr_binary_compare -> expr_binary_sum {% id %}
 
-expr_binary_sum -> expr_binary_sum _ %op_binary_sum _ expr_binary_product {%
+expr_binary_sum -> expr_binary_sum _ %op_binary_sum (_ expr_binary_product):? {%
     function (d) { return {
-        ...Compound(d, n.BinaryOperation, [d[0], d[4]]),
+        ...Compound(d, n.BinaryOperation, [d[0], d[3] ? d[3][1] : null]),
         operator: Operator(d[2]),
     };}
 %}
 expr_binary_sum -> expr_binary_product {% id %}
 
-expr_binary_product -> expr_binary_product _ %op_binary_product _ expr_unary {%
+expr_binary_product -> expr_binary_product _ %op_binary_product (_ expr_unary):? {%
     function (d) { return {
-        ...Compound(d, n.BinaryOperation, [d[0], d[4]]),
+        ...Compound(d, n.BinaryOperation, [d[0], d[3] ? d[3][1] : null]),
         operator: Operator(d[2]),
     };}
 %}
@@ -933,19 +937,22 @@ expression -> %cast_token _ "<" _ typename (_ ">"):? {%
 %}
 
 lvalue -> namespace_access {% id %}
-namespace_access -> namespace_access _ "::" _ %identifier {%
+namespace_access -> namespace_access _ %ns _ %identifier {%
     function (d) { return Compound(d, n.NamespaceAccess, [d[0], Identifier(d[4])]); }
 %}
-namespace_access -> %identifier _ "::" _ %identifier {%
+namespace_access -> %identifier _ %ns _ %identifier {%
     function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), Identifier(d[4])]); }
+%}
+namespace_access -> %ns _ %identifier {%
+    function (d) { return Compound(d, n.NamespaceAccess, [null, Identifier(d[2])]); }
 %}
 
 # INCOMPLETE: Attempts to parse an incomplete namespace access while the user is typing
-lvalue -> %identifier _ "::" {%
+lvalue -> %identifier _ %ns {%
     function (d) { return Compound(d, n.NamespaceAccess, [Identifier(d[0]), null]); }
 %}
 # INCOMPLETE: Attempts to parse an incomplete namespace access while the user is typing
-lvalue -> namespace_access _ "::" {%
+lvalue -> namespace_access _ %ns {%
     function (d) { return Compound(d, n.NamespaceAccess, [d[0], null]); }
 %}
 # INCOMPLETE: Attempts to parse an incomplete namespace access while the user is typing
@@ -970,13 +977,6 @@ lvalue -> lvalue _ %dot {%
 # INCOMPLETE: Attempts to parse an incomplete bracketed expression
 lvalue -> %lparen _ %rparen {%
     function (d) { return null; }
-%}
-# INCOMPLETE: Attempts to parse an incomplete member access while the user is typing
-expression -> expression _ (%op_binary_product | %op_binary_sum | %op_binary_bitwise | %op_binary_compare | %op_binary_logic | %lparen | %lsqbracket) {%
-    function (d) { return {
-        ...Compound(d, n.BinaryOperation, [d[0], null]),
-        operator: Operator(d[2][0]),
-    };}
 %}
 # INCOMPLETE: Attempts to parse an incomplete assignment while the user is typing
 assignment -> lvalue _ "=" {%
@@ -1212,7 +1212,7 @@ typename_identifier -> %template_basetype {%
     function (d) { return Literal(n.Typename, d[0]); }
 %}
 
-typename_identifier -> (%identifier _ %ns _ ):* %identifier {%
+typename_identifier -> (%ns _):? (%identifier _ %ns _ ):* %identifier {%
     function (d) { return CompoundLiteral(n.Typename, d, null); }
 %}
 

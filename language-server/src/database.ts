@@ -1238,6 +1238,18 @@ export class DBNamespace
         return this.parentNamespace === null;
     }
 
+    isChildNamespaceOf(parent : DBNamespace) : boolean
+    {
+        let checkNamespace : DBNamespace = this;
+        while (checkNamespace)
+        {
+            if (checkNamespace == parent)
+                return true;
+            checkNamespace = checkNamespace.parentNamespace;
+        }
+        return false;
+    }
+
     forEachSymbol(func : (symbol : DBSymbol) => void)
     {
         for (let [_, syms] of this.symbols)
@@ -1461,6 +1473,19 @@ export class DBNamespace
         childNS.parentNamespace = this;
         this.childNamespaces.set(childNS.name, childNS);
         NamespacesByFullName.set(childNS.getQualifiedNamespace(), childNS);
+
+        if (childNS.name.length > 2)
+        {
+            let prefix = childNS.name.substring(0, 2).toLowerCase();
+            let prefixSyms = this.childNamespacesByPrefix.get(prefix);
+            if (!prefixSyms)
+            {
+                prefixSyms = new Array<DBNamespace>();
+                this.childNamespacesByPrefix.set(prefix, prefixSyms);
+            }
+
+            prefixSyms.push(childNS);
+        }
     }
 
     removeChildNamespace(childNS : DBNamespace)
@@ -1477,6 +1502,18 @@ export class DBNamespace
 
         childNS.parentNamespace = null;
         childNS.qualifiedNamespace = null;
+
+        if (childNS.name.length > 2)
+        {
+            let prefix = childNS.name.substring(0, 2).toLowerCase();
+            let prefixSyms = this.childNamespacesByPrefix.get(prefix);
+            if (prefixSyms)
+            {
+                let index = prefixSyms.indexOf(childNS);
+                if (index != -1)
+                    prefixSyms.splice(index, 1);
+            }
+        }
     }
 
     addScriptDeclaration(decl : DBNamespaceDeclaration)
@@ -1493,7 +1530,7 @@ export class DBNamespace
         }
     }
 
-    removeSymbolsDeclaredIn(declaredModule : string)
+    removeSymbolsDeclaredIn(declaredModule : string, removeSymbols = DBAllowSymbol.All)
     {
         let oldSymbols = this.symbols;
 
@@ -1506,14 +1543,14 @@ export class DBNamespace
             {
                 for (let sym of syms)
                 {
-                    if (sym.declaredModule == declaredModule)
+                    if (sym.declaredModule == declaredModule && FilterAllowsSymbol(sym, removeSymbols))
                         continue;
                     this.addSymbol(sym);
                 }
             }
             else
             {
-                if (syms.declaredModule == declaredModule)
+                if (syms.declaredModule == declaredModule && FilterAllowsSymbol(syms, removeSymbols))
                     continue;
                 this.addSymbol(syms);
             }
@@ -1782,7 +1819,23 @@ export function LookupNamespace(namespace : DBNamespace, name : string) : DBName
     if (!name || name.length == 0)
         return namespace;
 
-    if (name.startsWith("::"))
+    let namespaceIndex = name.indexOf("::");
+    if (namespaceIndex == -1)
+    {
+        let checkNamespace = namespace;
+        while (checkNamespace)
+        {
+            let targetNamespace = checkNamespace.findChildNamespace(name);
+            if (targetNamespace)
+                return targetNamespace;
+
+            checkNamespace = checkNamespace.parentNamespace;
+        }
+
+        return null;
+    }
+
+    if (namespaceIndex == 0)
     {
         namespace = RootNamespace;
         name = name.substring(2);
@@ -1861,7 +1914,7 @@ export function DeclareNamespace(namespace : DBNamespace, name : string, decl : 
 export function RemoveNamespaceDeclaration(namespace : DBNamespace, moduleName : string)
 {
     namespace.removeScriptDeclarations(moduleName);
-    if (namespace.declarations.length == 0)
+    if (namespace.declarations.length == 0 && namespace.parentNamespace)
         namespace.parentNamespace.removeChildNamespace(namespace);
 }
 
@@ -1871,36 +1924,52 @@ export function LookupType(namespace : DBNamespace, typename : string) : DBType 
         return null;
     let identifier = CleanTypeName(typename);
 
-    if (!namespace)
-        namespace = RootNamespace;
-
-    if (identifier.startsWith("::"))
+    let namespaceIndex = identifier.indexOf("::");
+    if (namespaceIndex == -1)
     {
-        namespace = RootNamespace;
-        identifier = identifier.substring(2);
+        let found = TypesByName.get(identifier);
+        if (found instanceof Array)
+            found = found[0];
+
+        if (found)
+        {
+            if (!namespace || namespace == found.namespace || namespace.isChildNamespaceOf(found.namespace))
+                return found;
+        }
     }
-
-    let nameParts = SplitNamespace(identifier);
-    let finalIdentifier = nameParts[nameParts.length - 1];
-
-    let checkNamespace = namespace;
-    while (checkNamespace)
+    else
     {
-        let targetNamespace = checkNamespace;
-        for (let i = 0, count = nameParts.length - 1; i < count; ++i)
+        if (!namespace)
+            namespace = RootNamespace;
+
+        if (namespaceIndex == 0)
         {
-            targetNamespace = targetNamespace.findChildNamespace(nameParts[i].trim());
-            if (!targetNamespace)
-                break;
-        }
-        if (targetNamespace)
-        {
-            let type = targetNamespace.findFirstSymbol(finalIdentifier, DBAllowSymbol.Types);
-            if (type instanceof DBType)
-                return type;
+            namespace = RootNamespace;
+            identifier = identifier.substring(2);
         }
 
-        checkNamespace = checkNamespace.parentNamespace;
+        let nameParts = SplitNamespace(identifier);
+        let finalIdentifier = nameParts[nameParts.length - 1];
+
+        let checkNamespace = namespace;
+        while (checkNamespace)
+        {
+            let targetNamespace = checkNamespace;
+            for (let i = 0, count = nameParts.length - 1; i < count; ++i)
+            {
+                targetNamespace = targetNamespace.findChildNamespace(nameParts[i].trim());
+                if (!targetNamespace)
+                    break;
+            }
+            if (targetNamespace)
+            {
+                let type = targetNamespace.findFirstSymbol(finalIdentifier, DBAllowSymbol.Types);
+                if (type instanceof DBType)
+                    return type;
+            }
+
+            checkNamespace = checkNamespace.parentNamespace;
+        }
     }
 
     // See if we have to create a template instance
@@ -1944,10 +2013,29 @@ export function LookupGlobalSymbol(namespace : DBNamespace, name : string, allow
     if (!namespace)
         namespace = RootNamespace;
 
-    if (!namespace)
-        namespace = RootNamespace;
+    let result : Array<DBSymbol> = null;
+    let namespaceIndex = identifier.indexOf("::");
+    if (namespaceIndex == -1)
+    {
+        let checkNamespace = namespace;
+        while (checkNamespace)
+        {
+            let symbols = checkNamespace.findSymbols(identifier, allowSymbol);
+            if (symbols)
+            {
+                if (result)
+                    result = result.concat(symbols);
+                else
+                    result = symbols;
+            }
 
-    if (identifier.startsWith("::"))
+            checkNamespace = checkNamespace.parentNamespace;
+        }
+
+        return result;
+    }
+
+    if (namespaceIndex == 0)
     {
         namespace = RootNamespace;
         identifier = identifier.substring(2);
@@ -1956,7 +2044,6 @@ export function LookupGlobalSymbol(namespace : DBNamespace, name : string, allow
     let nameParts = SplitNamespace(identifier);
     let finalIdentifier = nameParts[nameParts.length - 1];
 
-    let result : Array<DBSymbol> = null;
     let checkNamespace = namespace;
     while (checkNamespace)
     {
@@ -2118,7 +2205,7 @@ export function AddTypesFromUnreal(input : any)
             }
             else
             {
-                ns.removeSymbolsDeclaredIn(null);
+                ns.removeSymbolsDeclaredIn(null, ~DBAllowSymbol.Types);
                 ns.removeScriptDeclarations(null);
                 ns.addScriptDeclaration(decl);
             }
