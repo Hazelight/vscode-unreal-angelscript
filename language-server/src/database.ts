@@ -1933,7 +1933,7 @@ export function LookupType(namespace : DBNamespace, typename : string) : DBType 
 
         if (found)
         {
-            if (!namespace || namespace == found.namespace || namespace.isChildNamespaceOf(found.namespace))
+            if (!namespace || !found.namespace || namespace == found.namespace || namespace.isChildNamespaceOf(found.namespace))
                 return found;
         }
     }
@@ -2195,30 +2195,38 @@ export function AddTypesFromUnreal(input : any)
 
         if (type.name.startsWith("__"))
         {
-            let decl = new DBNamespaceDeclaration();
-            decl.declaredModule = null;
-
-            let ns = LookupNamespace(null, type.name.substring(2));
-            if (!ns)
+            if (type.isEnum)
             {
-                ns = DeclareNamespace(null, type.name.substring(2), decl);
+                type.name = type.name.substring(2);
+                AddTypeToDatabase(null, type);
             }
             else
             {
-                ns.removeSymbolsDeclaredIn(null, ~DBAllowSymbol.Types);
-                ns.removeScriptDeclarations(null);
-                ns.addScriptDeclaration(decl);
-            }
+                let decl = new DBNamespaceDeclaration();
+                decl.declaredModule = null;
 
-            for (let [name, sym] of type.symbols)
-            {
-                if (sym instanceof Array)
+                let ns = LookupNamespace(null, type.name.substring(2));
+                if (!ns)
                 {
-                    for (let symElem of sym)
-                        ns.addSymbol(symElem);
+                    ns = DeclareNamespace(null, type.name.substring(2), decl);
                 }
                 else
-                    ns.addSymbol(sym);
+                {
+                    ns.removeSymbolsDeclaredIn(null, ~DBAllowSymbol.Types);
+                    ns.removeScriptDeclarations(null);
+                    ns.addScriptDeclaration(decl);
+                }
+
+                for (let [name, sym] of type.symbols)
+                {
+                    if (sym instanceof Array)
+                    {
+                        for (let symElem of sym)
+                            ns.addSymbol(symElem);
+                    }
+                    else
+                        ns.addSymbol(sym);
+                }
             }
         }
         else

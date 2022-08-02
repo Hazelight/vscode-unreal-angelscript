@@ -2689,8 +2689,8 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
                 {
                     // Add a symbol for this namespace
                     let symbol = new ASSemanticSymbol;
-                    symbol.start = node.start + statement.start_offset + prevNamespaceIndex;
-                    symbol.end = node.start + statement.start_offset + namespaceIndex;
+                    symbol.start = node.name.start + statement.start_offset + prevNamespaceIndex;
+                    symbol.end = node.name.start + statement.start_offset + namespaceIndex;
 
                     let namespace = typedb.LookupNamespace(lookupNamespace, node.name.value.substring(0, namespaceIndex));
                     if (namespace)
@@ -2714,8 +2714,8 @@ function AddTypenameSymbol(scope : ASScope, statement : ASStatement, node : any,
                 // Add a symbol for the actual typename
                 {
                     let symbol = new ASSemanticSymbol;
-                    symbol.start = node.start + statement.start_offset + prevNamespaceIndex;
-                    symbol.end = node.end + statement.start_offset;
+                    symbol.start = node.name.start + statement.start_offset + prevNamespaceIndex;
+                    symbol.end = node.name.end + statement.start_offset;
                     symbol.type = ASSymbolType.Typename;
                     symbol.container_type = null;
                     symbol.symbol_name = node.name.value.substring(prevNamespaceIndex);
