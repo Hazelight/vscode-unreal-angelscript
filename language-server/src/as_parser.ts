@@ -4022,7 +4022,6 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     }
                 }
 
-                // TODO: This doesn't take into account enums at the moment. It's possible to have Namespace::Enum::Value
                 let resolveNamespace = "";
                 let prevNamespace = null;
                 for (let i = 0, count = identifierNodes.length - 1; i < count; ++i)

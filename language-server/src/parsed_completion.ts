@@ -1147,11 +1147,11 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
     // Complete symbols
     curtype.forEachSymbol(function(symbol : typedb.DBSymbol)
     {
-        if (!CanCompleteSymbol(context, symbol))
-            return;
-
         if (symbol instanceof typedb.DBProperty)
         {
+            if (!CanCompleteSymbol(context, symbol))
+                return;
+
             let prop : typedb.DBProperty = symbol;
             if (!isPropertyAccessibleFromScope(curtype, prop, context.scope))
                 return;
