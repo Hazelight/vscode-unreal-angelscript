@@ -4878,6 +4878,10 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                     }
                 }
 
+                // Ignore constructors, they count as types not as global functions
+                if (usedSymbol.isConstructor)
+                    continue;
+
                 if (usedSymbol.isLocal && !usedSymbol.IsAccessibleFromModule(scope.module.modulename))
                     continue;
                 let addedSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.GlobalFunction,
@@ -4952,7 +4956,8 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
     }
     
     // We might be typing a typename at the start of a declaration, which accidentally got parsed as an identifier due to incompleteness
-    if (node == statement.ast && scope.module.isEditingInside(statement.start_offset + node.start, statement.end_offset + node.end + 1))
+    let isTypingSingleIdentifier = (node == statement.ast && scope.module.isEditingInside(statement.start_offset + node.start, statement.end_offset + node.end + 2));
+    if (isTypingSingleIdentifier)
     {
         // It could be a type as well
         let symType = typedb.LookupType(scope.getNamespace(), node.value);
