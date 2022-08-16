@@ -392,7 +392,7 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
         case scriptfiles.ASSymbolType.GlobalFunction:
         case scriptfiles.ASSymbolType.GlobalAccessor:
         {
-            let namespace = typedb.LookupNamespace(null, findSymbol.symbol_name);
+            let namespace = typedb.LookupNamespace(null, findSymbol.container_type);
             if (!namespace)
                 return edits;
             let dbmethod = namespace.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.FunctionsAndMixins);
@@ -406,7 +406,7 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
         break;
         case scriptfiles.ASSymbolType.GlobalVariable:
         {
-            let namespace = typedb.LookupNamespace(null, findSymbol.symbol_name);
+            let namespace = typedb.LookupNamespace(null, findSymbol.container_type);
             if (!namespace)
                 return edits;
             let dbprop = namespace.findFirstSymbol(findSymbol.symbol_name, typedb.DBAllowSymbol.Properties);
