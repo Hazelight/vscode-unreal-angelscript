@@ -4066,6 +4066,23 @@ function AddCompletionsFromAccessSpecifiers(context : CompletionContext, complet
             }
         }
 
+        // Add completions for global namespaces
+        for (let [_, ns] of typedb.GetRootNamespace().childNamespaces)
+        {
+            if (CanCompleteSymbol(context, ns))
+            {
+                let complItem = <CompletionItem> {
+                        label: ns.name,
+                        kind: CompletionItemKind.Module,
+                        data: ["namespace", ns.getQualifiedNamespace()],
+                        commitCharacters: [",", ";"],
+                        sortText: Sort.Typename,
+                };
+
+                completions.push(complItem);
+            }
+        }
+
         // Add completions for all global functions
         let checkNamespace = context.scope.getNamespace();
         while (checkNamespace)

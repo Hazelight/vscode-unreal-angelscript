@@ -4628,8 +4628,16 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         }
                         else
                         {
-                            if (!scope.module.isEditingNode(statement, cls.className) && InitialParseDone)
-                                AddUnknownSymbol(scope, statement, cls.className, false);
+                            let namespace = typedb.LookupNamespace(null, cls.className.value);
+                            if (namespace)
+                            {
+                                AddIdentifierSymbol(scope, statement, cls.className, ASSymbolType.Namespace, null, namespace.getQualifiedNamespace());
+                            }
+                            else
+                            {
+                                if (!scope.module.isEditingNode(statement, cls.className) && InitialParseDone)
+                                    AddUnknownSymbol(scope, statement, cls.className, false);
+                            }
                         }
                     }
                 }
