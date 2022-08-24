@@ -1216,6 +1216,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 return;
             if (!isFunctionAccessibleFromScope(curtype, func, context.scope))
                 return;
+            if (func.isLocal && context.scope && !func.IsAccessibleFromModule(context.scope.module.modulename))
+                return;
 
             // Don't show constructors if we're probably completing the name of a type
             if (func.isConstructor && context.maybeTypename)
@@ -1406,7 +1408,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             }
             else
             {
-                if (context.isInsideType || context.isIncompleteNamespace)
+                if (context.isInsideType && !context.priorTypeWasNamespace)
                     return;
                 if (!context.maybeTypename && (context.isSubExpression || context.isRightExpression))
                     return;

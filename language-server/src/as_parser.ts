@@ -3885,7 +3885,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             return null;
         }
         break;
-        // X:
+        // X::Y
         case node_types.NamespaceAccess:
         {
             if (!node.children[0] || node.children[0].type == node_types.Identifier)
@@ -3984,7 +3984,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     if (namespace)
                     {
                         parseContext.isWriteAccess = outerWriteAccess;
-                        return DetectSymbolsInNamespace(scope, statement, namespace, node.children[1], parseContext, symbol_type);
+                        return DetectSymbolsInNamespace(scope, statement, namespace, node.children[1], parseContext, symbol_type | typedb.DBAllowSymbol.Types);
                     }
                 }
             }
@@ -4092,7 +4092,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 else if (node.children[1])
                 {
                     parseContext.isWriteAccess = outerWriteAccess;
-                    return DetectSymbolsInNamespace(scope, statement, namespace, node.children[1], parseContext, symbol_type);
+                    return DetectSymbolsInNamespace(scope, statement, namespace, node.children[1], parseContext, symbol_type | typedb.DBAllowSymbol.Types);
                 }
             }
 
@@ -5439,7 +5439,7 @@ function DetectSymbolsInNamespace(scope : ASScope, statement : ASStatement, name
     {
         if (usedSymbol instanceof typedb.DBType)
         {
-            let identifierSym = AddTypenameSymbol(scope, statement, node);
+            let identifierSym = AddIdentifierSymbol(scope, statement, node, ASSymbolType.Typename, null, usedSymbol.name);
             if (!ScriptSettings.automaticImports && usedSymbol.declaredModule && !scope.module.isModuleImported(usedSymbol.declaredModule))
                 identifierSym.isUnimported = true;
 
