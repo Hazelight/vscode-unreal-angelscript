@@ -1145,6 +1145,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
     let props = new Set<string>();
 
     // Complete symbols
+    let propertyIndex = 0;
     curtype.forEachSymbol(function(symbol : typedb.DBSymbol)
     {
         if (symbol instanceof typedb.DBProperty)
@@ -1153,6 +1154,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 return;
 
             let prop : typedb.DBProperty = symbol;
+            propertyIndex += 1;
+
             if (!isPropertyAccessibleFromScope(curtype, prop, context.scope))
                 return;
             props.add(prop.name);
@@ -1172,10 +1175,12 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             {
                 if (prop.containingType.isEnum)
                 {
+                    // Append the index of the enum value so they get sorted correctly
+                    let sortNumber = propertyIndex.toString().padStart(3, '0');
                     if (prop.name.includes("MAX"))
-                        compl.sortText = Sort.EnumValue_Max;
+                        compl.sortText = Sort.EnumValue_Max+sortNumber;
                     else
-                        compl.sortText = Sort.EnumValue;
+                        compl.sortText = Sort.EnumValue+sortNumber;
                 }
                 else if (prop.containingType == scopeType)
                     compl.sortText = Sort.MemberProp_Direct;
@@ -1423,10 +1428,14 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 {
                     if (context.expectedType == dbtype)
                     {
+                        let enumIndex = 0;
                         dbtype.forEachSymbol(function (sym : typedb.DBSymbol)
                         {
                             if (!(sym instanceof typedb.DBProperty))
                                 return;
+
+                            enumIndex += 1;
+
                             let enumvalue = sym;
                             let canCompleteValue = CanCompleteTo(context, enumvalue.name);
                             if (!canCompleteEnum && !canCompleteValue)
@@ -1440,25 +1449,28 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                             };
 
                             let isMaxValue = enumvalue.name.includes("MAX");
+
+                            // Append the index of the enum value so they get sorted correctly
+                            let sortNumber = enumIndex.toString().padStart(3, '0');
                             if (context.expectedType == dbtype)
                             {
                                 if (isMaxValue)
                                 {
-                                    complItem.sortText =  Sort.EnumValue_Max_Expected;
+                                    complItem.sortText =  Sort.EnumValue_Max_Expected+sortNumber;
                                 }
                                 else
                                 {
                                     complItem.preselect = true;
-                                    complItem.sortText = Sort.EnumValue_Expected;
+                                    complItem.sortText = Sort.EnumValue_Expected+sortNumber;
                                     context.havePreselection = true;
                                 }
                             }
                             else
                             {
                                 if (isMaxValue)
-                                    complItem.sortText = Sort.EnumValue_Max;
+                                    complItem.sortText = Sort.EnumValue_Max+sortNumber;
                                 else
-                                    complItem.sortText = Sort.EnumValue;
+                                    complItem.sortText = Sort.EnumValue+sortNumber;
                             }
 
                             if (context.isIncompleteNamespace)
