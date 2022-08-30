@@ -543,7 +543,8 @@ function AddNamingConventionDiagnostics(asmodule : scriptfiles.ASModule, diagnos
 function IsMaybeActorType(dbtype : typedb.DBType) : boolean
 {
     let checkType = dbtype;
-    while (checkType)
+    let depth = 0;
+    while (checkType && depth < 100)
     {
         if (checkType.name == "AActor")
             return true;
@@ -554,6 +555,7 @@ function IsMaybeActorType(dbtype : typedb.DBType) : boolean
             if (superType)
             {
                 checkType = superType;
+                depth += 1;
                 continue;
             }
             else
@@ -566,6 +568,7 @@ function IsMaybeActorType(dbtype : typedb.DBType) : boolean
             if (superType)
             {
                 checkType = superType;
+                depth += 1;
                 continue;
             }
             else

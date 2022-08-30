@@ -114,24 +114,30 @@ export class DBProperty implements DBSymbol
         this.isNoEdit = false;
         this.isEditOnly = false;
 
-        if (input.length >= 3)
+        let flags : number = 0;
+        for (let i = 1; i < input.length; ++i)
         {
-            if (input[1] == 'NoEdit')
-                this.isNoEdit = true;
-            else if (input[1] == 'EditOnly')
-                this.isEditOnly = true;
+            if (typeof input[i] == 'string')
+            {
+                if (input[i] == "NoEdit")
+                    flags |= 1;
+                else if (input[i] == "EditOnly")
+                    flags |= 2;
+                else
+                    this.documentation = FormatDocumentationComment(input[i]);
+            }
+            else if (typeof input[i] == 'number')
+            {
+                flags = input[i];
+            }
+        }
 
-            this.documentation = FormatDocumentationComment(input[2]);
-        }
-        else if (input.length >= 2)
-        {
-            if (input[1] == 'NoEdit')
-                this.isNoEdit = true;
-            else if (input[1] == 'EditOnly')
-                this.isEditOnly = true;
-            else if (!input[1].startsWith("+"))
-                this.documentation = FormatDocumentationComment(input[1]);
-        }
+        if (flags & 0x1)
+            this.isNoEdit = true;
+        if (flags & 0x2)
+            this.isEditOnly = true;
+        if (flags & 0x4)
+            this.isProtected = true;
     }
 
     format(prefix : string = null) : string
@@ -321,6 +327,11 @@ export class DBMethod implements DBSymbol
             this.isProperty = input['isProperty'];
         else
             this.isProperty = true;
+
+        if ('protected' in input)
+            this.isProtected = input['protected'];
+        else
+            this.isProtected = false;
 
         if ('defaultsonly' in input)
             this.isDefaultsOnly = input['defaultsonly'];
