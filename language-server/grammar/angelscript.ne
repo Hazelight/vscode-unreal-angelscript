@@ -1319,27 +1319,13 @@ enum_decl -> comment_documentation:? %identifier {%
    }; }
 %}
 
-enum_decl -> comment_documentation:? %identifier _ "=" _ enum_value {%
+enum_decl -> comment_documentation:? %identifier _ "=" _ expression {%
     function (d) { return {
         ...Compound(d, n.EnumValue, null),
         name: Identifier(d[1]),
         value: d[5],
         documentation: d[0],
    }; }
-%}
-
-enum_value -> %identifier (_ %ns _ %identifier):* {%
-    function (d) { return CompoundIdentifier(d, null); }
-%}
-
-enum_value -> ("-" _):? %number {%
-    function (d) {
-        return CompoundLiteral(
-            n.ConstInteger,
-            d,
-            null
-        );
-    }
 %}
 
 comment_documentation -> %WS:* (%block_comment %WS:? | %line_comment %WS:? | %preprocessor_statement %WS:?):* {%

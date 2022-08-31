@@ -1397,31 +1397,13 @@ var grammar = {
         },
     {"name": "enum_decl$ebnf$2", "symbols": ["comment_documentation"], "postprocess": id},
     {"name": "enum_decl$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "enum_decl", "symbols": ["enum_decl$ebnf$2", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"="}, "_", "enum_value"], "postprocess": 
+    {"name": "enum_decl", "symbols": ["enum_decl$ebnf$2", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"="}, "_", "expression"], "postprocess": 
          function (d) { return {
              ...Compound(d, n.EnumValue, null),
              name: Identifier(d[1]),
              value: d[5],
              documentation: d[0],
         }; }
-        },
-    {"name": "enum_value$ebnf$1", "symbols": []},
-    {"name": "enum_value$ebnf$1$subexpression$1", "symbols": ["_", (lexer.has("ns") ? {type: "ns"} : ns), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)]},
-    {"name": "enum_value$ebnf$1", "symbols": ["enum_value$ebnf$1", "enum_value$ebnf$1$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
-    {"name": "enum_value", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier), "enum_value$ebnf$1"], "postprocess": 
-        function (d) { return CompoundIdentifier(d, null); }
-        },
-    {"name": "enum_value$ebnf$2$subexpression$1", "symbols": [{"literal":"-"}, "_"]},
-    {"name": "enum_value$ebnf$2", "symbols": ["enum_value$ebnf$2$subexpression$1"], "postprocess": id},
-    {"name": "enum_value$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "enum_value", "symbols": ["enum_value$ebnf$2", (lexer.has("number") ? {type: "number"} : number)], "postprocess": 
-        function (d) {
-            return CompoundLiteral(
-                n.ConstInteger,
-                d,
-                null
-            );
-        }
         },
     {"name": "comment_documentation$ebnf$1", "symbols": []},
     {"name": "comment_documentation$ebnf$1", "symbols": ["comment_documentation$ebnf$1", (lexer.has("WS") ? {type: "WS"} : WS)], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
