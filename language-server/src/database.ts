@@ -1711,7 +1711,7 @@ export function OnDirtyTypeCaches()
 let UnrealTypesLoaded = false;
 let RootNamespace = new DBNamespace;
 let TypesById = new Map<number, DBType>();
-let NamespacesByFullName = new Map<string, DBNamespace>();
+let NamespacesByFullName = new Map<string, DBNamespace>([["", RootNamespace]]);
 let TypesByName = new Map<string, DBType | Array<DBType>>();
 
 let NextMethodId = 1;
