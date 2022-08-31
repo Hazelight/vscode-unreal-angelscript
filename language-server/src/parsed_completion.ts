@@ -890,7 +890,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
     let inFunctionBody = !context.scope || context.scope.isInFunctionBody();
 
     AddCompletionsFromKeywordList(context, [
-        "float", "bool", "int", "double", "auto"
+        "auto"
     ], completions);
 
     if (context.isRightExpression || context.isSubExpression)

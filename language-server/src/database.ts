@@ -2182,7 +2182,7 @@ export function AddPrimitiveTypes(floatIsFloat64 : boolean)
     {
         let dbtype = new DBType().initEmpty(primtype);
         dbtype.isPrimitive = true;
-        AddTypeToDatabase(null, dbtype);
+        AddUnrealTypeToDatabase(null, dbtype);
     }
 }
 
@@ -2209,7 +2209,7 @@ export function AddTypesFromUnreal(input : any)
             if (type.isEnum)
             {
                 type.name = type.name.substring(2);
-                AddTypeToDatabase(null, type);
+                AddUnrealTypeToDatabase(null, type);
             }
             else
             {
@@ -2242,7 +2242,7 @@ export function AddTypesFromUnreal(input : any)
         }
         else
         {
-            AddTypeToDatabase(null, type);
+            AddUnrealTypeToDatabase(null, type);
         }
     }
 }
@@ -2314,6 +2314,24 @@ export function AddTypeToDatabase(namespace : DBNamespace, dbtype : DBType)
         TypesByName.set(dbtype.name, [dbtype, found]);
 
     OnDirtyTypeCaches();
+}
+
+export function AddUnrealTypeToDatabase(namespace : DBNamespace, dbtype : DBType)
+{
+    if (!namespace)
+        namespace = RootNamespace;
+
+    let existingTypes = namespace.findSymbols(dbtype.name, DBAllowSymbol.Types);
+    for (let previousType of existingTypes)
+    {
+        if (previousType instanceof DBType)
+        {
+            if (!previousType.declaredModule)
+                RemoveTypeFromDatabase(previousType);
+        }
+    }
+
+    AddTypeToDatabase(namespace, dbtype);
 }
 
 export function RemoveTypeFromDatabase(dbtype : DBType)
