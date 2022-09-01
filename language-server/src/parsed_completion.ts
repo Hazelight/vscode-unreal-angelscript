@@ -945,6 +945,16 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                     sortText: Sort.Keyword,
             });
         }
+
+        if (CanCompleteToOnlyStart(context, "UENUM"))
+        {
+            completions.push({
+                    label: "UENUM",
+                    kind: CompletionItemKind.Keyword,
+                    commitCharacters: ["("],
+                    sortText: Sort.Keyword,
+            });
+        }
     }
 
     if (context.scope && inFunctionBody)

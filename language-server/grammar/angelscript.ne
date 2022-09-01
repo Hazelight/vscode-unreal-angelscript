@@ -66,6 +66,8 @@ const lexer = moo.compile({
             ufunction: 'UFUNCTION',
             uproperty: 'UPROPERTY',
             uclass: 'UCLASS',
+            uenum: 'UENUM',
+            umeta: 'UMETA',
             ustruct: 'USTRUCT',
             bool_token: ['true', 'false'],
             nullptr_token: 'nullptr',
@@ -422,10 +424,11 @@ global_declaration -> uclass_macro:? %class_token _ %identifier ( _ %colon):? (_
         superclass: d[5] ? Identifier(d[5][1]) : null,
     }}
 %}
-global_declaration -> %enum_token _ %identifier {%
+global_declaration -> uenum_macro:? %enum_token _ %identifier {%
     function (d) { return {
         ...Compound(d, n.EnumDefinition, null),
-        name: Identifier(d[2]),
+        name: Identifier(d[3]),
+        macro: d[0],
     }}
 %}
 
@@ -686,6 +689,12 @@ uclass_macro -> %uclass _ %lparen _ macro_list _ %rparen _ {%
     function (d) { return Compound(d, n.Macro, d[4]); }
 %}
 ustruct_macro -> %ustruct _ %lparen _ macro_list _ %rparen _ {%
+    function (d) { return Compound(d, n.Macro, d[4]); }
+%}
+uenum_macro -> %uenum _ %lparen _ macro_list _ %rparen _ {%
+    function (d) { return Compound(d, n.Macro, d[4]); }
+%}
+umeta_macro -> _ %umeta _ %lparen _ macro_list _ %rparen {%
     function (d) { return Compound(d, n.Macro, d[4]); }
 %}
 
@@ -1311,20 +1320,22 @@ enum_statement -> enum_decl (_ %comma enum_decl):* (_ %comma):? {%
     }
 %}
 
-enum_decl -> comment_documentation:? %identifier {%
+enum_decl -> comment_documentation:? %identifier umeta_macro:? {%
     function (d) { return {
         ...Compound(d, n.EnumValue, null),
         name: Identifier(d[1]),
         documentation: d[0],
+        meta: d[6],
    }; }
 %}
 
-enum_decl -> comment_documentation:? %identifier _ "=" _ expression {%
+enum_decl -> comment_documentation:? %identifier _ "=" _ expression umeta_macro:? {%
     function (d) { return {
         ...Compound(d, n.EnumValue, null),
         name: Identifier(d[1]),
         value: d[5],
         documentation: d[0],
+        meta: d[6],
    }; }
 %}
 

@@ -70,6 +70,8 @@ const lexer = moo.compile({
             ufunction: 'UFUNCTION',
             uproperty: 'UPROPERTY',
             uclass: 'UCLASS',
+            uenum: 'UENUM',
+            umeta: 'UMETA',
             ustruct: 'USTRUCT',
             bool_token: ['true', 'false'],
             nullptr_token: 'nullptr',
@@ -440,10 +442,13 @@ var grammar = {
             superclass: d[5] ? Identifier(d[5][1]) : null,
         }}
         },
-    {"name": "global_declaration", "symbols": [(lexer.has("enum_token") ? {type: "enum_token"} : enum_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
+    {"name": "global_declaration$ebnf$7", "symbols": ["uenum_macro"], "postprocess": id},
+    {"name": "global_declaration$ebnf$7", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "global_declaration", "symbols": ["global_declaration$ebnf$7", (lexer.has("enum_token") ? {type: "enum_token"} : enum_token), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
         function (d) { return {
             ...Compound(d, n.EnumDefinition, null),
-            name: Identifier(d[2]),
+            name: Identifier(d[3]),
+            macro: d[0],
         }}
         },
     {"name": "global_declaration", "symbols": [{"literal":"asset"}, "_", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"of"}, "_", "typename"], "postprocess": 
@@ -731,6 +736,12 @@ var grammar = {
         function (d) { return Compound(d, n.Macro, d[4]); }
         },
     {"name": "ustruct_macro", "symbols": [(lexer.has("ustruct") ? {type: "ustruct"} : ustruct), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "macro_list", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "_"], "postprocess": 
+        function (d) { return Compound(d, n.Macro, d[4]); }
+        },
+    {"name": "uenum_macro", "symbols": [(lexer.has("uenum") ? {type: "uenum"} : uenum), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "macro_list", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen), "_"], "postprocess": 
+        function (d) { return Compound(d, n.Macro, d[4]); }
+        },
+    {"name": "umeta_macro", "symbols": ["_", (lexer.has("umeta") ? {type: "umeta"} : umeta), "_", (lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "macro_list", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return Compound(d, n.Macro, d[4]); }
         },
     {"name": "parameter_list", "symbols": [], "postprocess": 
@@ -1388,21 +1399,27 @@ var grammar = {
         },
     {"name": "enum_decl$ebnf$1", "symbols": ["comment_documentation"], "postprocess": id},
     {"name": "enum_decl$ebnf$1", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "enum_decl", "symbols": ["enum_decl$ebnf$1", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
+    {"name": "enum_decl$ebnf$2", "symbols": ["umeta_macro"], "postprocess": id},
+    {"name": "enum_decl$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "enum_decl", "symbols": ["enum_decl$ebnf$1", (lexer.has("identifier") ? {type: "identifier"} : identifier), "enum_decl$ebnf$2"], "postprocess": 
          function (d) { return {
              ...Compound(d, n.EnumValue, null),
              name: Identifier(d[1]),
              documentation: d[0],
+             meta: d[6],
         }; }
         },
-    {"name": "enum_decl$ebnf$2", "symbols": ["comment_documentation"], "postprocess": id},
-    {"name": "enum_decl$ebnf$2", "symbols": [], "postprocess": function(d) {return null;}},
-    {"name": "enum_decl", "symbols": ["enum_decl$ebnf$2", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"="}, "_", "expression"], "postprocess": 
+    {"name": "enum_decl$ebnf$3", "symbols": ["comment_documentation"], "postprocess": id},
+    {"name": "enum_decl$ebnf$3", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "enum_decl$ebnf$4", "symbols": ["umeta_macro"], "postprocess": id},
+    {"name": "enum_decl$ebnf$4", "symbols": [], "postprocess": function(d) {return null;}},
+    {"name": "enum_decl", "symbols": ["enum_decl$ebnf$3", (lexer.has("identifier") ? {type: "identifier"} : identifier), "_", {"literal":"="}, "_", "expression", "enum_decl$ebnf$4"], "postprocess": 
          function (d) { return {
              ...Compound(d, n.EnumValue, null),
              name: Identifier(d[1]),
              value: d[5],
              documentation: d[0],
+             meta: d[6],
         }; }
         },
     {"name": "comment_documentation$ebnf$1", "symbols": []},

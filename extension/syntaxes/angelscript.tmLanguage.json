@@ -57,6 +57,31 @@
             ]
         },
         {
+            "name": "meta.unrealmacro.meta.angelsript",
+            "begin": "(UMETA)\\(",
+            "beginCaptures": {
+                "1": {
+                    "name": "variable.other.enummember"
+                }
+            },
+            "end": "\\)",
+            "patterns": [
+                {
+                    "include": "#strings"
+                },
+                {
+                    "include": "#numbers"
+                },
+                {
+                    "include": "#macro_parens"
+                },
+                {
+                    "name": "keyword.specifier.angelscript",
+                    "match": "\\b(DisplayName|Hidden)\\b"
+                }
+            ]
+        },
+        {
             "name": "meta.unrealmacro.function.angelsript",
             "begin": "(UFUNCTION)\\(",
             "beginCaptures": {
@@ -109,6 +134,31 @@
         {
             "name": "meta.unrealmacro.struct.angelsript",
             "begin": "(USTRUCT)\\(",
+            "beginCaptures": {
+                "1": {
+                    "name": "variable.other.enummember"
+                }
+            },
+            "end": "\\)",
+            "patterns": [
+                {
+                    "include": "#strings"
+                },
+                {
+                    "include": "#numbers"
+                },
+                {
+                    "include": "#macro_parens"
+                },
+                {
+                    "name": "keyword.specifier.angelscript",
+                    "match": "\\b(Meta)\\b"
+                }
+            ]
+        },
+        {
+            "name": "meta.unrealmacro.enum.angelsript",
+            "begin": "(UENUM)\\(",
             "beginCaptures": {
                 "1": {
                     "name": "variable.other.enummember"
