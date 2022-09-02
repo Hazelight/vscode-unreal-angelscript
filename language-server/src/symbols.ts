@@ -782,10 +782,9 @@ function GetHoverForFunction(type : typedb.DBType | typedb.DBNamespace, func : t
     }};
 }
 
-export function DocumentSymbols( uri : string ) : SymbolInformation[]
+export function DocumentSymbols(asmodule : scriptfiles.ASModule) : SymbolInformation[]
 {
     let symbols = new Array<SymbolInformation>();
-    let asmodule = scriptfiles.GetModuleByUri(uri);
     if (!asmodule)
         return symbols;
 
@@ -802,39 +801,51 @@ function AddModuleSymbols(asmodule : scriptfiles.ASModule, symbols : Array<Symbo
             name : dbtype.name,
         };
 
-        if (dbtype.moduleScopeStart != -1)
+        if (dbtype.moduleScopeEnd != -1)
             scopeSymbol.location = asmodule.getLocationRange(dbtype.moduleOffset, dbtype.moduleScopeEnd);
         else
             scopeSymbol.location = asmodule.getLocation(dbtype.moduleOffset);
 
         if (dbtype.isEnum)
             scopeSymbol.kind = SymbolKind.Enum;
+        else if (dbtype.isStruct)
+            scopeSymbol.kind = SymbolKind.Struct;
         else
             scopeSymbol.kind = SymbolKind.Class;
 
         symbols.push(scopeSymbol);
     }
 
-    for (let namespace of asmodule.namespaces)
+    for (let namespace of new Set(asmodule.namespaces))
     {
         if (namespace.isShadowingType())
             continue;
 
-        let scopeSymbol = <SymbolInformation> {
-            name : namespace.name,
-        };
+        for (let decl of namespace.declarations)
+        {
+            if (!decl)
+                continue;
+            if (decl.isNestedParent)
+                continue;
+            if (decl.declaredModule != asmodule.modulename)
+                continue;
 
-        let decl = namespace.getDeclarationInModule(asmodule.modulename);
-        if (!decl)
-            continue;
+            let declaredName = asmodule.content.substring(
+                decl.declaredOffset, decl.declaredOffsetEnd,
+            );
 
-        if (decl.scopeOffsetStart != -1)
-            scopeSymbol.location = asmodule.getLocationRange(decl.scopeOffsetStart, decl.scopeOffsetEnd);
-        else
-            scopeSymbol.location = asmodule.getLocation(decl.declaredOffset);
+            let scopeSymbol = <SymbolInformation> {
+                name: declaredName,
+            };
 
-        scopeSymbol.kind = SymbolKind.Namespace;
-        symbols.push(scopeSymbol);
+            if (decl.scopeOffsetEnd != -1)
+                scopeSymbol.location = asmodule.getLocationRange(decl.declaredOffset, decl.scopeOffsetEnd);
+            else
+                scopeSymbol.location = asmodule.getLocation(decl.declaredOffset);
+
+            scopeSymbol.kind = SymbolKind.Namespace;
+            symbols.push(scopeSymbol);
+        }
     }
 }
 
@@ -869,7 +880,7 @@ function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.AS
             name : scopeFunc.name+"()",
         };
 
-        if (scopeFunc.moduleScopeStart != -1)
+        if (scopeFunc.moduleScopeEnd != -1)
             scopeSymbol.location = asmodule.getLocationRange(scopeFunc.moduleOffset, scopeFunc.moduleScopeEnd);
         else
             scopeSymbol.location = asmodule.getLocation(scopeFunc.moduleOffset);
@@ -887,23 +898,6 @@ function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.AS
             }
 
             symbols.push(scopeSymbol);
-        }
-    }
-
-    let scopeNamespace = scope.dbnamespace;
-    if (scopeNamespace)
-    {
-        for (let classVar of scope.variables)
-        {
-            if (classVar.isArgument)
-                continue;
-
-            symbols.push(<SymbolInformation> {
-                name : classVar.name,
-                kind : SymbolKind.Variable,
-                location : asmodule.getLocationRange(classVar.start_offset_name, classVar.end_offset_name),
-                containerName : scopeNamespace.getQualifiedNamespace(),
-            });
         }
     }
 

@@ -1186,6 +1186,7 @@ export class DBNamespaceDeclaration
     declaredOffsetEnd : number;
     scopeOffsetStart : number;
     scopeOffsetEnd : number;
+    isNestedParent : boolean = false;
 }
 
 export class DBNamespace

@@ -608,7 +608,10 @@ connection.onHover((_textDocumentPosition: TextDocumentPositionParams): Hover =>
 });
 
 connection.onDocumentSymbol((_params : DocumentSymbolParams) : SymbolInformation[] => {
-    return scriptsymbols.DocumentSymbols(_params.textDocument.uri);
+    let asmodule = GetAndParseModule(_params.textDocument.uri);
+    if (!asmodule)
+        return null;
+    return scriptsymbols.DocumentSymbols(asmodule);
 });
 
 connection.onWorkspaceSymbol((_params : WorkspaceSymbolParams) : WorkspaceSymbol[] => {

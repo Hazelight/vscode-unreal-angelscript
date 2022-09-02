@@ -1951,6 +1951,7 @@ function GenerateTypeInformation(scope : ASScope)
             decl.declaredOffsetEnd = scope.previous.start_offset + nsdef.name.end;
             decl.scopeOffsetStart = scope.start_offset;
             decl.scopeOffsetEnd = scope.end_offset;
+            decl.isNestedParent = false;
 
             // Generate all parent namespaces first
             let identifier = nsdef.name.value;
@@ -1962,7 +1963,14 @@ function GenerateTypeInformation(scope : ASScope)
 
                 for (let i = 0, count = parts.length - 1; i < count; ++i)
                 {
-                    parentNamespace = typedb.DeclareNamespace(parentNamespace, parts[i], decl);
+                    let parentDecl = new typedb.DBNamespaceDeclaration();
+                    parentDecl.declaredModule = scope.module.modulename;
+                    parentDecl.declaredOffset = scope.previous.start_offset + nsdef.name.start;
+                    parentDecl.declaredOffsetEnd = scope.previous.start_offset + nsdef.name.end;
+                    parentDecl.scopeOffsetStart = scope.start_offset;
+                    parentDecl.scopeOffsetEnd = scope.end_offset;
+                    parentDecl.isNestedParent = true;
+                    parentNamespace = typedb.DeclareNamespace(parentNamespace, parts[i], parentDecl);
                     scope.module.namespaces.push(parentNamespace);
                 }
             }
