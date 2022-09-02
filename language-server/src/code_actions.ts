@@ -242,7 +242,7 @@ function AddGenerateDelegateFunctionActions(context : CodeActionContext)
         if (data && data.type == "delegateBind")
         {
             context.actions.push(<CodeAction> {
-                kind: CodeActionKind.QuickFix,
+                kind: CodeActionKind.RefactorExtract,
                 title: "Generate Method: "+data.name+"()",
                 source: "angelscript",
                 diagnostics: [diag],
@@ -482,7 +482,7 @@ function AddMethodOverrideSnippets(context : CodeActionContext)
             return;
 
         context.actions.push(<CodeAction> {
-            kind: CodeActionKind.RefactorRewrite,
+            kind: CodeActionKind.Refactor,
             title: "Override: "+method.name+"()",
             source: "angelscript",
             data: {
@@ -828,10 +828,9 @@ function AddAutoActions(context : CodeActionContext)
         let realTypename = dbtype.getQualifiedTypenameInNamespace(context.scope.getNamespace());
 
         context.actions.push(<CodeAction> {
-            kind: CodeActionKind.RefactorInline,
+            kind: CodeActionKind.QuickFix,
             title: "Change auto to "+dbtype.getDisplayName(),
             source: "angelscript",
-            isPreferred: true,
             data: {
                 uri: context.module.uri,
                 type: "materializeAuto",
@@ -898,10 +897,9 @@ function AddVariablePromotionHelper(context : CodeActionContext)
         let variableName = leftNode.value;
 
         context.actions.push(<CodeAction> {
-            kind: CodeActionKind.RefactorInline,
+            kind: CodeActionKind.RefactorRewrite,
             title: `Promote ${variableName} to member variable`,
             source: "angelscript",
-            isPreferred: true,
             data: {
                 uri: context.module.uri,
                 type: "variablePromotion",
@@ -1098,7 +1096,7 @@ function AddMemberActions(context : CodeActionContext)
             if (isOverrideEvent)
             {
                 context.actions.push(<CodeAction> {
-                    kind: CodeActionKind.RefactorInline,
+                    kind: CodeActionKind.QuickFix,
                     title: `Add UFUNCTION(BlueprintOverride)`,
                     source: "angelscript",
                     data: {
@@ -1120,7 +1118,7 @@ function AddMemberActions(context : CodeActionContext)
                         && scopeFunc.returnType != "void")
                     {
                         context.actions.push(<CodeAction> {
-                            kind: CodeActionKind.RefactorInline,
+                            kind: CodeActionKind.QuickFix,
                             title: `Add UFUNCTION(BlueprintPure)`,
                             source: "angelscript",
                             data: {
@@ -1134,7 +1132,7 @@ function AddMemberActions(context : CodeActionContext)
                 }
 
                 context.actions.push(<CodeAction> {
-                    kind: CodeActionKind.RefactorInline,
+                    kind: CodeActionKind.QuickFix,
                     title: `Add UFUNCTION()`,
                     source: "angelscript",
                     data: {
@@ -1161,7 +1159,7 @@ function AddMemberActions(context : CodeActionContext)
                 && dbType.inheritsFrom("AActor"))
             {
                 context.actions.push(<CodeAction> {
-                    kind: CodeActionKind.RefactorInline,
+                    kind: CodeActionKind.QuickFix,
                     title: `Add UPROPERTY(DefaultComponent)`,
                     source: "angelscript",
                     data: {
@@ -1174,7 +1172,7 @@ function AddMemberActions(context : CodeActionContext)
             }
 
             context.actions.push(<CodeAction> {
-                kind: CodeActionKind.RefactorInline,
+                kind: CodeActionKind.QuickFix,
                 title: `Add UPROPERTY()`,
                 source: "angelscript",
                 data: {
@@ -1320,7 +1318,7 @@ function AddSwitchCaseActions(context : CodeActionContext)
     if (missingCases.length >= 2)
     {
         context.actions.push(<CodeAction> {
-            kind: CodeActionKind.RefactorInline,
+            kind: CodeActionKind.RefactorRewrite,
             title: `Add all missing ${switchOnType.getDisplayName()} cases`,
             source: "angelscript",
             data: {
@@ -1338,7 +1336,7 @@ function AddSwitchCaseActions(context : CodeActionContext)
     for (let label of missingCases)
     {
         context.actions.push(<CodeAction> {
-            kind: CodeActionKind.RefactorInline,
+            kind: CodeActionKind.RefactorRewrite,
             title: `Add case ${label}`,
             source: "angelscript",
             data: {
@@ -1619,7 +1617,7 @@ function AddGenerateMethodActions(context : CodeActionContext)
             returnType = "float";
 
         context.actions.push(<CodeAction> {
-            kind: CodeActionKind.RefactorInline,
+            kind: CodeActionKind.RefactorExtract,
             title: `Generate method: ${returnType} ${functionName}(${args})`,
             source: "angelscript",
             data: {
@@ -1636,7 +1634,7 @@ function AddGenerateMethodActions(context : CodeActionContext)
         if (expectedType)
         {
             context.actions.push(<CodeAction> {
-                kind: CodeActionKind.RefactorInline,
+                kind: CodeActionKind.RefactorExtract,
                 title: `Generate method: ${returnType} ${functionName}(${args}) const`,
                 source: "angelscript",
                 data: {
