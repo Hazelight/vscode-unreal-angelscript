@@ -1529,6 +1529,11 @@ function AddGenerateMethodActions(context : CodeActionContext)
     let functionCallNodes : Array<any> = [];
     FindMemberFunctionCallNodes(context.statement.ast, context.statement, functionCallNodes);
 
+    let isInConstMethod = false;
+    let scopeFunction = context.scope.getParentFunction();
+    if (scopeFunction)
+        isInConstMethod = scopeFunction.isConst;
+
     for (let callNode of functionCallNodes)
     {
         if (!callNode || !callNode.children)
@@ -1616,22 +1621,25 @@ function AddGenerateMethodActions(context : CodeActionContext)
         if (returnType == "float32")
             returnType = "float";
 
-        context.actions.push(<CodeAction> {
-            kind: CodeActionKind.RefactorExtract,
-            title: `Generate method: ${returnType} ${functionName}(${args})`,
-            source: "angelscript",
-            data: {
-                uri: context.module.uri,
-                type: "methodFromUsage",
-                name: functionName,
-                returnType: returnType,
-                args: args,
-                const: false,
-                position: callPosition,
-            }
-        });
+        if (!isInConstMethod)
+        {
+            context.actions.push(<CodeAction> {
+                kind: CodeActionKind.RefactorExtract,
+                title: `Generate method: ${returnType} ${functionName}(${args})`,
+                source: "angelscript",
+                data: {
+                    uri: context.module.uri,
+                    type: "methodFromUsage",
+                    name: functionName,
+                    returnType: returnType,
+                    args: args,
+                    const: false,
+                    position: callPosition,
+                }
+            });
+        }
 
-        if (expectedType)
+        if (expectedType || isInConstMethod)
         {
             context.actions.push(<CodeAction> {
                 kind: CodeActionKind.RefactorExtract,
