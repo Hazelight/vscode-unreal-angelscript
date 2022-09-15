@@ -825,6 +825,11 @@ function AddAutoActions(context : CodeActionContext)
         if (!dbtype)
             continue;
 
+        // Ignore replacing autos for map iterators, since we don't want to see literal iterators anyway
+        if ( dbtype.isTemplateInstantiation
+            && (dbtype.name.startsWith("TMapIterator<") || dbtype.name.startsWith("TMapConstIterator<")))
+            continue;
+
         let realTypename = dbtype.getQualifiedTypenameInNamespace(context.scope.getNamespace());
 
         context.actions.push(<CodeAction> {

@@ -552,7 +552,7 @@ export class DBType implements DBSymbol
         inst.moduleOffset = this.moduleOffset;
         inst.moduleOffsetEnd = this.moduleOffsetEnd;
         inst.isTemplateInstantiation = true;
-        inst.templateSubTypes = null;
+        inst.templateSubTypes = actualTypes;
 
         let baseType = this;
         this.forEachSymbol(function (sym : DBSymbol)

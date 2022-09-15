@@ -178,6 +178,16 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
                     }
                 }
 
+                // Just don't display the actual iterator type if this is a map iterator
+                if (varType && scopevar.isIterator
+                        && varType.isTemplateInstantiation
+                        && (varType.name.startsWith("TMapIterator<") || varType.name.startsWith("TMapConstIterator<"))
+                        && varType.templateSubTypes
+                        && varType.templateSubTypes.length == 2)
+                {
+                    label = "["+varType.templateSubTypes[0]+" ➜ "+varType.templateSubTypes[1]+"]";
+                }
+
                 hints.push(<ASInlayHint> {
                     label: label,
                     position: scope.module.getPosition(scopevar.start_offset_name-1),
