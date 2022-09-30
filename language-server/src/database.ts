@@ -2189,7 +2189,9 @@ export function AddPrimitiveTypes(floatIsFloat64 : boolean)
 
 export function ArePrimitiveTypesEquivalent(typenameA : string, typenameB : string) : boolean
 {
-    return (PrimitiveAliases.get(typenameA) == PrimitiveAliases.get(typenameB));
+    let aliasA = PrimitiveAliases.get(typenameA);
+    let aliasB = PrimitiveAliases.get(typenameB);
+    return (aliasA && aliasB && aliasA == aliasB);
 }
 
 export function IsPrimitiveFloatType(typename : string) : boolean
