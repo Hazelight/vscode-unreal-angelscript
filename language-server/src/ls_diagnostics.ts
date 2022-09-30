@@ -474,8 +474,8 @@ function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBM
             if (parentMethod && parentMethod instanceof typedb.DBMethod)
             {
                 // Add a diagnostic if we aren't calling the super function
-                if (!dbfunc.hasSuperCall && dbfunc.isBlueprintEvent
-                    && (!dbfunc.returnType || dbfunc.returnType == "void")
+                if (!dbfunc.hasSuperCall
+                    && ((dbfunc.isBlueprintEvent && (!dbfunc.returnType || dbfunc.returnType == "void")) || parentMethod.hasMetaData("RequireSuperCall"))
                     && parentMethod.declaredModule
                     && !parentMethod.isEmpty
                     && !parentMethod.hasMetaData("NoSuperCall") && !dbfunc.hasMetaData("NoSuperCall"))
@@ -485,7 +485,7 @@ function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBM
                         range: scope.module.getRange(
                             scope.declaration.start_offset + scope.declaration.ast.start,
                             scope.declaration.start_offset + scope.declaration.ast.end),
-                        message: "Overriding "+parentMethod.name+" BlueprintEvent from parent without calling Super::"+parentMethod.name+"(...)\n(Add 'NoSuperCall' meta to suppress warning)",
+                        message: "Overriding "+parentMethod.name+" from parent without calling Super::"+parentMethod.name+"(...)\n(Add 'NoSuperCall' meta to suppress warning)",
                         source: "angelscript",
                         data: {
                             type: "superCall",

@@ -536,9 +536,13 @@ function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : 
             let parentMethod = parentType.findFirstSymbol(method.name, typedb.DBAllowSymbol.Functions);
             if (parentMethod instanceof typedb.DBMethod && parentMethod.declaredModule && !parentMethod.isEmpty)
             {
-                if (!method.returnType || method.returnType == "void")
+                let hasReturnValue = !method.returnType || method.returnType == "void";
+                if (hasReturnValue || parentMethod.hasMetaData("RequireSuperCall"))
                 {
-                    snippet += indent+indent+"Super::"+method.name+"(";
+                    snippet += indent+indent;
+                    if (hasReturnValue)
+                        snippet += "return ";
+                    snippet += "Super::"+method.name+"(";
                     for (let i = 0; i < method.args.length; ++i)
                     {
                         if (i != 0)
@@ -732,7 +736,11 @@ function ResolveSuperCallHelper(asmodule : scriptfiles.ASModule, action : CodeAc
 
     let [insertPosition, indent, prefix, suffix] = FindInsertPositionFunctionStart(scope);
 
-    let callString = prefix+indent+"Super::"+superMethod.name+"(";
+    let callString = prefix+indent;
+    if (scopeFunc.returnType && scopeFunc.returnType != "void")
+        callString += "return ";
+
+    callString += "Super::"+superMethod.name+"(";
     if (scopeFunc.args)
     {
         for (let i = 0; i < scopeFunc.args.length; ++i)

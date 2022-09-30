@@ -3578,7 +3578,23 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
     {
         if (!(sym instanceof typedb.DBMethod))
             return;
+
         let method = sym;
+        let parentMethod = null;
+        if (method.containingType == typeOfScope)
+        {
+            let parentType = typeOfScope.getSuperType();
+            if (parentType)
+            {
+                let parentSymbol = parentType.findFirstSymbol(method.name, typedb.DBAllowSymbol.Functions);
+                if (parentSymbol instanceof typedb.DBMethod)
+                    parentMethod = parentSymbol;
+            }
+        }
+        else
+        {
+            parentMethod = method;
+        }
 
         let includeReturnType = false;
         let includeParamsOnly = false;
@@ -3609,7 +3625,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
             complEdits = complEdits.concat(textEditsForEvent);
 
         let superStr = "";
-        if (method.declaredModule && (!method.returnType || method.returnType == "void"))
+        if (parentMethod && parentMethod.declaredModule && (!parentMethod.returnType || parentMethod.returnType == "void" || parentMethod.hasMetaData("RequireSuperCall")))
         {
             superStr += "Super::"+method.name+"(";
             for (let i = 0; i < method.args.length; ++i)
@@ -3618,7 +3634,12 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
                     superStr += ", ";
                 superStr += method.args[i].name;
             }
-            superStr += ");\n"+currentIndent;
+            superStr += ");";
+
+            if (parentMethod.returnType && parentMethod.returnType != "void")
+                superStr = "return " + superStr;
+            else
+                superStr += "\n"+currentIndent;
         }
 
         if (includeParamsOnly)
