@@ -2,7 +2,7 @@ import {
     TextDocumentPositionParams, CompletionItem, CompletionItemKind, SignatureHelp,
     SignatureInformation, ParameterInformation, Hover, MarkupContent, SymbolInformation,
     TextDocument, SymbolKind, Definition, Location, InsertTextFormat, TextEdit,
-    Range, Position, MarkupKind, WorkspaceSymbol
+    Range, Position, MarkupKind, WorkspaceSymbol, DocumentSymbol
 } from 'vscode-languageserver';
 
 import * as scriptfiles from './as_parser';
@@ -782,127 +782,155 @@ function GetHoverForFunction(type : typedb.DBType | typedb.DBNamespace, func : t
     }};
 }
 
-export function DocumentSymbols(asmodule : scriptfiles.ASModule) : SymbolInformation[]
+export function DocumentSymbols(asmodule : scriptfiles.ASModule) : DocumentSymbol[]
 {
-    let symbols = new Array<SymbolInformation>();
+    let symbols = new Array<DocumentSymbol>();
     if (!asmodule)
         return symbols;
 
-    AddModuleSymbols(asmodule, symbols);
     AddScopeSymbols(asmodule, asmodule.rootscope, symbols);
     return symbols;
 }
 
-function AddModuleSymbols(asmodule : scriptfiles.ASModule, symbols : Array<SymbolInformation>)
-{
-    for (let dbtype of asmodule.types)
-    {
-        let scopeSymbol = <SymbolInformation> {
-            name : dbtype.name,
-        };
-
-        if (dbtype.moduleScopeEnd != -1)
-            scopeSymbol.location = asmodule.getLocationRange(dbtype.moduleOffset, dbtype.moduleScopeEnd);
-        else
-            scopeSymbol.location = asmodule.getLocation(dbtype.moduleOffset);
-
-        if (dbtype.isEnum)
-            scopeSymbol.kind = SymbolKind.Enum;
-        else if (dbtype.isStruct)
-            scopeSymbol.kind = SymbolKind.Struct;
-        else
-            scopeSymbol.kind = SymbolKind.Class;
-
-        symbols.push(scopeSymbol);
-    }
-
-    for (let namespace of new Set(asmodule.namespaces))
-    {
-        if (namespace.isShadowingType())
-            continue;
-
-        for (let decl of namespace.declarations)
-        {
-            if (!decl)
-                continue;
-            if (decl.isNestedParent)
-                continue;
-            if (decl.declaredModule != asmodule.modulename)
-                continue;
-
-            let declaredName = asmodule.content.substring(
-                decl.declaredOffset, decl.declaredOffsetEnd,
-            );
-
-            let scopeSymbol = <SymbolInformation> {
-                name: declaredName,
-            };
-
-            if (decl.scopeOffsetEnd != -1)
-                scopeSymbol.location = asmodule.getLocationRange(decl.declaredOffset, decl.scopeOffsetEnd);
-            else
-                scopeSymbol.location = asmodule.getLocation(decl.declaredOffset);
-
-            scopeSymbol.kind = SymbolKind.Namespace;
-            symbols.push(scopeSymbol);
-        }
-    }
-}
-
-function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.ASScope, symbols: Array<SymbolInformation>)
+function AddScopeSymbols(asmodule : scriptfiles.ASModule, scope : scriptfiles.ASScope, symbols: Array<DocumentSymbol>)
 {
     if (!scope)
         return;
-    let scopeType = scope.getDatabaseType();
-    if (scopeType)
+    if (scope.scopetype == scriptfiles.ASScopeType.Class
+        || scope.scopetype == scriptfiles.ASScopeType.Global
+        || scope.scopetype == scriptfiles.ASScopeType.Namespace
+        || scope.scopetype == scriptfiles.ASScopeType.Enum
+        )
     {
-        if (scope.scopetype == scriptfiles.ASScopeType.Class)
-        {
-            for (let classVar of scope.variables)
-            {
-                if (classVar.isArgument)
-                    continue;
+        let varKind : SymbolKind = SymbolKind.Variable;
 
-                symbols.push(<SymbolInformation> {
-                    name : classVar.name,
-                    kind : SymbolKind.Field,
-                    location : asmodule.getLocationRange(classVar.start_offset_name, classVar.end_offset_name),
-                    containerName : scopeType.name,
-                });
+        if (scope.scopetype == scriptfiles.ASScopeType.Class
+            || scope.scopetype == scriptfiles.ASScopeType.Enum)
+        {
+            let dbtype = scope.getDatabaseType();
+            if (dbtype)
+            {
+                let scopeSymbol = <DocumentSymbol> {};
+                if (dbtype.moduleScopeEnd != -1)
+                    scopeSymbol.range = asmodule.getRange(dbtype.moduleOffset, dbtype.moduleScopeEnd);
+                else if (dbtype.moduleOffsetEnd != -1)
+                    scopeSymbol.selectionRange = asmodule.getRange(dbtype.moduleOffset, dbtype.moduleOffsetEnd);
+                else
+                    scopeSymbol.range = asmodule.getRange(dbtype.moduleOffset, dbtype.moduleOffset);
+
+                if (dbtype.moduleOffsetEnd != -1)
+                    scopeSymbol.selectionRange = asmodule.getRange(dbtype.moduleOffset, dbtype.moduleOffsetEnd);
+                else
+                    scopeSymbol.selectionRange = asmodule.getRange(dbtype.moduleOffset, dbtype.moduleOffset);
+
+                scopeSymbol.name = dbtype.name
+                if (scope.scopetype == scriptfiles.ASScopeType.Enum)
+                {
+                    scopeSymbol.kind = SymbolKind.Enum;
+                    varKind = SymbolKind.EnumMember;
+                }
+                else
+                {
+                    scopeSymbol.kind = SymbolKind.Class;
+                    if (dbtype.isStruct)
+                        scopeSymbol.kind = SymbolKind.Struct;
+                }
+
+                scopeSymbol.children = new Array<DocumentSymbol>();
+
+                symbols.push(scopeSymbol);
+                symbols = scopeSymbol.children;
             }
+        }
+        else if (scope.scopetype == scriptfiles.ASScopeType.Namespace)
+        {
+            let namespace = scope.getNamespace();
+            if (namespace && scope.previous instanceof scriptfiles.ASStatement && scope.previous.ast
+                && scope.previous.ast.type == scriptfiles.node_types.NamespaceDefinition)
+            {
+                let nsdef = scope.previous.ast;
+
+                let scopeSymbol = <DocumentSymbol> {};
+                scopeSymbol.range = asmodule.getRange(scope.start_offset, scope.end_offset);
+                scopeSymbol.kind = SymbolKind.Namespace;
+                scopeSymbol.selectionRange = asmodule.getRange(scope.previous.start_offset + nsdef.name.start, scope.previous.start_offset + nsdef.name.end);
+                scopeSymbol.name = namespace.name;
+                scopeSymbol.children = new Array<DocumentSymbol>();
+
+                symbols.push(scopeSymbol);
+                symbols = scopeSymbol.children;
+            }
+        }
+
+        for (let classVar of scope.variables)
+        {
+            if (classVar.isArgument)
+                continue;
+
+            let signature = classVar.typename;
+            if (classVar.accessSpecifier)
+                signature = "access:"+classVar.accessSpecifier.name+" "+signature;
+            else if (classVar.isPrivate)
+                signature = "private "+signature;
+            else if (classVar.isProtected)
+                signature = "protected "+signature;
+
+            symbols.push({
+                name : classVar.name,
+                kind : varKind,
+                detail : signature,
+                range : asmodule.getRange(classVar.start_offset_name, classVar.end_offset_name),
+                selectionRange : asmodule.getRange(classVar.start_offset_name, classVar.end_offset_name),
+            });
         }
     }
 
     let scopeFunc = scope.getDatabaseFunction();
     if (scopeFunc)
     {
-        let scopeSymbol = <SymbolInformation> {
-            name : scopeFunc.name+"()",
+        let scopeSymbol = <DocumentSymbol> {
+            name : scopeFunc.name,
         };
 
-        if (scopeFunc.moduleScopeEnd != -1)
-            scopeSymbol.location = asmodule.getLocationRange(scopeFunc.moduleOffset, scopeFunc.moduleScopeEnd);
+        if (scopeFunc.args.length != 0)
+            scopeSymbol.name += "(…)";
         else
-            scopeSymbol.location = asmodule.getLocation(scopeFunc.moduleOffset);
+            scopeSymbol.name += "()";
+
+        if (scopeFunc.accessSpecifier)
+            scopeSymbol.detail = "access:"+scopeFunc.accessSpecifier.name;
+        else if (scopeFunc.isPrivate)
+            scopeSymbol.detail = "private";
+        else if (scopeFunc.isProtected)
+            scopeSymbol.detail = "protected";
+
+        if (scopeFunc.moduleScopeEnd != -1)
+            scopeSymbol.range = asmodule.getRange(scopeFunc.moduleOffset, scopeFunc.moduleScopeEnd);
+        else if (scopeFunc.moduleOffsetEnd != -1)
+            scopeSymbol.range = asmodule.getRange(scopeFunc.moduleOffset, scopeFunc.moduleOffsetEnd);
+        else
+            scopeSymbol.range = asmodule.getRange(scopeFunc.moduleOffset, scopeFunc.moduleOffset);
+
+        if (scopeFunc.moduleOffsetEnd != -1)
+            scopeSymbol.selectionRange = asmodule.getRange(scopeFunc.moduleOffset, scopeFunc.moduleOffsetEnd);
+        else
+            scopeSymbol.selectionRange = asmodule.getRange(scopeFunc.moduleOffset, scopeFunc.moduleOffset);
 
         if (scope.scopetype == scriptfiles.ASScopeType.Function)
         {
             if (scope.parentscope && scope.parentscope.scopetype == scriptfiles.ASScopeType.Class)
-            {
                 scopeSymbol.kind = SymbolKind.Method;
-                scopeSymbol.containerName = scope.parentscope.getDatabaseType().name;
-            }
             else
-            {
                 scopeSymbol.kind = SymbolKind.Function;
-            }
 
             symbols.push(scopeSymbol);
         }
     }
-
-    for (let subscope of scope.scopes)
-        AddScopeSymbols(asmodule, subscope, symbols);
+    else
+    {
+        for (let subscope of scope.scopes)
+            AddScopeSymbols(asmodule, subscope, symbols);
+    }
 }
 
 export function WorkspaceSymbols( query : string ) : WorkspaceSymbol[]

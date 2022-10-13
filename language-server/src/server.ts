@@ -19,7 +19,7 @@ import {
     ColorPresentationParams, ColorPresentation,
     TypeHierarchyItem, TypeHierarchyPrepareParams,
     TypeHierarchySupertypesParams, TypeHierarchySubtypesParams,
-    WorkspaceSymbol,
+    WorkspaceSymbol, DocumentSymbol,
 } from 'vscode-languageserver/node';
 import { TextDocument, TextDocumentContentChangeEvent } from 'vscode-languageserver-textdocument';
 
@@ -612,7 +612,7 @@ connection.onHover((_textDocumentPosition: TextDocumentPositionParams): Hover =>
     return scriptsymbols.GetHover(asmodule, _textDocumentPosition.position);
 });
 
-connection.onDocumentSymbol((_params : DocumentSymbolParams) : SymbolInformation[] => {
+connection.onDocumentSymbol((_params : DocumentSymbolParams) : DocumentSymbol[] => {
     let asmodule = GetAndParseModule(_params.textDocument.uri);
     if (!asmodule)
         return null;

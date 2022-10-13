@@ -2146,6 +2146,8 @@ function GenerateTypeInformation(scope : ASScope)
             }
 
             ExtendScopeToStatement(scope, scope.previous);
+            dbfunc.moduleScopeStart = scope.previous.start_offset + constrdef.name.start;
+            dbfunc.moduleScopeEnd = scope.end_offset;
         }
         // Destructor declaration placed inside a class
         else if (scope.previous.ast.type == node_types.DestructorDecl)
@@ -2156,6 +2158,8 @@ function GenerateTypeInformation(scope : ASScope)
             let dbfunc = AddDBMethod(scope, destrdef.name.value);
             dbfunc.moduleOffset = scope.previous.start_offset + destrdef.name.start;
             dbfunc.moduleOffsetEnd = scope.previous.start_offset + destrdef.name.end;
+            dbfunc.moduleScopeStart = scope.previous.start_offset + destrdef.name.start;
+            dbfunc.moduleScopeEnd = scope.end_offset;
             scope.dbfunc = dbfunc;
 
             if (scope.parentscope && scope.parentscope.dbtype)
