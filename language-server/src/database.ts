@@ -922,7 +922,7 @@ export class DBType implements DBSymbol
             let method = dbsuper.getMethod(methodname, false);
             if (method)
             {
-                if (!dbsuper.isUnrealType || method.isBlueprintEvent)
+                if (!dbsuper.isUnrealType() || method.isBlueprintEvent)
                     return true;
             }
             checktype = dbsuper.supertype;
