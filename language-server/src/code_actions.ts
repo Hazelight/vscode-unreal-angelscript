@@ -65,7 +65,7 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
     AddAutoActions(context);
 
     // Actions for members
-    AddMemberActions(context);
+    AddMacroActions(context);
 
     // Actions for generating delegate bind functions
     AddGenerateDelegateFunctionActions(context);
@@ -1075,7 +1075,7 @@ function ResolveVariablePromotionHelper(asmodule : scriptfiles.ASModule, action 
     ];
 }
 
-function AddMemberActions(context : CodeActionContext)
+function AddMacroActions(context : CodeActionContext)
 {
     if (!context.scope)
         return;
@@ -1197,6 +1197,83 @@ function AddMemberActions(context : CodeActionContext)
             });
         }
     }
+    else if (context.statement.ast.type == scriptfiles.node_types.ClassDefinition
+        && context.statement.ast.name
+        && !context.statement.ast.macro)
+    {
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.QuickFix,
+            title: `Add UCLASS()`,
+            source: "angelscript",
+            data: {
+                uri: context.module.uri,
+                type: "insertMacro",
+                macro: "UCLASS()",
+                position: context.statement.start_offset + context.statement.ast.name.start,
+            }
+        });
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.QuickFix,
+            title: `Add UCLASS(Abstract)`,
+            source: "angelscript",
+            data: {
+                uri: context.module.uri,
+                type: "insertMacro",
+                macro: "UCLASS(Abstract)",
+                position: context.statement.start_offset + context.statement.ast.name.start,
+            }
+        });
+    }
+    else if (context.statement.ast.type == scriptfiles.node_types.StructDefinition
+        && context.statement.ast.name
+        && !context.statement.ast.macro)
+    {
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.QuickFix,
+            title: `Add USTRUCT()`,
+            source: "angelscript",
+            data: {
+                uri: context.module.uri,
+                type: "insertMacro",
+                macro: "USTRUCT()",
+                position: context.statement.start_offset + context.statement.ast.name.start,
+            }
+        });
+    }
+    else if (context.statement.ast.type == scriptfiles.node_types.EnumDefinition
+        && context.statement.ast.name
+        && !context.statement.ast.macro)
+    {
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.QuickFix,
+            title: `Add UENUM()`,
+            source: "angelscript",
+            data: {
+                uri: context.module.uri,
+                type: "insertMacro",
+                macro: "UENUM()",
+                position: context.statement.start_offset + context.statement.ast.name.start,
+            }
+        });
+    }
+}
+
+function GetIndentFromLineAtOffset(asmodule : scriptfiles.ASModule, position : number)
+{
+    let indent = "";
+    let textpos = asmodule.getPosition(position);
+
+    let line = asmodule.getLineText(textpos.line);
+    for (let i = 0; i < line.length; ++i)
+    {
+        let chr = line[i];
+        if (chr == '\t' || chr == " ")
+            indent += chr;
+        else
+            return indent;
+    }
+
+    return indent;
 }
 
 function ResolveInsertMacro(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
@@ -1218,7 +1295,7 @@ function ResolveInsertMacro(asmodule : scriptfiles.ASModule, action : CodeAction
     if (!classScope)
         return;
 
-    let [_, indent] = FindInsertPositionForGeneratedMemberVariable(asmodule, classScope, position);
+    let indent = GetIndentFromLineAtOffset(asmodule, position);
 
     action.edit = <WorkspaceEdit> {};
     action.edit.changes = {};
