@@ -1233,6 +1233,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 return;
             if (func.isLocal && context.scope && !func.IsAccessibleFromModule(context.scope.module.modulename))
                 return;
+            if (func.isOverride || func.isBlueprintOverride)
+                return;
 
             // Don't show constructors if we're probably completing the name of a type
             if (func.isConstructor && context.maybeTypename)
