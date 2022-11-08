@@ -213,16 +213,20 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
 
         if (!foundFunc.isUFunction)
         {
-            // Function exists but isn't UFUNCTION
-            diagnostics.push(<Diagnostic> {
-                severity: DiagnosticSeverity.Error,
-                range: asmodule.getRange(
-                    delegateBind.statement.start_offset + delegateBind.node_expression.start,
-                    delegateBind.statement.start_offset + delegateBind.node_expression.end),
-                message: "Function "+foundFunc.name+" in "+foundFunc.containingType.name+" is not declared UFUNCTION() and cannot be bound as a delegate.",
-                source: "angelscript"
-            });
-            continue;
+            let baseFunc = objType.getBaseMethod(funcName);
+            if (!baseFunc || !baseFunc.isUFunction)
+            {
+                // Function exists but isn't UFUNCTION
+                diagnostics.push(<Diagnostic> {
+                    severity: DiagnosticSeverity.Error,
+                    range: asmodule.getRange(
+                        delegateBind.statement.start_offset + delegateBind.node_expression.start,
+                        delegateBind.statement.start_offset + delegateBind.node_expression.end),
+                    message: "Function "+foundFunc.name+" in "+foundFunc.containingType.name+" is not declared UFUNCTION() and cannot be bound as a delegate.",
+                    source: "angelscript"
+                });
+                continue;
+            }
         }
 
         let delegateType = typedb.GetTypeByName(delegateBind.delegateType);

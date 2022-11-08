@@ -1114,6 +1114,29 @@ export class DBType implements DBSymbol
         }
     }
 
+    getBaseMethod(name : string) : DBMethod | null
+    {
+        let checkSym = this.findFirstSymbol(name, DBAllowSymbol.FunctionsAndMixins);
+        let baseFunction = checkSym as DBMethod;
+        let checkType : DBType = this;
+        while (checkType && checkSym)
+        {
+            checkType = checkType.getSuperType();
+            if (checkType)
+            {
+                checkSym = checkType.findFirstSymbol(name, DBAllowSymbol.FunctionsAndMixins);
+                if (checkSym)
+                    baseFunction = checkSym as DBMethod;
+            }
+            else
+            {
+                checkSym = null;
+            }
+        }
+
+        return baseFunction;
+    }
+
     getTypeClassification() : DBTypeClassification
     {
         if (this.classification == DBTypeClassification.Unknown)
