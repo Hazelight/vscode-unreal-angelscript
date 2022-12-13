@@ -113,6 +113,8 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
         ResolveInsertCases(asmodule, action, data);
     else if (data.type == "methodFromUsage")
         ResolveGenerateMethod(asmodule, action, data);
+    else if (data.type == "generateConstructor")
+        ResolveGenerateConstructor(asmodule, action, data);
     return action;
 }
 
@@ -1106,6 +1108,27 @@ function AddMemberActions(context : CodeActionContext)
                 }
             }
 
+            if (dbType && context.statement.ast.name.value == 'Construct') {
+                context.actions.push(<CodeAction> {
+                    kind: CodeActionKind.RefactorExtract,
+                    title: `Generate Constructor`,
+                    source: "angelscript",
+                    data: {
+                        uri: context.module.uri,
+                        type: "generateConstructor",
+                        position: context.scope.parentscope.start_offset,
+
+                        classname: dbType.name,
+                        arguments: context.statement.ast.parameters.map((param: { name: { value: string; }; typename: { value: string; }; }) => {
+                            return {
+                                name: param.name.value,
+                                typename: param.typename.value,
+                            }
+                        })
+                    }
+                });
+            }
+
             if (isOverrideEvent)
             {
                 context.actions.push(<CodeAction> {
@@ -1740,5 +1763,56 @@ function ResolveGenerateMethod(asmodule : scriptfiles.ASModule, action : CodeAct
     action.edit.changes = {};
     action.edit.changes[asmodule.displayUri] = [
         TextEdit.insert(insertPosition, snippet)
+    ];
+}
+
+function ResolveGenerateConstructor(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
+{
+    let insertPosition = asmodule.getPosition(data.position);
+
+    let scope = asmodule.getScopeAt(data.position);
+    if (!scope)
+        return;
+
+    let classScope = scope.getParentTypeScope();
+    if (!classScope)
+        return;
+
+    let [_, indent] = FindInsertPositionForGeneratedMemberVariable(asmodule, classScope, data.position);
+
+    let argumentRaw = '';
+    let argumentNames = '';
+
+    if (data.arguments.length > 0) {
+        argumentRaw = ', ' + data.arguments.map(
+            (argument: { name: string; typename: string; }) => {
+                return `${argument.typename} ${argument.name}`;
+            }
+        ).join(', ');
+        argumentNames = data.arguments.map(
+            (argument: { name: string; }) => argument.name
+        ).join(', ');
+    }
+
+    // namespace UExampleObject {
+    //     UExampleObject New(UObject Outer, float MyFloat, int MyInt) {
+    //         UExampleObject Inst = Cast<UExampleObject>(NewObject(Outer, UExampleObject::StaticClass(), n"UExampleObject"));
+    //         Inst.Construct(MyFloat, MyInt);
+    
+    //         return Inst;
+    //     }
+    // }
+
+    let code = `namespace ${data.classname} {\n`;
+    code += `${indent}${data.classname} New(UObject Outer${argumentRaw}) {\n`;
+    code += `${indent}${indent}${data.classname} Inst = Cast<${data.classname}>(NewObject(Outer, ${data.classname}::StaticClass(), n"${data.classname}"));\n`;
+    code += `${indent}${indent}Inst.Construct(${argumentNames});\n\n`;
+    code += `${indent}${indent}return Inst;\n`;
+    code += `${indent}}\n}\n\n`;
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(insertPosition, code)
     ];
 }
