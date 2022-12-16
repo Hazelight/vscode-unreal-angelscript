@@ -2021,7 +2021,7 @@ export function LookupType(namespace : DBNamespace, typename : string) : DBType 
                 });
 
             let dbbasetype = LookupType(namespace, basetype);
-            if (!dbbasetype)
+            if (!dbbasetype || !dbbasetype.isTemplateType())
                 return null;
 
             let inst = dbbasetype.createTemplateInstance(subtypes);
