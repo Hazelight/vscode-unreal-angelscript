@@ -1003,7 +1003,7 @@ export function WorkspaceSymbols( query : string ) : WorkspaceSymbol[]
                     else
                         symbol.name = memberPrefix+dbfunc.name+"()";
 
-                    symbol.data = [dbtype.name, dbfunc.name];
+                    symbol.data = [dbtype.name, dbfunc.name, dbfunc.id];
                     symbol.location = {uri: asmodule.displayUri};
 
                     if (dbfunc.isBlueprintEvent)
@@ -1100,7 +1100,7 @@ export function WorkspaceSymbols( query : string ) : WorkspaceSymbol[]
                         else
                             symbol.name = memberPrefix+dbfunc.name+"()";
 
-                        symbol.data = [namespace.getQualifiedNamespace(), dbfunc.name];
+                        symbol.data = [namespace.getQualifiedNamespace(), dbfunc.name, dbfunc.id];
                         symbol.location = {uri: symbolModule.displayUri};
 
                         if (dbfunc.isBlueprintEvent)
@@ -1192,7 +1192,25 @@ export function ResolveWorkspaceSymbol(symbol : WorkspaceSymbol) : WorkspaceSymb
                 if (!asmodule)
                     return;
 
-                let subSymbol = dbtype.findFirstSymbol(symbol.data[1]);
+                let allSymbols = dbtype.findSymbols(symbol.data[1]);
+                let subSymbol : typedb.DBSymbol = null;
+                for (let checkSymbol of allSymbols)
+                {
+                    if (checkSymbol instanceof typedb.DBMethod)
+                    {
+                        if (symbol.data.length < 3 || checkSymbol.id == symbol.data[2])
+                        {
+                            subSymbol = checkSymbol;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        subSymbol = checkSymbol;
+                        break;
+                    }
+                }
+
                 if (subSymbol)
                 {
                     if (subSymbol instanceof typedb.DBMethod)
@@ -1215,8 +1233,29 @@ export function ResolveWorkspaceSymbol(symbol : WorkspaceSymbol) : WorkspaceSymb
             let namespace = typedb.LookupNamespace(null, symbol.data[0]);
             if (namespace)
             {
-                let subSymbol = namespace.findFirstSymbol(symbol.data[1]);
-                if (subSymbol && subSymbol.declaredModule)
+                let allSymbols = namespace.findSymbols(symbol.data[1]);
+                let subSymbol : typedb.DBSymbol = null;
+                for (let checkSymbol of allSymbols)
+                {
+                    if (!checkSymbol.declaredModule)
+                        continue;
+
+                    if (checkSymbol instanceof typedb.DBMethod)
+                    {
+                        if (symbol.data.length < 3 || checkSymbol.id == symbol.data[2])
+                        {
+                            subSymbol = checkSymbol;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        subSymbol = checkSymbol;
+                        break;
+                    }
+                }
+
+                if (subSymbol)
                 {
                     let symbolModule = scriptfiles.GetModule(subSymbol.declaredModule);
                     if (symbolModule)
