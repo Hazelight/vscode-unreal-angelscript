@@ -3236,9 +3236,20 @@ function isEditScope(inScope : scriptfiles.ASScope) : boolean
 
 function isPropertyAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamespace, prop : typedb.DBProperty, inScope : scriptfiles.ASScope) : boolean
 {
-    if (!prop.containingType)
-        return true;
     if (curtype instanceof typedb.DBNamespace)
+    {
+        // Global variables without a namespace are only accessible from the same module
+        if (curtype === typedb.GetRootNamespace()
+            && prop.declaredModule
+            && prop.declaredModule != inScope.module.modulename)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    if (!prop.containingType)
         return true;
 
     if (prop.isPrivate || prop.isProtected)
