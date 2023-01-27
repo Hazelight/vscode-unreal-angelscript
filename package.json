@@ -124,6 +124,11 @@
                     "type": "boolean",
                     "default": true,
                     "description": "When debugging, show an inline value above the function declaration to display the this pointer and Owner of the object."
+                },
+                "UnrealAngelscript.scriptIgnorePatterns": {
+                    "type": "array",
+                    "default": ["Saved", ".plastic"],
+                    "description": "Glob patterns to ignore when searching for script files to parse."
                 }
             }
         },

@@ -42,7 +42,7 @@ import * as inlinevalues from './inline_values';
 import * as colorpicker from './color_picker';
 import * as typehierarchy from './type_hierarchy';
 import * as fs from 'fs';
-let glob = require('glob');
+import * as glob from 'glob';
 
 import { Message, MessageType, readMessages, buildGoTo, buildDisconnect, buildOpenAssets } from './unreal-buffers';
 
@@ -65,6 +65,8 @@ let IsServicingQueues = false;
 let ReceivingTypesTimeout : any = null;
 let SetTypeTimeout = false;
 let UnrealTypesTimedOut = false;
+
+let settings : any = null;
 
 function connect_unreal() {
     if (unreal != null)
@@ -265,7 +267,10 @@ connection.onInitialize((_params): InitializeResult => {
     let GlobsRemaining = Roots.length;
     for (let RootPath of Roots)
     {
-        glob(RootPath + "/**/*.as", null, function (err: any, files: any)
+        let globOptions: glob.IOptions = {
+            ignore: settings?.scriptIgnorePatterns || []
+        };
+        glob(RootPath + "/**/*.as", globOptions, function (err: any, files: any)
         {
             for (let file of files)
             {
@@ -982,7 +987,7 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
  connection.onDidChangeConfiguration(function (change : DidChangeConfigurationParams)
  {
     let settingsObject = change.settings as any;
-    let settings : any = settingsObject.UnrealAngelscript;
+    settings = settingsObject.UnrealAngelscript;
     if (!settings)
         return;
 
