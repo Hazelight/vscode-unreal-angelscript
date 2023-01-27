@@ -1,6 +1,6 @@
 {
-	"name": "angelscript",
-	"scopeName": "source.angelscript",
+    "name": "angelscript",
+    "scopeName": "source.angelscript",
     "patterns": [
         {
             "name": "keyword.declaration.angelscript",
@@ -27,9 +27,9 @@
             "match": "\\b(int|float|double|bool|int32|int64|int16|int8|uint32|uint64|uint16|uint8|float32|float64)\\b"
         },
         {
-			"match": "::",
-			"name": "punctuation.separator.namespace.access.angelscript"
-		},
+            "match": "::",
+            "name": "punctuation.separator.namespace.access.angelscript"
+        },
 
         {
             "name": "meta.unrealmacro.property.angelsript",
@@ -182,17 +182,17 @@
             ]
         },
 
-		{
-			"match": "\\b(asset) ([A-Za-z0-9_]+) (of) ([A-Za-z0-9_]+)\\b",
-			"captures": {
-				"1": {
-					"name": "keyword.statement.angelscript"
-				},
-				"3": {
-					"name": "keyword.statement.angelscript"
-				}
-			}
-		},
+        {
+            "match": "\\b(asset) ([A-Za-z0-9_]+) (of) ([A-Za-z0-9_]+)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword.statement.angelscript"
+                },
+                "3": {
+                    "name": "keyword.statement.angelscript"
+                }
+            }
+        },
 
         {
             "name": "meta.preprocessor.angelsript",
@@ -200,54 +200,54 @@
             "end": "(?=\\n)"
         },
 
-		{
-			"begin": "f\"",
-			"beginCaptures": {
-				"0": {
-					"name": "keyword.operator.quantifier.regexp"
-				}
-			},
-			"end": "\"",
-			"endCaptures": {
-				"0": {
-					"name": "keyword.operator.quantifier.regexp"
-				}
-			},
-			"name": "string.quoted.double.angelscript",
-			"patterns": [
-				{
-					"include": "#string_escaped_char"
-				},
-				{
-					"match": "{{",
-					"name": "string.quoted.double.angelscript"
-				},
-				{
-					"match": "}}",
-					"name": "string.quoted.double.angelscript"
-				},
-				{
-					"begin": "{",
-					"beginCaptures": {
-						"0": {
-							"name": "keyword.formatexpression.angelscript"
-						}
-					},
-					"patterns": [
-						{
-							"include": "source.angelscript"
-						}
-					],
-					"name": "meta.embedded.expression.angelscript",
-					"end": "=?\\s*(:(.?[=<>^])?[0-9dxXbconeEfFgG=,+-\\.^%#\\s]*)?(}|(?=\")|(?=\n))",
-					"endCaptures": {
-						"0": {
-							"name": "keyword.formatexpression.angelscript"
-						}
-					}
-				}
-			]
-		},
+        {
+            "begin": "f\"",
+            "beginCaptures": {
+                "0": {
+                    "name": "keyword.operator.quantifier.regexp"
+                }
+            },
+            "end": "\"",
+            "endCaptures": {
+                "0": {
+                    "name": "keyword.operator.quantifier.regexp"
+                }
+            },
+            "name": "string.quoted.double.angelscript",
+            "patterns": [
+                {
+                    "include": "#string_escaped_char"
+                },
+                {
+                    "match": "{{",
+                    "name": "string.quoted.double.angelscript"
+                },
+                {
+                    "match": "}}",
+                    "name": "string.quoted.double.angelscript"
+                },
+                {
+                    "begin": "{",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "keyword.formatexpression.angelscript"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "source.angelscript"
+                        }
+                    ],
+                    "name": "meta.embedded.expression.angelscript",
+                    "end": "=?\\s*(:(.?[=<>^])?[0-9dxXbconeEfFgG=,+-\\.^%#\\s]*)?(}|(?=\")|(?=\n))",
+                    "endCaptures": {
+                        "0": {
+                            "name": "keyword.formatexpression.angelscript"
+                        }
+                    }
+                }
+            ]
+        },
 
         {
             "include": "#comments"
@@ -264,23 +264,23 @@
     ],
     "repository": {
         "comments": {
-			"patterns": [
-				{
-					"name": "comment.block.angelscript",
-					"begin": "(\\/\\*)",
-					"beginCaptures": {
-						"1": {
-							"name": "punctuation.definition.comment.begin.angelscript"
-						}
-					},
-					"end": "(\\*\\/)",
-					"endCaptures": {
-						"1": {
-							"name": "punctuation.definition.comment.end.angelscript"
-						}
-					}
-				},
-				{
+            "patterns": [
+                {
+                    "name": "comment.block.angelscript",
+                    "begin": "(\\/\\*)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "punctuation.definition.comment.begin.angelscript"
+                        }
+                    },
+                    "end": "(\\*\\/)",
+                    "endCaptures": {
+                        "1": {
+                            "name": "punctuation.definition.comment.end.angelscript"
+                        }
+                    }
+                },
+                {
                     "name": "comment.line.double-slash.angelscript",
                     "begin": "(\\/\\/)",
                     "beginCaptures": {
@@ -293,274 +293,274 @@
                         {
                         }
                     ]
-				}
-			]
-		},
+                }
+            ]
+        },
         "numbers": {
-			"match": "(?<!\\w)\\.?\\d(?:(?:[0-9a-zA-Z_\\.]|')|(?<=[eEpP])[+-])*",
-			"captures": {
-				"0": {
-					"patterns": [
-						{
-							"begin": "(?=.)",
-							"end": "$",
-							"patterns": [
-								{
-									"match": "(\\G0[xX])([0-9a-fA-F](?:[0-9a-fA-F]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)?((?:(?<=[0-9a-fA-F])\\.|\\.(?=[0-9a-fA-F])))([0-9a-fA-F](?:[0-9a-fA-F]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)?((?<!')([pP])(\\+?)(\\-?)((?:[0-9](?:[0-9]|(?:(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)))?([lLfF](?!\\w))?$",
-									"captures": {
-										"1": {
-											"name": "keyword.other.unit.hexadecimal.angelscript"
-										},
-										"2": {
-											"name": "constant.numeric.hexadecimal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"3": {
-											"name": "punctuation.separator.constant.numeric"
-										},
-										"4": {
-											"name": "constant.numeric.hexadecimal.angelscript"
-										},
-										"5": {
-											"name": "constant.numeric.hexadecimal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"6": {
-											"name": "punctuation.separator.constant.numeric"
-										},
-										"8": {
-											"name": "keyword.other.unit.exponent.hexadecimal.angelscript"
-										},
-										"9": {
-											"name": "keyword.operator.plus.exponent.hexadecimal.angelscript"
-										},
-										"10": {
-											"name": "keyword.operator.minus.exponent.hexadecimal.angelscript"
-										},
-										"11": {
-											"name": "constant.numeric.exponent.hexadecimal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"12": {
-											"name": "keyword.other.unit.suffix.floating-point.angelscript"
-										}
-									}
-								},
-								{
-									"match": "(\\G(?=[0-9.])(?!0[xXbB]))([0-9](?:[0-9]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)?((?:(?<=[0-9])\\.|\\.(?=[0-9])))([0-9](?:[0-9]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)?((?<!')([eE])(\\+?)(\\-?)((?:[0-9](?:[0-9]|(?:(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)))?([lLfF](?!\\w))?$",
-									"captures": {
-										"2": {
-											"name": "constant.numeric.decimal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"3": {
-											"name": "punctuation.separator.constant.numeric"
-										},
-										"4": {
-											"name": "constant.numeric.decimal.point.angelscript"
-										},
-										"5": {
-											"name": "constant.numeric.decimal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"6": {
-											"name": "punctuation.separator.constant.numeric"
-										},
-										"8": {
-											"name": "keyword.other.unit.exponent.decimal.angelscript"
-										},
-										"9": {
-											"name": "keyword.operator.plus.exponent.decimal.angelscript"
-										},
-										"10": {
-											"name": "keyword.operator.minus.exponent.decimal.angelscript"
-										},
-										"11": {
-											"name": "constant.numeric.exponent.decimal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"12": {
-											"name": "keyword.other.unit.suffix.floating-point.angelscript"
-										}
-									}
-								},
-								{
-									"match": "(\\G0[bB])([01](?:[01]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
-									"captures": {
-										"1": {
-											"name": "keyword.other.unit.binary.angelscript"
-										},
-										"2": {
-											"name": "constant.numeric.binary.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"3": {
-											"name": "punctuation.separator.constant.numeric"
-										},
-										"4": {
-											"name": "keyword.other.unit.suffix.integer.angelscript"
-										}
-									}
-								},
-								{
-									"match": "(\\G0[oO])((?:[0-7]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))+)((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
-									"captures": {
-										"1": {
-											"name": "keyword.other.unit.octal.angelscript"
-										},
-										"2": {
-											"name": "constant.numeric.octal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"3": {
-											"name": "punctuation.separator.constant.numeric"
-										},
-										"4": {
-											"name": "keyword.other.unit.suffix.integer.angelscript"
-										}
-									}
-								},
-								{
-									"match": "(\\G0[xX])([0-9a-fA-F](?:[0-9a-fA-F]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)((?<!')([pP])(\\+?)(\\-?)((?:[0-9](?:[0-9]|(?:(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)))?((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
-									"captures": {
-										"1": {
-											"name": "keyword.other.unit.hexadecimal.angelscript"
-										},
-										"2": {
-											"name": "constant.numeric.hexadecimal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"3": {
-											"name": "punctuation.separator.constant.numeric"
-										},
-										"5": {
-											"name": "keyword.other.unit.exponent.hexadecimal.angelscript"
-										},
-										"6": {
-											"name": "keyword.operator.plus.exponent.hexadecimal.angelscript"
-										},
-										"7": {
-											"name": "keyword.operator.minus.exponent.hexadecimal.angelscript"
-										},
-										"8": {
-											"name": "constant.numeric.exponent.hexadecimal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"9": {
-											"name": "keyword.other.unit.suffix.integer.angelscript"
-										}
-									}
-								},
-								{
-									"match": "(\\G(?=[0-9.])(?!0[xXbB]))([0-9](?:[0-9]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)((?<!')([eE])(\\+?)(\\-?)((?:[0-9](?:[0-9]|(?:(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)))?((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
-									"captures": {
-										"2": {
-											"name": "constant.numeric.decimal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"3": {
-											"name": "punctuation.separator.constant.numeric"
-										},
-										"5": {
-											"name": "keyword.other.unit.exponent.decimal.angelscript"
-										},
-										"6": {
-											"name": "keyword.operator.plus.exponent.decimal.angelscript"
-										},
-										"7": {
-											"name": "keyword.operator.minus.exponent.decimal.angelscript"
-										},
-										"8": {
-											"name": "constant.numeric.exponent.decimal.angelscript",
-											"patterns": [
-												{
-													"match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
-													"name": "punctuation.separator.constant.numeric"
-												}
-											]
-										},
-										"9": {
-											"name": "keyword.other.unit.suffix.integer.angelscript"
-										}
-									}
-								},
-								{
-									"match": "(?:(?:[0-9a-zA-Z_\\.]|')|(?<=[eEpP])[+-])+",
+            "match": "(?<!\\w)\\.?\\d(?:(?:[0-9a-zA-Z_\\.]|')|(?<=[eEpP])[+-])*",
+            "captures": {
+                "0": {
+                    "patterns": [
+                        {
+                            "begin": "(?=.)",
+                            "end": "$",
+                            "patterns": [
+                                {
+                                    "match": "(\\G0[xX])([0-9a-fA-F](?:[0-9a-fA-F]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)?((?:(?<=[0-9a-fA-F])\\.|\\.(?=[0-9a-fA-F])))([0-9a-fA-F](?:[0-9a-fA-F]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)?((?<!')([pP])(\\+?)(\\-?)((?:[0-9](?:[0-9]|(?:(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)))?([lLfF](?!\\w))?$",
+                                    "captures": {
+                                        "1": {
+                                            "name": "keyword.other.unit.hexadecimal.angelscript"
+                                        },
+                                        "2": {
+                                            "name": "constant.numeric.hexadecimal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "3": {
+                                            "name": "punctuation.separator.constant.numeric"
+                                        },
+                                        "4": {
+                                            "name": "constant.numeric.hexadecimal.angelscript"
+                                        },
+                                        "5": {
+                                            "name": "constant.numeric.hexadecimal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "6": {
+                                            "name": "punctuation.separator.constant.numeric"
+                                        },
+                                        "8": {
+                                            "name": "keyword.other.unit.exponent.hexadecimal.angelscript"
+                                        },
+                                        "9": {
+                                            "name": "keyword.operator.plus.exponent.hexadecimal.angelscript"
+                                        },
+                                        "10": {
+                                            "name": "keyword.operator.minus.exponent.hexadecimal.angelscript"
+                                        },
+                                        "11": {
+                                            "name": "constant.numeric.exponent.hexadecimal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "12": {
+                                            "name": "keyword.other.unit.suffix.floating-point.angelscript"
+                                        }
+                                    }
+                                },
+                                {
+                                    "match": "(\\G(?=[0-9.])(?!0[xXbB]))([0-9](?:[0-9]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)?((?:(?<=[0-9])\\.|\\.(?=[0-9])))([0-9](?:[0-9]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)?((?<!')([eE])(\\+?)(\\-?)((?:[0-9](?:[0-9]|(?:(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)))?([lLfF](?!\\w))?$",
+                                    "captures": {
+                                        "2": {
+                                            "name": "constant.numeric.decimal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "3": {
+                                            "name": "punctuation.separator.constant.numeric"
+                                        },
+                                        "4": {
+                                            "name": "constant.numeric.decimal.point.angelscript"
+                                        },
+                                        "5": {
+                                            "name": "constant.numeric.decimal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "6": {
+                                            "name": "punctuation.separator.constant.numeric"
+                                        },
+                                        "8": {
+                                            "name": "keyword.other.unit.exponent.decimal.angelscript"
+                                        },
+                                        "9": {
+                                            "name": "keyword.operator.plus.exponent.decimal.angelscript"
+                                        },
+                                        "10": {
+                                            "name": "keyword.operator.minus.exponent.decimal.angelscript"
+                                        },
+                                        "11": {
+                                            "name": "constant.numeric.exponent.decimal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "12": {
+                                            "name": "keyword.other.unit.suffix.floating-point.angelscript"
+                                        }
+                                    }
+                                },
+                                {
+                                    "match": "(\\G0[bB])([01](?:[01]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
+                                    "captures": {
+                                        "1": {
+                                            "name": "keyword.other.unit.binary.angelscript"
+                                        },
+                                        "2": {
+                                            "name": "constant.numeric.binary.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "3": {
+                                            "name": "punctuation.separator.constant.numeric"
+                                        },
+                                        "4": {
+                                            "name": "keyword.other.unit.suffix.integer.angelscript"
+                                        }
+                                    }
+                                },
+                                {
+                                    "match": "(\\G0[oO])((?:[0-7]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))+)((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
+                                    "captures": {
+                                        "1": {
+                                            "name": "keyword.other.unit.octal.angelscript"
+                                        },
+                                        "2": {
+                                            "name": "constant.numeric.octal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "3": {
+                                            "name": "punctuation.separator.constant.numeric"
+                                        },
+                                        "4": {
+                                            "name": "keyword.other.unit.suffix.integer.angelscript"
+                                        }
+                                    }
+                                },
+                                {
+                                    "match": "(\\G0[xX])([0-9a-fA-F](?:[0-9a-fA-F]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)((?<!')([pP])(\\+?)(\\-?)((?:[0-9](?:[0-9]|(?:(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)))?((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
+                                    "captures": {
+                                        "1": {
+                                            "name": "keyword.other.unit.hexadecimal.angelscript"
+                                        },
+                                        "2": {
+                                            "name": "constant.numeric.hexadecimal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "3": {
+                                            "name": "punctuation.separator.constant.numeric"
+                                        },
+                                        "5": {
+                                            "name": "keyword.other.unit.exponent.hexadecimal.angelscript"
+                                        },
+                                        "6": {
+                                            "name": "keyword.operator.plus.exponent.hexadecimal.angelscript"
+                                        },
+                                        "7": {
+                                            "name": "keyword.operator.minus.exponent.hexadecimal.angelscript"
+                                        },
+                                        "8": {
+                                            "name": "constant.numeric.exponent.hexadecimal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "9": {
+                                            "name": "keyword.other.unit.suffix.integer.angelscript"
+                                        }
+                                    }
+                                },
+                                {
+                                    "match": "(\\G(?=[0-9.])(?!0[xXbB]))([0-9](?:[0-9]|((?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)((?<!')([eE])(\\+?)(\\-?)((?:[0-9](?:[0-9]|(?:(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])))*)))?((?:(?:(?:(?:(?:[uU]|[uU]ll?)|[uU]LL?)|ll?[uU]?)|LL?[uU]?)|[fF])(?!\\w))?$",
+                                    "captures": {
+                                        "2": {
+                                            "name": "constant.numeric.decimal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "3": {
+                                            "name": "punctuation.separator.constant.numeric"
+                                        },
+                                        "5": {
+                                            "name": "keyword.other.unit.exponent.decimal.angelscript"
+                                        },
+                                        "6": {
+                                            "name": "keyword.operator.plus.exponent.decimal.angelscript"
+                                        },
+                                        "7": {
+                                            "name": "keyword.operator.minus.exponent.decimal.angelscript"
+                                        },
+                                        "8": {
+                                            "name": "constant.numeric.exponent.decimal.angelscript",
+                                            "patterns": [
+                                                {
+                                                    "match": "(?<=[0-9a-fA-F])'(?=[0-9a-fA-F])",
+                                                    "name": "punctuation.separator.constant.numeric"
+                                                }
+                                            ]
+                                        },
+                                        "9": {
+                                            "name": "keyword.other.unit.suffix.integer.angelscript"
+                                        }
+                                    }
+                                },
+                                {
+                                    "match": "(?:(?:[0-9a-zA-Z_\\.]|')|(?<=[eEpP])[+-])+",
                                     "name": "constant.numeric.decimal.angelscript"
-								}
-							]
-						}
-					]
-				}
-			}
-		},
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
         "string_escaped_char": {
-			"patterns": [
-				{
-					"match": "(?x)\\\\ (\n\\\\\t\t\t |\n[abefnprtv'\"?]   |\n[0-3]\\d{,2}\t |\n[4-7]\\d?\t\t|\nx[a-fA-F0-9]{,2} |\nu[a-fA-F0-9]{,4} |\nU[a-fA-F0-9]{,8} )",
-					"name": "constant.character.escape.angelscript"
-				},
-				{
-					"match": "\\\\.",
-					"name": "invalid.illegal.unknown-escape.angelscript"
-				}
-			]
-		},
+            "patterns": [
+                {
+                    "match": "(?x)\\\\ (\n\\\\\t\t\t |\n[abefnprtv'\"?]   |\n[0-3]\\d{,2}\t |\n[4-7]\\d?\t\t|\nx[a-fA-F0-9]{,2} |\nu[a-fA-F0-9]{,4} |\nU[a-fA-F0-9]{,8} )",
+                    "name": "constant.character.escape.angelscript"
+                },
+                {
+                    "match": "\\\\.",
+                    "name": "invalid.illegal.unknown-escape.angelscript"
+                }
+            ]
+        },
         "line_continuation_character": {
             "patterns": [
                 {
@@ -574,120 +574,120 @@
             ]
         },
         "strings": {
-			"patterns": [
-				{
-					"begin": "\"",
-					"beginCaptures": {
-						"0": {
-							"name": "punctuation.definition.string.begin.angelscript"
-						}
-					},
-					"end": "\"",
-					"endCaptures": {
-						"0": {
-							"name": "punctuation.definition.string.end.angelscript"
-						}
-					},
-					"name": "string.quoted.double.angelscript",
-					"patterns": [
-						{
-							"include": "#string_escaped_char"
-						},
-						{
-							"include": "#line_continuation_character"
-						}
-					]
-				},
-				{
-					"begin": "'",
-					"beginCaptures": {
-						"0": {
-							"name": "punctuation.definition.string.begin.angelscript"
-						}
-					},
-					"end": "'",
-					"endCaptures": {
-						"0": {
-							"name": "punctuation.definition.string.end.angelscript"
-						}
-					},
-					"name": "string.quoted.single.angelscript",
-					"patterns": [
-						{
-							"include": "#string_escaped_char"
-						},
-						{
-							"include": "#line_continuation_character"
-						}
-					]
-				}
-			]
-		},
+            "patterns": [
+                {
+                    "begin": "\"",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.angelscript"
+                        }
+                    },
+                    "end": "\"",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.angelscript"
+                        }
+                    },
+                    "name": "string.quoted.double.angelscript",
+                    "patterns": [
+                        {
+                            "include": "#string_escaped_char"
+                        },
+                        {
+                            "include": "#line_continuation_character"
+                        }
+                    ]
+                },
+                {
+                    "begin": "'",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.angelscript"
+                        }
+                    },
+                    "end": "'",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.angelscript"
+                        }
+                    },
+                    "name": "string.quoted.single.angelscript",
+                    "patterns": [
+                        {
+                            "include": "#string_escaped_char"
+                        },
+                        {
+                            "include": "#line_continuation_character"
+                        }
+                    ]
+                }
+            ]
+        },
         "operators": {
-			"patterns": [
-				{
-					"match": "--",
-					"name": "keyword.operator.decrement.angelscript"
-				},
-				{
-					"match": "\\+\\+",
-					"name": "keyword.operator.increment.angelscript"
-				},
-				{
-					"match": "%=|\\+=|-=|\\*=|(?<!\\()/=",
-					"name": "keyword.operator.assignment.compound.angelscript"
-				},
-				{
-					"match": "&=|\\^=|<<=|>>=|\\|=",
-					"name": "keyword.operator.assignment.compound.bitwise.angelscript"
-				},
-				{
-					"match": "<<|>>",
-					"name": "keyword.operator.bitwise.shift.angelscript"
-				},
-				{
-					"match": "!=|<=|>=|==|<|>",
-					"name": "keyword.operator.comparison.angelscript"
-				},
-				{
-					"match": "&&|!|\\|\\|",
-					"name": "keyword.operator.logical.angelscript"
-				},
-				{
-					"match": "&|\\||\\^|~",
-					"name": "keyword.operator.angelscript"
-				},
-				{
-					"match": "=",
-					"name": "keyword.operator.assignment.angelscript"
-				},
-				{
-					"match": "%|\\*|/|-|\\+",
-					"name": "keyword.operator.angelscript"
-				},
-				{
-					"begin": "(\\?)",
-					"beginCaptures": {
-						"1": {
-							"name": "keyword.operator.ternary.angelscript"
-						}
-					},
-					"end": "(:)",
-					"endCaptures": {
-						"1": {
-							"name": "keyword.operator.ternary.angelscript"
-						}
-					},
-					"patterns": [
-						{
-							"include": "$base"
-						}
-					]
-				}
-			]
-		},
-		"macro_parens": {
-			"begin": "\\(",
+            "patterns": [
+                {
+                    "match": "--",
+                    "name": "keyword.operator.decrement.angelscript"
+                },
+                {
+                    "match": "\\+\\+",
+                    "name": "keyword.operator.increment.angelscript"
+                },
+                {
+                    "match": "%=|\\+=|-=|\\*=|(?<!\\()/=",
+                    "name": "keyword.operator.assignment.compound.angelscript"
+                },
+                {
+                    "match": "&=|\\^=|<<=|>>=|\\|=",
+                    "name": "keyword.operator.assignment.compound.bitwise.angelscript"
+                },
+                {
+                    "match": "<<|>>",
+                    "name": "keyword.operator.bitwise.shift.angelscript"
+                },
+                {
+                    "match": "!=|<=|>=|==|<|>",
+                    "name": "keyword.operator.comparison.angelscript"
+                },
+                {
+                    "match": "&&|!|\\|\\|",
+                    "name": "keyword.operator.logical.angelscript"
+                },
+                {
+                    "match": "&|\\||\\^|~",
+                    "name": "keyword.operator.angelscript"
+                },
+                {
+                    "match": "=",
+                    "name": "keyword.operator.assignment.angelscript"
+                },
+                {
+                    "match": "%|\\*|/|-|\\+",
+                    "name": "keyword.operator.angelscript"
+                },
+                {
+                    "begin": "(\\?)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.operator.ternary.angelscript"
+                        }
+                    },
+                    "end": "(:)",
+                    "endCaptures": {
+                        "1": {
+                            "name": "keyword.operator.ternary.angelscript"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "$base"
+                        }
+                    ]
+                }
+            ]
+        },
+        "macro_parens": {
+            "begin": "\\(",
             "end": "\\)",
             "patterns": [
                 {
@@ -697,6 +697,6 @@
                     "include": "#numbers"
                 }
             ]
-		}
+        }
     }
 }

@@ -125,7 +125,7 @@ class CompletionContext
             return false;
         if (this.expectedType.name == typename)
             return true;
-           
+
         let dbtype = typedb.GetTypeByName(typename);
         if (!dbtype)
             return false;
@@ -465,7 +465,7 @@ export function SortMethodsBasedOnArgumentTypes(methods: Array<typedb.DBMethod>,
 {
     let context = GenerateCompletionContext(asmodule, offset - 1);
     let argContext = GenerateCompletionArguments(context);
-    
+
     let scoredFunctions = new Array<[typedb.DBMethod, number]>();
 
     for (let func of methods)
@@ -618,7 +618,7 @@ function AddCompletionsFromCallSignature(context: CompletionContext, completions
             let argumentIndex = context.subOuterArgumentIndex;
             if (activeMethod.isMixin)
                 argumentIndex += 1;
-            
+
             if (argumentIndex < activeMethod.args.length)
             {
                 let arg = activeMethod.args[argumentIndex];
@@ -702,7 +702,7 @@ function AddCompletionsFromImportStatement(context : CompletionContext, completi
         let complString = "";
         if(context.completingSymbol)
             complString = context.completingSymbol;
-        
+
         let untilDot = "";
         let dotPos = complString.lastIndexOf(".");
         if (dotPos != -1)
@@ -750,7 +750,7 @@ function AddCompletionsFromUnrealMacro(context : CompletionContext, completions 
                         context.baseStatement.ast.macro.end);
                 }
             }
-            
+
             // Detect if we're inside a sub-specifier
             let isPropertySpec = false;
             if (/[\r\n\s]*UPROPERTY\s*\(.*\)[\r\n\s]*$/.test(context.baseStatement.content))
@@ -910,7 +910,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
             ], completions);
         }
     }
-    
+
     if (!context.isRightExpression && !context.isSubExpression)
     {
         AddCompletionsFromKeywordList(context, [
@@ -1289,7 +1289,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                         props.add(propname);
                     }
                 }
-                
+
                 if (func.name.startsWith("Set"))
                 {
                     let propname = func.name.substring(3);
@@ -1403,7 +1403,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                     if (!typedb.IsPrimitive(func.returnType))
                         compl.commitCharacters.push(".");
                 }
-                
+
                 completions.push(compl);
             }
         }
@@ -2443,7 +2443,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             }
             else
             {
-                // We have to pull apart the namespace access a bit 
+                // We have to pull apart the namespace access a bit
                 if (node.has_statement && node.children[0] && node.children[0].type == scriptfiles.node_types.NamespaceAccess)
                 {
                     let nsNode = node.children[0];
@@ -2457,7 +2457,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                         let typeName = nsNode.children[0].value;
                         if (nsNode.children[1].value)
                             typeName += "::"+nsNode.children[1].value;
-                        
+
                         context.priorType = typedb.LookupType(context.scope.getNamespace(), typeName);
                         context.priorTypeWasNamespace = true;
                         context.requiresPriorType = true;
@@ -3276,7 +3276,7 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamesp
         if (!isEditScope(inScope))
             return false;
     }
-    
+
     if (prop.isNoEdit)
     {
         if (isEditScope(inScope))
@@ -3354,7 +3354,7 @@ function GetCodeOffsetIgnoreTable(code : string) : Array<number>
     let sq_string = false;
     let dq_string = false;
     let escape_sequence = false;
-    
+
     let inFormatString = false;
     let inFormatExpression = false;
 
@@ -3853,7 +3853,7 @@ export function Resolve(item : CompletionItem) : CompletionItem
             doc = setFunc.findAvailableDocumentation();
         if (doc)
             docStr += "\n"+doc.replace(/\n/g,"\n\n")+"\n\n";
-            
+
         item.documentation = <MarkupContent> {
             kind: MarkupKind.Markdown,
             value: docStr,

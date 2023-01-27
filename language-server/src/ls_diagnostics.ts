@@ -74,7 +74,7 @@ export function UpdateScriptModuleDiagnostics(asmodule : scriptfiles.ASModule, i
     let diagnostics = new Array<Diagnostic>();
     if (!asmodule.rootscope)
         return;
-    
+
     // Go through all the parsed scopes and add diagnostics
     AddScopeDiagnostics(asmodule.rootscope, diagnostics);
 
@@ -181,7 +181,7 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
         let objType = scriptfiles.ResolveTypeFromExpression(delegateBind.scope, delegateBind.node_object);
         if (!objType)
             continue;
-        
+
         let foundFunc = objType.findFirstSymbol(funcName, typedb.DBAllowSymbol.Functions);
         if (!foundFunc || !(foundFunc instanceof typedb.DBMethod))
         {
@@ -322,7 +322,7 @@ function TrimDiagnosticPositions(asmodule : scriptfiles.ASModule, diagnostics : 
                 {
                     offset += 1;
                 }
-                else 
+                else
                 {
                     if (char != '\n' && char != '\r')
                         diag.range.start = asmodule.getPosition(offset);

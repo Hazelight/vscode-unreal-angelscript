@@ -1,43 +1,43 @@
 {
-	"version": "0.2.0",
-	"configurations": [
-		{
-			"type": "extensionHost",
-			"request": "launch",
-			"name": "Launch Client",
-			"runtimeExecutable": "${execPath}",
-			"args": [
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "extensionHost",
+            "request": "launch",
+            "name": "Launch Client",
+            "runtimeExecutable": "${execPath}",
+            "args": [
                 "--extensionDevelopmentPath=${workspaceRoot}",
                 //"--enable-proposed-api", "Hazelight.unreal-angelscript"
             ],
-			"outFiles": ["${workspaceRoot}/extension/out/**/*.js"],
-			"preLaunchTask": {
-				"type": "npm",
-				"script": "watch"
-			}
-		},
-		{
-			"type": "node",
-			"request": "attach",
-			"name": "Attach to Server",
-			"port": 6009,
-			"restart": true,
-			"outFiles": ["${workspaceRoot}/language-server/out/**/*.js"]
-		},
-		{
-			"name": "Debug Debug Adapter",
-			"type": "node",
-			"request": "launch",
-			"cwd": "${workspaceRoot}",
-			"program": "${workspaceRoot}/extension/src/debugAdapter.ts",
-			"args": [ "--server=4711" ],
-			"outFiles": [ "${workspaceRoot}/extension/out/**/*.js" ]
-		},
-	],
-	"compounds": [
-		{
-			"name": "Client + Server",
-			"configurations": ["Launch Client", "Attach to Server"]
-		}
-	]
+            "outFiles": ["${workspaceRoot}/extension/out/**/*.js"],
+            "preLaunchTask": {
+                "type": "npm",
+                "script": "watch"
+            }
+        },
+        {
+            "type": "node",
+            "request": "attach",
+            "name": "Attach to Server",
+            "port": 6009,
+            "restart": true,
+            "outFiles": ["${workspaceRoot}/language-server/out/**/*.js"]
+        },
+        {
+            "name": "Debug Debug Adapter",
+            "type": "node",
+            "request": "launch",
+            "cwd": "${workspaceRoot}",
+            "program": "${workspaceRoot}/extension/src/debugAdapter.ts",
+            "args": [ "--server=4711" ],
+            "outFiles": [ "${workspaceRoot}/extension/out/**/*.js" ]
+        },
+    ],
+    "compounds": [
+        {
+            "name": "Client + Server",
+            "configurations": ["Launch Client", "Attach to Server"]
+        }
+    ]
 }
