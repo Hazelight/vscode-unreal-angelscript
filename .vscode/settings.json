@@ -12,7 +12,6 @@
     },
     "typescript.tsdk": "./node_modules/typescript/lib",
     "typescript.tsc.autoDetect": "off",
-    "git.enabled": false,
     "git.ignoreLimitWarning": true,
 
     "editor.insertSpaces": true,
