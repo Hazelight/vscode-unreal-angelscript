@@ -127,7 +127,7 @@
                 },
                 "UnrealAngelscript.scriptIgnorePatterns": {
                     "type": "array",
-                    "default": ["Saved", ".plastic"],
+                    "default": ["**/Saved/**", "**/.plastic/**"],
                     "description": "Glob patterns to ignore when searching for script files to parse."
                 }
             }
