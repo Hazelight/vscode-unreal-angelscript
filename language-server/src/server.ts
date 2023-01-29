@@ -256,10 +256,10 @@ connection.onInitialize((_params): InitializeResult => {
             RootUris.push(decodeURIComponent(Workspace.uri));
         }
     }
-    
-    
+
+
     connection.console.log("Workspace roots: " + Roots);
-    
+
     //connection.console.log("RootPath: "+RootPath);
     //connection.console.log("RootUri: "+RootUri+" from "+_params.rootUri);
 
@@ -463,7 +463,7 @@ function ReResolveAllModules()
 {
     if (IsServicingQueues)
         return;
-    
+
     scriptfiles.ClearAllResolvedModules();
 
     // Update diagnostics on all modules
@@ -846,7 +846,7 @@ function getModuleName(uri : string) : string
     for (let rootUri of RootUris) {
         if (modulename.startsWith(rootUri)) {
             modulename = modulename.replace(rootUri, "");
-            break;            
+            break;
         }
     }
     modulename = modulename.replace(".as", "");
@@ -913,8 +913,8 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
         return null;
     return inlinevalues.ProvideInlineValues(asmodule, pos.position);
 });
-    
- connection.onDidChangeTextDocument((params) => {
+
+connection.onDidChangeTextDocument((params) => {
     // The content of a text document did change in VSCode.
     // params.uri uniquely identifies the document.
     // params.contentChanges describe the content changes to the document.
@@ -923,7 +923,7 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
 
     let uri = params.textDocument.uri;
     let modulename = getModuleName(uri);
-    
+
     let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
     if (!asmodule.loaded)
         scriptfiles.UpdateModuleFromDisk(asmodule);
@@ -958,10 +958,10 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
                 });
         }
     }
- });
+});
 
- connection.onDidOpenTextDocument(function (params : DidOpenTextDocumentParams)
- {
+connection.onDidOpenTextDocument(function (params : DidOpenTextDocumentParams)
+{
     let uri = params.textDocument.uri;
     let modulename = getModuleName(uri);
 
@@ -975,17 +975,17 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
         scriptfiles.ResolveModule(asmodule);
         scriptdiagnostics.UpdateScriptModuleDiagnostics(asmodule);
     }
- });
+});
 
- connection.onDidCloseTextDocument(function (params : DidCloseTextDocumentParams)
- {
+connection.onDidCloseTextDocument(function (params : DidCloseTextDocumentParams)
+{
     let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
     if (asmodule)
         asmodule.isOpened = false;
- });
+});
 
- connection.onDidChangeConfiguration(function (change : DidChangeConfigurationParams)
- {
+connection.onDidChangeConfiguration(function (change : DidChangeConfigurationParams)
+{
     let settingsObject = change.settings as any;
     settings = settingsObject.UnrealAngelscript;
     if (!settings)
@@ -1028,7 +1028,7 @@ connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any
     inlineValueSettings.showInlineValueForLocalVariables = settings.inlineValues.showInlineValueForLocalVariables;
     inlineValueSettings.showInlineValueForParameters = settings.inlineValues.showInlineValueForParameters;
     inlineValueSettings.showInlineValueForMemberAssignment = settings.inlineValues.showInlineValueForMemberAssignment;
- });
+});
 
 function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : Array<inlayhints.ASInlayHint> | null
 {

@@ -123,7 +123,7 @@ function AddThisObjectInlineValue(context : InlineValueContext, scope : scriptfi
                 startPos.line = statementStart.line+1;
 
             startPos.character = 4;
-            
+
             range = Range.create(startPos, startPos);
         }
         else

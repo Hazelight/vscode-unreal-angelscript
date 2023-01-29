@@ -247,7 +247,7 @@ export class ASModule
 
         return null;
     }
-    
+
     isModuleImported(modulename : string) : boolean
     {
         return this.flatImportList.has(modulename);
@@ -586,7 +586,7 @@ export class ASScope extends ASElement
         {
             return null;
         }
-        
+
     }
 
     getNamespace() : typedb.DBNamespace
@@ -1124,7 +1124,7 @@ export function UpdateModuleFromContentChanges(module : ASModule, contentChanges
         {
             if (change.text.length == 0)
             {
-                // Deletes also dirty the character before them 
+                // Deletes also dirty the character before them
                 module.lastEditStart = textDocument.offsetAt(change.range.start) - 1;
                 module.lastEditEnd = textDocument.offsetAt(change.range.start) + change.text.length;
             }
@@ -1988,7 +1988,7 @@ function GenerateTypeInformation(scope : ASScope)
         else if (scope.previous.ast.type == node_types.EnumDefinition)
         {
             scope.declaration = scope.previous;
-            
+
             let enumdef = scope.previous.ast;
             let dbtype = AddDBType(scope, enumdef.name.value);
             dbtype.isEnum = true;
@@ -2271,7 +2271,7 @@ function GenerateTypeInformation(scope : ASScope)
                         dbtype.isEvent = true;
                     else
                         dbtype.isDelegate = true;
-                    
+
                     if (statement.ast.documentation)
                         dbtype.documentation = typedb.FormatDocumentationComment(statement.ast.documentation);
                     dbtype.moduleOffset = statement.start_offset + signature.name.start;
@@ -2368,7 +2368,7 @@ function GenerateTypeInformation(scope : ASScope)
     {
         let namespace = scope.getNamespace();
         let hasDefaultConstructor = false;
-        
+
         let constructors = namespace.findSymbols(scope.dbtype.name);
         for (let constr of constructors)
         {
@@ -4010,7 +4010,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         break;
                     }
                 }
-                
+
                 // Find the actual namespace we're looking in
                 let qualifiedNamespace = "";
                 for (let i = 0, count = identifierNodes.length - 1; i < count; ++i)
@@ -4592,7 +4592,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         // access X = private, Y, Z (mod);
         case node_types.AccessDeclaration:
         {
-            // Add symbol for the name 
+            // Add symbol for the name
             if (node.name)
             {
                 let insideType = scope.dbtype ? scope.dbtype.name : null;
@@ -4963,7 +4963,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
                 return null;
         }
     }
-    
+
     // We might be typing a typename at the start of a declaration, which accidentally got parsed as an identifier due to incompleteness
     let isTypingSingleIdentifier = (node == statement.ast && scope.module.isEditingInside(statement.start_offset + node.start, statement.end_offset + node.end + 2));
     if (isTypingSingleIdentifier)
@@ -5048,7 +5048,7 @@ function DetectSymbolFromNamespacedIdentifier(scope : ASScope, statement : ASSta
         end: identifier.start+nsName.length,
         value: nsName
     }, ASSymbolType.Namespace, null, null);
-    
+
     if (refType && (namespace || refType.isEnum))
     {
         nsSymbol.type = ASSymbolType.Typename;
@@ -5605,7 +5605,7 @@ function DetectFormatStringSymbols(scope : ASScope, statement : ASStatement, nod
                 expressions[i] = match[1];
             }
         }
-    
+
         let fakeStatement = new ASStatement();
         fakeStatement.content = expressions[i];
         fakeStatement.start_offset = statement.start_offset + node.start + offsets[i];

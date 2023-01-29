@@ -105,11 +105,11 @@ function AddAssetImplementationsLense(scope : scriptfiles.ASScope, dbtype : type
     let lensLine = Math.max(startPos.line, 0);
 
     lenses.push(<CodeLens> {
-		range: Range.create(Position.create(lensLine, 0), Position.create(lensLine, 10000)),
-		command: <Command> {
-			title: message,
-			command: "angelscript.openAssets",
+        range: Range.create(Position.create(lensLine, 0), Position.create(lensLine, 10000)),
+        command: <Command> {
+            title: message,
+            command: "angelscript.openAssets",
             arguments: [dbtype.name],
-		}
+        }
     });
 }

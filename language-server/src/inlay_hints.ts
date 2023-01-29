@@ -407,7 +407,7 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
 
                         if (paramIndex >= func.args.length)
                             continue;
-                        
+
                         let isFallback = func.args.length < argCount;
                         if (dbParam && dbParam.name != func.args[paramIndex].name && (!isFallback || paramIsFallback))
                             paramNameAmbiguous = true;
