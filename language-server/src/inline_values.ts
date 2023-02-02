@@ -70,7 +70,7 @@ class InlineValueContext
 let WhitelistedInlineStructs = new Set<string>([
     "FVector", "FVector2D", "FVector4", "FIntVector",
     "FRotator", "FName", "FString", "FColor", "FLinearColor",
-    "FText",
+    "FText", "FGuid",
 ]);
 
 function CanTypeHaveInlineValue(scope : scriptfiles.ASScope, typename : string) : boolean
