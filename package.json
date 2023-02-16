@@ -2,7 +2,7 @@
     "name": "unreal-angelscript",
     "displayName": "Unreal Angelscript",
     "description": "Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://github.com/Hazelight/UnrealEngine-Angelscript",
-    "version": "1.4.4",
+    "version": "1.4.5",
     "publisher": "Hazelight",
     "engines": {
         "vscode": "^1.65.0"
@@ -244,7 +244,8 @@
             },
             {
                 "command": "angelscript.paren",
-                "title": "Angelscript Parenthesis Completion"
+                "title": "Angelscript Parenthesis Completion",
+                "enablement": "false"
             }
         ],
         "menus": {
@@ -367,9 +368,9 @@
         "moo": "^0.5.1",
         "nearley": "^2.20.1",
         "npm": "^6.14.6",
-        "vscode-languageclient": "^8.0.1",
-        "vscode-languageserver": "^8.0.1",
-        "vscode-languageserver-textdocument": "^1.0.1"
+        "vscode-languageclient": "^8.0.2",
+        "vscode-languageserver": "^8.0.2",
+        "vscode-languageserver-textdocument": "^1.0.7"
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",
