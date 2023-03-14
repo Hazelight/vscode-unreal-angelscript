@@ -285,6 +285,18 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                     signatureMatches = false;
                     break;
                 }
+
+                // If unreal is expecting a const reference, we must also provide a const reference.
+                // The opposite is not a problem, the bind can take a const reference even though the delegate
+                // gives a mutable reference
+                if (isReferenceInUnreal && isBindReference)
+                {
+                    if (signatureArg.startsWith("const ") && !boundArg.startsWith("const "))
+                    {
+                        signatureMatches = false;
+                        break;
+                    }
+                }
             }
         }
 
