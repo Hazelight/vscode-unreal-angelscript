@@ -1781,19 +1781,19 @@ export function TransferTypeQualifiers(typename : string, newtype : string) : st
 let re_template = /([A-Za-z_0-9]+)\<(([A-Za-z_0-9]+\s*(<[A-Za-z_0-9,\s]+>)?,?)+)\>/;
 export function ReplaceTemplateType(typename : string, templateTypes : Array<string>, actualTypes : Array<string>)
 {
-    typename = CleanTypeName(typename);
+    let cleanType = CleanTypeName(typename);
     for (let i = 0; i < templateTypes.length; ++i)
     {
-        if (typename == templateTypes[i])
+        if (cleanType == templateTypes[i])
         {
-            return actualTypes[i];
+            return TransferTypeQualifiers(typename, actualTypes[i]);
         }
     }
 
-    if (typename.indexOf('<') != -1)
+    if (cleanType.indexOf('<') != -1)
     {
         // Replace the template types inside the subtemplate as well
-        let match = typename.match(re_template);
+        let match = cleanType.match(re_template);
         if (match != null)
         {
             let basetype = match[1];
@@ -1810,7 +1810,7 @@ export function ReplaceTemplateType(typename : string, templateTypes : Array<str
                 newtype += subtype;
             }
 
-            return basetype+"<"+newtype+">";
+            return TransferTypeQualifiers(typename, basetype+"<"+newtype+">");
         }
     }
 
