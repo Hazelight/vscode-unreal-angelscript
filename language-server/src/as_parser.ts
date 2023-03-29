@@ -1147,6 +1147,12 @@ export function UpdateModuleFromDisk(module : ASModule)
     try
     {
         module.content = fs.readFileSync(module.filename, 'utf8');
+
+        // If there is a Byte-Order-Mark, remove it. vscode pretends it doesn't exist
+        // and we don't want to desync with what vscode thinks the document looks like.
+        if (module.content.charCodeAt(0) === 0xfeff)
+            module.content = module.content.substring(1);
+
         module.exists = true;
     }
     catch (readError)

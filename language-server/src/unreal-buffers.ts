@@ -43,6 +43,8 @@ export enum MessageType
     AssetDatabaseFinished,
     FindAssets,
     DebugDatabaseSettings,
+
+    PingAlive,
 }
 
 export class Message
