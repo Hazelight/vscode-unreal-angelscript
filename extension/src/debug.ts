@@ -350,19 +350,45 @@ export class ASDebugSession extends LoggingDebugSession
         let stack = new Array<StackFrame>();
 
         let count = msg.readInt();
+        let previousSourcePath : string;
+        let previousSourceLine : number;
+
         for(let i = 0; i < count; ++i)
         {
             let name = msg.readString().replace(/_Implementation$/, "");
-            let source = this.createSource(msg.readString());
+            let sourcePath = msg.readString();
             let line = msg.readInt();
 
-            let frame = new StackFrame(i, name, source, line, 1);
+            let frame : StackFrame = null;
+            if (sourcePath && sourcePath.length != 0)
+            {
+                if (sourcePath.startsWith("::"))
+                {
+                    let externalSource : any = new Source(
+                        sourcePath.substring(2),
+                        null, undefined, undefined, "bp-frame");
+                    externalSource.presentationHint = 'deemphasize';
+
+                    frame = new StackFrame(i, name+" ("+sourcePath.substring(2)+")");
+                }
+                else
+                {
+                    previousSourceLine = line;
+                    previousSourcePath = sourcePath;
+                    frame = new StackFrame(i, name, this.createSource(sourcePath), line, 1);
+                }
+            }
+            else
+            {
+                frame = new StackFrame(i, name);
+            }
+
             stack.push(frame);
         }
 
         if(stack.length == 0)
         {
-            stack.push(new StackFrame(0, "No CallStack", this.createSource(""), 1));
+            stack.push(new StackFrame(0, "No CallStack"));
         }
 
         if (this.waitingTraces && this.waitingTraces.length > 0)
@@ -383,7 +409,11 @@ export class ASDebugSession extends LoggingDebugSession
     {
         const frameReference = args.frameId;
         const scopes = new Array<Scope>();
-        scopes.push(new Scope("Variables", this._variableHandles.create(frameReference+":%local%"), false));
+
+        let variablesScope : any = new Scope("Variables", this._variableHandles.create(frameReference+":%local%"), false);
+        variablesScope.presentationHint = "locals";
+        scopes.push(variablesScope);
+
         scopes.push(new Scope("this", this._variableHandles.create(frameReference+":%this%"), false));
         scopes.push(new Scope("Globals", this._variableHandles.create(frameReference+":%module%"), false));
 
@@ -610,9 +640,8 @@ export class ASDebugSession extends LoggingDebugSession
         }
     }
 
-    //---- helpers
-        private createSource(filePath: string): Source
-        {
-        return new Source(basename(filePath), this.convertDebuggerPathToClient(filePath), undefined, undefined, 'as-adapter-data');
+    private createSource(filePath: string): Source
+    {
+        return new Source(basename(filePath), this.convertDebuggerPathToClient(filePath), undefined, undefined, "as-script");
     }
 }
