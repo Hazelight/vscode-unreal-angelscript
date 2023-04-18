@@ -224,6 +224,7 @@ export class DBMethod implements DBSymbol
     isPrivate : boolean = false;
     isConstructor : boolean = false;
     isBlueprintEvent : boolean = false;
+    isCallable : boolean = false;
     isBlueprintOverride : boolean = false;
     isConst : boolean = false;
     isFinal : boolean = false;
@@ -271,6 +272,7 @@ export class DBMethod implements DBSymbol
         inst.isPrivate = this.isPrivate;
         inst.isConstructor = this.isConstructor;
         inst.isBlueprintEvent = this.isBlueprintEvent;
+        inst.isCallable = this.isCallable;
         inst.isBlueprintOverride = this.isBlueprintOverride;
         inst.isConst = this.isConst;
         inst.isProperty = this.isProperty;
@@ -312,6 +314,11 @@ export class DBMethod implements DBSymbol
             this.isConstructor = input['isConstructor'];
         else
             this.isConstructor = false;
+
+        if ('callable' in input)
+            this.isCallable = input['callable'];
+        else
+            this.isCallable = true;
 
         if ('const' in input)
             this.isConst = input['const'];

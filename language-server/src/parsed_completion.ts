@@ -1235,6 +1235,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 return;
             if (func.isOverride || func.isBlueprintOverride)
                 return;
+            if (!func.isCallable)
+                return;
 
             // Don't show constructors if we're probably completing the name of a type
             if (func.isConstructor && context.maybeTypename)
