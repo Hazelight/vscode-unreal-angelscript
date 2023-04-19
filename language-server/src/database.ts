@@ -224,7 +224,7 @@ export class DBMethod implements DBSymbol
     isPrivate : boolean = false;
     isConstructor : boolean = false;
     isBlueprintEvent : boolean = false;
-    isCallable : boolean = false;
+    isCallable : boolean = true;
     isBlueprintOverride : boolean = false;
     isConst : boolean = false;
     isFinal : boolean = false;
