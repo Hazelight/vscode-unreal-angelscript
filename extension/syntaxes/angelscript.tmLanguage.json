@@ -16,7 +16,27 @@
         },
         {
             "name": "keyword.code.angelscript",
-            "match": "\\b(nullptr|true|false|this|Cast|Super|NAME_None)\\b"
+            "match": "\\b(Cast|Super)\\b"
+        },
+        {
+            "name": "keyword.code.angelscript.NAME_None.name",
+            "match": "\\bNAME_None\\b"
+        },
+        {
+            "name": "keyword.code.angelscript.nullptr.reference",
+            "match": "\\bnullptr\\b"
+        },
+        {
+            "name": "keyword.code.angelscript.this.reference",
+            "match": "\\bthis\\b"
+        },
+        {
+            "name": "keyword.code.angelscript.true.boolean",
+            "match": "\\btrue\\b"
+        },
+        {
+            "name": "keyword.code.angelscript.false.boolean",
+            "match": "\\bfalse\\b"
         },
         {
             "name": "keyword.access.angelscript",
