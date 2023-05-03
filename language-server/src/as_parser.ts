@@ -3223,6 +3223,8 @@ export function CollapseNamespaceFromNode(node : any) : string
         else
         {
             checkNode = checkNode.children[0];
+            if (!checkNode)
+                namespace = "::" + namespace;
         }
     }
 
@@ -4003,6 +4005,8 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             {
                 let identifierNodes : Array<any> = [];
                 let checkNode = node;
+                let lookupRootNamespace = scope.getNamespace();
+
                 while (checkNode)
                 {
                     if (checkNode.type == node_types.Identifier)
@@ -4014,6 +4018,8 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     {
                         identifierNodes.splice(0, 0, checkNode.children[1]);
                         checkNode = checkNode.children[0];
+                        if (!checkNode)
+                            lookupRootNamespace = typedb.GetRootNamespace();
                     }
                     else
                     {
@@ -4034,6 +4040,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                 }
 
                 let resolveNamespace = "";
+
                 let prevNamespace = null;
                 for (let i = 0, count = identifierNodes.length - 1; i < count; ++i)
                 {
@@ -4043,7 +4050,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                             resolveNamespace += "::";
                         resolveNamespace += identifierNodes[i].value;
 
-                        let subNamespace = typedb.LookupNamespace(scope.getNamespace(), resolveNamespace);
+                        let subNamespace = typedb.LookupNamespace(lookupRootNamespace, resolveNamespace);
                         if (subNamespace)
                         {
                             let addedSymbol = AddIdentifierSymbol(scope, statement, identifierNodes[i], ASSymbolType.Namespace, null, null);
@@ -4094,7 +4101,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     }
                 }
 
-                let namespace = typedb.LookupNamespace(scope.getNamespace(), qualifiedNamespace);
+                let namespace = typedb.LookupNamespace(lookupRootNamespace, qualifiedNamespace);
                 if (!namespace)
                 {
                     AddUnknownSymbol(scope, statement, node.children[1], false);
