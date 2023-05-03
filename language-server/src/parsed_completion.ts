@@ -3614,6 +3614,8 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
         let includeReturnType = false;
         let includeParamsOnly = false;
 
+        if (method.containingType == typeOfScope && !parentMethod)
+            return;
         if (method.name && CanCompleteTo(context, method.name))
             includeParamsOnly = true;
         if (method.returnType && CanCompleteTo(context, method.returnType))
