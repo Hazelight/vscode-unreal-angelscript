@@ -1429,7 +1429,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             {
                 if (context.isInsideType && !context.priorTypeWasNamespace)
                     return;
-                if (!context.maybeTypename && (context.isSubExpression || context.isRightExpression))
+                if (!context.maybeTypename && (context.isSubExpression || context.isRightExpression) && !dbtype.isPrimitive)
                     return;
             }
 
