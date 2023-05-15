@@ -183,6 +183,9 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
             continue;
 
         let foundFunc = objType.findFirstSymbol(funcName, typedb.DBAllowSymbol.Functions);
+        if (!foundFunc)
+            foundFunc = objType.findMethodByUnrealName(funcName);
+
         if (!foundFunc || !(foundFunc instanceof typedb.DBMethod))
         {
             // We didn't find the function at all
@@ -222,11 +225,24 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                     range: asmodule.getRange(
                         delegateBind.statement.start_offset + delegateBind.node_expression.start,
                         delegateBind.statement.start_offset + delegateBind.node_expression.end),
-                    message: "Function "+foundFunc.name+" in "+foundFunc.containingType.name+" is not declared UFUNCTION() and cannot be bound as a delegate.",
+                    message: "Function "+foundFunc.name+" in "+foundFunc.containingType.name+" is not declared UFUNCTION() and cannot be bound as a delegate",
                     source: "angelscript"
                 });
                 continue;
             }
+        }
+        else if (foundFunc.getUnrealName() != funcName)
+        {
+            // Function is called something else in C++ so can't be bound using its script-name
+            diagnostics.push(<Diagnostic> {
+                severity: DiagnosticSeverity.Error,
+                range: asmodule.getRange(
+                    delegateBind.statement.start_offset + delegateBind.node_expression.start,
+                    delegateBind.statement.start_offset + delegateBind.node_expression.end),
+                message: "Function "+foundFunc.name+" in "+foundFunc.containingType.name+" is called "+foundFunc.getUnrealName()+" in C++ and must be bound using that name",
+                source: "angelscript"
+            });
+            continue;
         }
 
         let delegateType = typedb.GetTypeByName(delegateBind.delegateType);

@@ -242,6 +242,7 @@ export class DBMethod implements DBSymbol
     auxiliarySymbols : Array<DBAuxiliarySymbol> | null = null;
 
     isUFunction : boolean = false;
+    unrealName : string | null = null;
     macroSpecifiers : Map<string, string> = null;
     macroMeta : Map<string, string> = null;
 
@@ -345,6 +346,13 @@ export class DBMethod implements DBSymbol
 
         if ('keywords' in input)
             this.keywords = input['keywords'];
+
+        if ('ufunction' in input)
+        {
+            this.isUFunction = input['ufunction'];
+            if ('unrealname' in input)
+                this.unrealName = input['unrealname'];
+        }
 
         if ('meta' in input)
         {
@@ -451,6 +459,14 @@ export class DBMethod implements DBSymbol
                 return dbReturn.documentation;
         }
         return null;
+    }
+
+    getUnrealName() : string
+    {
+        if (this.unrealName)
+            return this.unrealName;
+        else
+            return this.name;
     }
 
     hasMetaData(meta : string) : boolean
@@ -993,6 +1009,34 @@ export class DBType implements DBSymbol
             {
                 if (FilterAllowsSymbol(syms, allowSymbols))
                     return syms;
+            }
+        }
+
+        return null;
+    }
+
+    findMethodByUnrealName(unrealName : string) : DBMethod | null
+    {
+        for (let type of this.getExtendTypesList())
+        {
+            for (let [name, syms] of type.symbols)
+            {
+                if (syms instanceof Array)
+                {
+                    for (let sym of syms)
+                    {
+                        if (sym instanceof DBMethod)
+                        {
+                            if (sym.unrealName == unrealName)
+                                return sym;
+                        }
+                    }
+                }
+                else if (syms instanceof DBMethod)
+                {
+                    if (syms.unrealName == unrealName)
+                        return syms;
+                }
             }
         }
 
