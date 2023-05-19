@@ -1166,9 +1166,10 @@ function AddMacroActions(context : CodeActionContext)
         {
             let variableName = context.statement.ast.name.value;
             let varType = typedb.LookupType(context.scope.getNamespace(), context.statement.ast.typename.value);
+            let isActorComponent = varType && varType.inheritsFrom("UActorComponent");
 
-            if (varType && varType.inheritsFrom("UActorComponent")
-                && !dbType.isStruct
+            if (!dbType.isStruct
+                && isActorComponent
                 && dbType.inheritsFrom("AActor"))
             {
                 context.actions.push(<CodeAction> {
@@ -1195,6 +1196,21 @@ function AddMacroActions(context : CodeActionContext)
                     position: context.range_start,
                 }
             });
+
+            if (!isActorComponent)
+            {
+                context.actions.push(<CodeAction> {
+                    kind: CodeActionKind.QuickFix,
+                    title: `Add UPROPERTY(EditAnywhere)`,
+                    source: "angelscript",
+                    data: {
+                        uri: context.module.uri,
+                        type: "insertMacro",
+                        macro: "UPROPERTY(EditAnywhere)",
+                        position: context.range_start,
+                    }
+                });
+            }
         }
     }
     else if (context.statement.ast.type == scriptfiles.node_types.ClassDefinition
