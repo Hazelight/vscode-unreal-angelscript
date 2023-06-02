@@ -507,9 +507,8 @@ function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBM
             {
                 // Add a diagnostic if we aren't calling the super function
                 if (!dbfunc.hasSuperCall
-                    && ((dbfunc.isBlueprintEvent && (!dbfunc.returnType || dbfunc.returnType == "void")) || parentMethod.hasMetaData("RequireSuperCall"))
+                    && ((dbfunc.isBlueprintEvent && (!dbfunc.returnType || dbfunc.returnType == "void") && !parentMethod.isEmpty) || parentMethod.hasMetaData("RequireSuperCall"))
                     && parentMethod.declaredModule
-                    && !parentMethod.isEmpty
                     && !parentMethod.hasMetaData("NoSuperCall") && !dbfunc.hasMetaData("NoSuperCall"))
                 {
                     diagnostics.push(<Diagnostic> {
