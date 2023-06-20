@@ -1307,10 +1307,6 @@ function ResolveInsertMacro(asmodule : scriptfiles.ASModule, action : CodeAction
     if (!scope)
         return;
 
-    let classScope = scope.getParentTypeScope();
-    if (!classScope)
-        return;
-
     let indent = GetIndentFromLineAtOffset(asmodule, position);
 
     action.edit = <WorkspaceEdit> {};
