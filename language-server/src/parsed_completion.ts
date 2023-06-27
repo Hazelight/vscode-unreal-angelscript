@@ -1210,7 +1210,16 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 if (prop.containingType || !prop.namespace.isRootNamespace())
                     context.completionsMatchingExpected.push(compl);
 
-                if (prop.containingType && prop.containingType == scopeType)
+                if (prop.containingType.isEnum)
+                {
+                    // Append the index of the enum value so they get sorted correctly
+                    let sortNumber = propertyIndex.toString().padStart(3, '0');
+                    if (prop.name.includes("MAX"))
+                        compl.sortText = Sort.EnumValue_Max_Expected+sortNumber;
+                    else
+                        compl.sortText = Sort.EnumValue_Expected+sortNumber;
+                }
+                else if (prop.containingType && prop.containingType == scopeType)
                     compl.sortText = Sort.MemberProp_Direct_Expected;
                 else if (prop.containingType)
                     compl.sortText = Sort.MemberProp_Parent_Expected;
