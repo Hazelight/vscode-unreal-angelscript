@@ -60,6 +60,9 @@ export function activate(context: ExtensionContext) {
     inlineValuesProvider.languageClient = client;
     context.subscriptions.push(vscode.languages.registerInlineValuesProvider('angelscript', inlineValuesProvider));
 
+    let evaluatableExpressionProvider = new ASEvaluateableExpressionProvider();
+    context.subscriptions.push(vscode.languages.registerEvaluatableExpressionProvider('angelscript', evaluatableExpressionProvider));
+
     // Register the 'copy import path' command
     let copyImportPath = vscode.commands.registerCommand('angelscript.copyImportPath', (selectedFile : any) => {
         let relPath = vscode.workspace.asRelativePath(selectedFile, false).trim();
@@ -349,5 +352,114 @@ class ASInlineValuesProvider implements vscode.InlineValuesProvider
                 return null;
             }
         );
+    }
+};
+
+class ASEvaluateableExpressionProvider implements vscode.EvaluatableExpressionProvider
+{
+    provideEvaluatableExpression(document: TextDocument, position: vscode.Position, token: CancellationToken): ProviderResult<vscode.EvaluatableExpression>
+    {
+        let lineContent = document.lineAt(position.line).text;
+
+        // Search backward until we find a character that makes us want to stop
+        let start = position.character;
+        let depth = 0;
+        while (start > 0)
+        {
+            let stop = false;
+            switch (lineContent[start])
+            {
+                case '(':
+                case ')':
+                case '{':
+                case '}':
+                case '<':
+                case '>':
+                case ' ':
+                case '\t':
+                case '\n':
+                case '\r':
+                case '+':
+                case '-':
+                case '/':
+                case '%':
+                case '~':
+                case '#':
+                case '^':
+                case ';':
+                case '=':
+                case '|':
+                case ',':
+                case ',':
+                case '`':
+                case '!':
+                case '\\':
+                    if (depth == 0)
+                    {
+                        stop = true;
+                    }
+                break;
+                case ']':
+                    if (start+1 < lineContent.length && lineContent[start+1] == '.')
+                    {
+                        depth += 1;
+                    }
+                    else
+                    {
+                        stop = true;
+                    }
+                break;
+                case '[':
+                    if (depth == 0)
+                    {
+                        stop = true;
+                    }
+                    else
+                    {
+                        depth -= 1;
+                    }
+                break;
+            }
+
+            if (stop)
+            {
+                start += 1;
+                break;
+            }
+            else
+            {
+                start -= 1;
+            }
+        }
+
+        // Complete the word after the cursor
+        let end = position.character;
+        while (end < lineContent.length)
+        {
+            let charCode = lineContent.charCodeAt(end);
+            if ((charCode >= 65 && charCode <= 90) || (charCode >= 97 && charCode <= 122) || (charCode >= 48 && charCode <= 57) || charCode == 95)
+            {
+                end += 1;
+                continue;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (start >= end)
+        {
+            return null;
+        }
+        else
+        {
+            return new vscode.EvaluatableExpression(
+                new vscode.Range(
+                    new vscode.Position(position.line, start),
+                    new vscode.Position(position.line, end),
+                )
+            );
+        }
     }
 };
