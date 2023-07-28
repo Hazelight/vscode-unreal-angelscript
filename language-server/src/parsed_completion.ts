@@ -1210,7 +1210,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 if (prop.containingType || !prop.namespace.isRootNamespace())
                     context.completionsMatchingExpected.push(compl);
 
-                if (prop.containingType.isEnum)
+                if (prop.containingType && prop.containingType.isEnum)
                 {
                     // Append the index of the enum value so they get sorted correctly
                     let sortNumber = propertyIndex.toString().padStart(3, '0');
