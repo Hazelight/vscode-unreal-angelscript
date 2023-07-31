@@ -1,6 +1,6 @@
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
-import { Range, Position } from "vscode-languageserver";
+import { Range, Position, InlineValue, InlineValueEvaluatableExpression, InlineValueVariableLookup } from "vscode-languageserver";
 
 export interface InlineValueSettings
 {
@@ -60,7 +60,7 @@ class InlineValueContext
 {
     asmodule : scriptfiles.ASModule;
     inType : typedb.DBType;
-    values : Array<any>;
+    values : Array<InlineValue>;
     offset : number;
 
     shownMembers = new Set<string>();
@@ -136,38 +136,38 @@ function AddThisObjectInlineValue(context : InlineValueContext, scope : scriptfi
         // Figure out which above-function hints to show
         if (context.inType.inheritsFrom("AActor"))
         {
-            context.values.push({
+            context.values.push(<InlineValueEvaluatableExpression> {
                 range: range,
                 expression: "this",
             });
         }
         else if (context.inType.inheritsFrom("UActorComponent"))
         {
-            context.values.push({
+            context.values.push(<InlineValueEvaluatableExpression> {
                 range: range,
                 expression: "Owner",
             });
 
-            context.values.push({
+            context.values.push(<InlineValueEvaluatableExpression> {
                 range: range,
                 expression: "this",
             });
         }
         else if (context.inType.getProperty("Owner"))
         {
-            context.values.push({
+            context.values.push(<InlineValueEvaluatableExpression> {
                 range: range,
                 expression: "Owner",
             });
 
-            context.values.push({
+            context.values.push(<InlineValueEvaluatableExpression> {
                 range: range,
                 expression: "this",
             });
         }
         else
         {
-            context.values.push({
+            context.values.push(<InlineValueEvaluatableExpression> {
                 range: range,
                 expression: "this",
             });
@@ -202,9 +202,10 @@ function AddScopeInlineValues(context : InlineValueContext, scope : scriptfiles.
                 continue;
         }
 
-        context.values.push({
+        context.values.push(<InlineValueVariableLookup> {
             range: context.asmodule.getRange(scopeVar.start_offset_name, scopeVar.end_offset_name),
-            variable: scopeVar.name,
+            variableName: scopeVar.name,
+            caseSensitiveLookup: true,
         });
     }
 
@@ -238,11 +239,12 @@ function AddScopeInlineValues(context : InlineValueContext, scope : scriptfiles.
                             && !context.shownMembers.has(memberVar.name)
                             && CanTypeHaveInlineValue(scope, memberVar.typename))
                         {
-                            context.values.push({
+                            context.values.push(<InlineValueVariableLookup> {
                                 range: context.asmodule.getRange(
                                     statement.start_offset + node.children[0].start,
                                     statement.start_offset + node.children[0].end),
-                                variable: memberVar.name,
+                                variableName: memberVar.name,
+                                caseSensitiveLookup: true,
                             });
 
                             context.shownMembers.add(memberVar.name);

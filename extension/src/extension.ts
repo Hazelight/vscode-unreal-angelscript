@@ -56,10 +56,6 @@ export function activate(context: ExtensionContext) {
     context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('angelscript', provider));
     context.subscriptions.push(provider);
 
-    let inlineValuesProvider = new ASInlineValuesProvider();
-    inlineValuesProvider.languageClient = client;
-    context.subscriptions.push(vscode.languages.registerInlineValuesProvider('angelscript', inlineValuesProvider));
-
     let evaluatableExpressionProvider = new ASEvaluateableExpressionProvider();
     context.subscriptions.push(vscode.languages.registerEvaluatableExpressionProvider('angelscript', evaluatableExpressionProvider));
 
@@ -224,12 +220,6 @@ export function activate(context: ExtensionContext) {
     });
     context.subscriptions.push(completionParen);
 
-    let inlayHintsProvider = new ASInlayHintsProvider();
-    inlayHintsProvider.lspClient = client;
-
-    let inlaySubscription = vscode.languages.registerInlayHintsProvider('angelscript', inlayHintsProvider)
-    context.subscriptions.push(inlaySubscription);
-
     console.log("Done activating angelscript extension");
 }
 
@@ -284,76 +274,6 @@ class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
         }
     }
 }
-
-const AngelscriptInlayHintsRequest : RequestType<any, any[], void> = new RequestType<any, any[], void>('angelscript/inlayHints');
-
-class ASInlayHintsProvider implements vscode.InlayHintsProvider
-{
-    lspClient : LanguageClient = null;
-
-    provideInlayHints(model: TextDocument, range: Range, token: CancellationToken): ProviderResult<InlayHint[]>
-    {
-        let params = {
-            uri: model.uri.toString(),
-            start: range.start,
-            end: range.end,
-        };
-        return this.lspClient.sendRequest(AngelscriptInlayHintsRequest, params);
-    }
-};
-
-class ASInlineValuesProvider implements vscode.InlineValuesProvider
-{
-    languageClient : LanguageClient = null;
-
-    provideInlineValues(document: TextDocument, viewPort: Range, context: vscode.InlineValueContext, token: CancellationToken): ProviderResult<vscode.InlineValue[]>
-    {
-        var params: TextDocumentPositionParams = {
-            position: context.stoppedLocation.start,
-            textDocument: { uri: document.uri.toString() }
-        };
-
-        return this.languageClient.sendRequest(ProvideInlineValuesRequest, params).then(
-            function (result: any[]) : Array<vscode.InlineValue>
-            {
-                let values = new Array<vscode.InlineValue>();
-                for (let elem of result)
-                {
-                    if (elem.text)
-                    {
-                        values.push(
-                            new vscode.InlineValueText(
-                                elem.range, elem.text
-                            )
-                        );
-                    }
-                    else if (elem.variable)
-                    {
-                        values.push(
-                            new vscode.InlineValueVariableLookup(
-                                elem.range, elem.variable
-                            )
-                        );
-                    }
-                    else if (elem.expression)
-                    {
-                        values.push(
-                            new vscode.InlineValueEvaluatableExpression(
-                                elem.range, elem.expression
-                            )
-                        );
-                    }
-                }
-
-                return values;
-            },
-            function (reason: any) : Array<vscode.InlineValue>
-            {
-                return null;
-            }
-        );
-    }
-};
 
 class ASEvaluateableExpressionProvider implements vscode.EvaluatableExpressionProvider
 {

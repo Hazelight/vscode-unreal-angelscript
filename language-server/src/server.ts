@@ -20,6 +20,8 @@ import {
     TypeHierarchyItem, TypeHierarchyPrepareParams,
     TypeHierarchySupertypesParams, TypeHierarchySubtypesParams,
     WorkspaceSymbol, DocumentSymbol,
+    InlayHint, InlayHintParams,
+    InlineValue, InlineValueParams,
 } from 'vscode-languageserver/node';
 import { TextDocument, TextDocumentContentChangeEvent } from 'vscode-languageserver-textdocument';
 
@@ -316,6 +318,8 @@ connection.onInitialize((_params): InitializeResult => {
             implementationProvider: true,
             referencesProvider: true,
             documentHighlightProvider: true,
+            inlayHintProvider: true,
+            inlineValueProvider: true,
             renameProvider: {
                 prepareProvider: true
             },
@@ -904,14 +908,13 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
     }
 });
 
-connection.onRequest("angelscript/provideInlineValues", (...params: any[]) : any[] => {
-    let pos : TextDocumentPositionParams = params[0];
-    let asmodule = GetAndParseModule(pos.textDocument.uri);
+connection.languages.inlineValue.on(function (params : InlineValueParams) : Array<InlineValue> {
+    let asmodule = GetAndParseModule(params.textDocument.uri);
     if (!asmodule)
         return null;
     if (!asmodule.resolved)
         return null;
-    return inlinevalues.ProvideInlineValues(asmodule, pos.position);
+    return inlinevalues.ProvideInlineValues(asmodule, params.context.stoppedLocation.start);
 });
 
 connection.onDidChangeTextDocument((params) => {
@@ -1030,7 +1033,7 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
     inlineValueSettings.showInlineValueForMemberAssignment = settings.inlineValues.showInlineValueForMemberAssignment;
 });
 
-function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : Array<inlayhints.ASInlayHint> | null
+function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : Array<InlayHint> | null
 {
     if (CanResolveModules())
     {
@@ -1047,7 +1050,7 @@ function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : 
     }
 }
 
-function WaitForInlayHints(uri : string, range : Range) : Array<inlayhints.ASInlayHint> | Thenable<Array<inlayhints.ASInlayHint>>
+function WaitForInlayHints(uri : string, range : Range) : Array<InlayHint> | Thenable<Array<InlayHint>>
 {
     let asmodule = scriptfiles.GetModuleByUri(uri);
     let result = TryResolveInlayHints(asmodule, range);
@@ -1060,18 +1063,17 @@ function WaitForInlayHints(uri : string, range : Range) : Array<inlayhints.ASInl
             return resolve(result);
         setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
     }
-    let promise = new Promise<Array<inlayhints.ASInlayHint>>(function(resolve, reject)
+    let promise = new Promise<Array<InlayHint>>(function(resolve, reject)
     {
         timerFunc(resolve, reject, 50);
     });
     return promise;
 };
 
-connection.onRequest("angelscript/inlayHints", (...params: any[]) : Array<inlayhints.ASInlayHint> | Thenable<Array<inlayhints.ASInlayHint>> => {
-    let uri : string = params[0].uri;
-    let start : Position = params[0].start;
-    let end : Position = params[0].end;
-    return WaitForInlayHints(uri, Range.create(start, end));
+connection.languages.inlayHint.on(function (params : InlayHintParams) : Array<InlayHint> | Thenable<Array<InlayHint>>
+{
+    let uri : string = params.textDocument.uri;
+    return WaitForInlayHints(uri, params.range);
 });
 
 connection.onDocumentColor(function (params : DocumentColorParams) : ColorInformation[]

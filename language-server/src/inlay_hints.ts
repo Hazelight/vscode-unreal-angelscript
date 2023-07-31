@@ -1,30 +1,7 @@
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 import { node_types } from './as_parser';
-import { Range, Location, Position, Command, MarkedString } from "vscode-languageserver";
-
-export enum ASInlayKind {
-    Type = 1,
-    Parameter = 2,
-};
-
-export class ASInlayLabelPart {
-    value: string;
-    tooltip?: string | undefined;
-    location?: Location | undefined;
-    command?: Command | undefined;
-};
-
-export interface ASInlayHint
-{
-    position: Position;
-    label: string | ASInlayLabelPart[];
-    tooltip?: string | undefined;
-    command?: Command;
-    kind?: ASInlayKind;
-    paddingLeft?: boolean;
-    paddingRight?: boolean;
-};
+import { Range, Location, Position, Command, MarkedString, InlayHint, InlayHintLabelPart, InlayHintKind } from "vscode-languageserver";
 
 export interface InlayHintSettings
 {
@@ -65,12 +42,12 @@ export function GetInlayHintSettings() : InlayHintSettings
     return InlayHintSettings;
 }
 
-export function GetInlayHintsForRange(asmodule : scriptfiles.ASModule, range : Range) : Array<ASInlayHint>
+export function GetInlayHintsForRange(asmodule : scriptfiles.ASModule, range : Range) : Array<InlayHint>
 {
     if (!InlayHintSettings.inlayHintsEnabled)
         return [];
 
-    let hints = new Array<ASInlayHint>();
+    let hints = new Array<InlayHint>();
     let start_offset = asmodule.getOffset(range.start);
     let end_offset = asmodule.getOffset(range.end);
 
@@ -79,7 +56,7 @@ export function GetInlayHintsForRange(asmodule : scriptfiles.ASModule, range : R
     return hints;
 }
 
-export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset : number, end_offset : number, hints : Array<ASInlayHint>)
+export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset : number, end_offset : number, hints : Array<InlayHint>)
 {
     // Check all statements that are within the range
     for (let statement of scope.statements)
@@ -154,7 +131,7 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
 
             if (showAutoHint)
             {
-                let label : string | ASInlayLabelPart[] = null;
+                let label : string | InlayHintLabelPart[] = null;
                 label = "["+scopevar.typename+"]";
 
                 let varType = typedb.LookupType(scope.getNamespace(), scopevar.typename);
@@ -164,14 +141,14 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
                     if (varModule)
                     {
                         label = [
-                            <ASInlayLabelPart> {
+                            <InlayHintLabelPart> {
                                 value: "[",
                             },
-                            <ASInlayLabelPart> {
+                            <InlayHintLabelPart> {
                                 value: scopevar.typename,
                                 location: varModule.getLocation(varType.moduleOffset),
                             },
-                            <ASInlayLabelPart> {
+                            <InlayHintLabelPart> {
                                 value: "]",
                             },
                         ];
@@ -188,10 +165,10 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
                     label = "["+varType.templateSubTypes[0]+" ➜ "+varType.templateSubTypes[1]+"]";
                 }
 
-                hints.push(<ASInlayHint> {
+                hints.push(<InlayHint> {
                     label: label,
                     position: scope.module.getPosition(scopevar.start_offset_name-1),
-                    kind: ASInlayKind.Type,
+                    kind: InlayHintKind.Type,
                     paddingLeft: true,
                 });
             }
@@ -318,7 +295,7 @@ function AreParameterNamesEqual(func : typedb.DBMethod, otherFunc : typedb.DBMet
     return true;
 }
 
-export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : scriptfiles.ASStatement, node : any, hints : Array<ASInlayHint>)
+export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : scriptfiles.ASStatement, node : any, hints : Array<InlayHint>)
 {
     if (!node)
         return;
@@ -475,10 +452,10 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                                 hintStr += "[&]";
                         }
 
-                        hints.push(<ASInlayHint> {
+                        hints.push(<InlayHint> {
                             label: hintStr,
                             position: scope.module.getPosition(argNode.start + statement.start_offset),
-                            kind: ASInlayKind.Parameter,
+                            kind: InlayHintKind.Parameter,
                             paddingRight: true,
                         });
                     }
