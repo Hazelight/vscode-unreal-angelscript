@@ -10,7 +10,7 @@
     "dependencies": {
         "await-notify": "^1.0.1",
         "vscode-debugadapter": "^1.48.0",
-        "vscode-languageclient": "^8.0.2"
+        "vscode-languageclient": "^8.1.0"
     },
     "devDependencies": {
         "@types/vscode": "^1.65.0",
