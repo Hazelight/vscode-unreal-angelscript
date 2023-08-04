@@ -340,7 +340,7 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
 
             // Check if this function is ignored or not
             let functionIsIgnored = false;
-            if (overloads.length != 0)
+            if (overloads.length != 0 && overloads[0])
             {
                 let functionName = overloads[0].name;
                 let qualifiedFunctionName : string = null;
@@ -398,66 +398,69 @@ export function GetInlayHintsForNode(scope : scriptfiles.ASScope, statement : sc
                         }
                     }
 
-                    let shouldShowNameHint = false;
-                    if (!paramNameAmbiguous && !functionIsIgnored)
+                    if (dbParam)
                     {
-                        // Show hints when the argument is a literal constant
-                        if (InlayHintSettings.parameterHintsForConstants)
+                        let shouldShowNameHint = false;
+                        if (!paramNameAmbiguous && !functionIsIgnored)
                         {
-                            if (ShouldLabelConstantNode(argNode, dbParam.name))
-                                shouldShowNameHint = true;
-                        }
+                            // Show hints when the argument is a literal constant
+                            if (InlayHintSettings.parameterHintsForConstants)
+                            {
+                                if (ShouldLabelConstantNode(argNode, dbParam.name))
+                                    shouldShowNameHint = true;
+                            }
 
-                        // Show hints if the expression is complex
-                        if (InlayHintSettings.parameterHintsForComplexExpressions)
-                        {
-                            if (ShouldLabelComplexExpressionNode(argNode, dbParam.name))
-                                shouldShowNameHint = true;
-                        }
+                            // Show hints if the expression is complex
+                            if (InlayHintSettings.parameterHintsForComplexExpressions)
+                            {
+                                if (ShouldLabelComplexExpressionNode(argNode, dbParam.name))
+                                    shouldShowNameHint = true;
+                            }
 
-                        // Never show hints for single argument functions if turned off
-                        if (!InlayHintSettings.parameterHintsForSingleParameterFunctions)
-                        {
-                            if (argCount == 1)
+                            // Never show hints for single argument functions if turned off
+                            if (!InlayHintSettings.parameterHintsForSingleParameterFunctions)
+                            {
+                                if (argCount == 1)
+                                    shouldShowNameHint = false;
+                            }
+
+                            // Never show hints if we already have a named parameter
+                            if (shouldShowNameHint && argNode.type == node_types.NamedArgument)
+                                shouldShowNameHint = false;
+
+                            // Argument names that are 1 character long probably aren't worth showing
+                            if (shouldShowNameHint && dbParam.name.length == 1)
+                                shouldShowNameHint = false;
+
+                            // Argument names we consider 'Generic' don't get labels
+                            if (shouldShowNameHint && InlayHintSettings.parameterHintsIgnoredParameterNames.has(dbParam.name))
                                 shouldShowNameHint = false;
                         }
 
-                        // Never show hints if we already have a named parameter
-                        if (shouldShowNameHint && argNode.type == node_types.NamedArgument)
-                            shouldShowNameHint = false;
+                        let shouldShowRefHint = InlayHintSettings.parameterReferenceHints
+                            && dbParam.typename.includes("&")
+                            && !dbParam.typename.startsWith("const ");
 
-                        // Argument names that are 1 character long probably aren't worth showing
-                        if (shouldShowNameHint && dbParam.name.length == 1)
-                            shouldShowNameHint = false;
-
-                        // Argument names we consider 'Generic' don't get labels
-                        if (shouldShowNameHint && InlayHintSettings.parameterHintsIgnoredParameterNames.has(dbParam.name))
-                            shouldShowNameHint = false;
-                    }
-
-                    let shouldShowRefHint = InlayHintSettings.parameterReferenceHints
-                        && dbParam.typename.includes("&")
-                        && !dbParam.typename.startsWith("const ");
-
-                    if (shouldShowNameHint || shouldShowRefHint)
-                    {
-                        let hintStr = "";
-                        if (shouldShowNameHint)
-                            hintStr += dbParam.name+" ="
-                        if (shouldShowRefHint)
+                        if (shouldShowNameHint || shouldShowRefHint)
                         {
-                            if (hintStr.length != 0)
-                                hintStr += " [&]";
-                            else
-                                hintStr += "[&]";
-                        }
+                            let hintStr = "";
+                            if (shouldShowNameHint)
+                                hintStr += dbParam.name+" ="
+                            if (shouldShowRefHint)
+                            {
+                                if (hintStr.length != 0)
+                                    hintStr += " [&]";
+                                else
+                                    hintStr += "[&]";
+                            }
 
-                        hints.push(<InlayHint> {
-                            label: hintStr,
-                            position: scope.module.getPosition(argNode.start + statement.start_offset),
-                            kind: InlayHintKind.Parameter,
-                            paddingRight: true,
-                        });
+                            hints.push(<InlayHint> {
+                                label: hintStr,
+                                position: scope.module.getPosition(argNode.start + statement.start_offset),
+                                kind: InlayHintKind.Parameter,
+                                paddingRight: true,
+                            });
+                        }
                     }
                 }
 
