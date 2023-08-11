@@ -201,6 +201,11 @@
                                 "type": "number",
                                 "description": "Port to AS debug server",
                                 "default:": 27099
+                            },
+                            "hostname": {
+                                "type": "string",
+                                "description": "Hostname to AS debug server",
+                                "default:": "localhost"
                             }
                         }
                     }
