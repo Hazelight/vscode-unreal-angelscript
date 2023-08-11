@@ -50,6 +50,8 @@ export enum MessageType
     DebugDatabaseSettings,
 
     DebugServerVersion,
+
+    PingAlive,
 }
 
 export class Message

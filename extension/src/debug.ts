@@ -445,7 +445,7 @@ export class ASDebugSession extends LoggingDebugSession
             return sourcePath;
         }
 
-        let relativeFilename = moduleName.split(".").join("\\");
+        let relativeFilename = moduleName.split(".").join(path.sep);
         relativeFilename += ".as";
 
         for (let root of this._rootPaths)
@@ -717,7 +717,7 @@ export class ASDebugSession extends LoggingDebugSession
             let relativePath = path.relative(root, filePath);
             if (filePath.includes(relativePath))
             {
-                return relativePath.split("\\").join(".").replace(".as", "");
+                return relativePath.split(path.sep).join(".").replace(".as", "");
             }
         }
 
