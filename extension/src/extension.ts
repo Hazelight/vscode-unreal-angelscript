@@ -279,7 +279,7 @@ class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
             }
 
             // make VS Code connect to debug server instead of launching debug adapter
-            config.debugServer = (this._server.address() as Net.AddressInfo).port;
+            //config.debugServer = (this._server.address() as Net.AddressInfo).port;
         }
         this._config = config;
         return config;
