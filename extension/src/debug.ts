@@ -450,7 +450,7 @@ export class ASDebugSession extends LoggingDebugSession
 
         for (let root of this._rootPaths)
         {
-            let absoluteFilename = root + "\\" + relativeFilename;
+            let absoluteFilename = root + path.sep + relativeFilename;
             if (fs.existsSync(absoluteFilename))
             {
                 return absoluteFilename;
