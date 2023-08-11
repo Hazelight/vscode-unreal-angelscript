@@ -49,9 +49,9 @@ export enum MessageType
     FindAssets,
     DebugDatabaseSettings,
 
-    DebugServerVersion,
-
     PingAlive,
+
+    DebugServerVersion,
 }
 
 export class Message
