@@ -16,8 +16,6 @@ import * as Net from 'net';
 import { ClientRequest } from 'http';
 let copyPaste = require("copy-paste");
 
-const EMBED_DEBUG_ADAPTER = true;
-
 const GetModuleForSymbolRequest: RequestType<TextDocumentPositionParams, string, void> = new RequestType<TextDocumentPositionParams, string, void>('angelscript/getModuleForSymbol');
 const ProvideInlineValuesRequest: RequestType<TextDocumentPositionParams, any[], void> = new RequestType<TextDocumentPositionParams, any[], void>('angelscript/provideInlineValues');
 
@@ -248,32 +246,32 @@ class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
 
         let port = config.port;
         let hostname = config.hostname;
-        if (EMBED_DEBUG_ADAPTER) {
-            // start port listener on launch of first debug session
-            // or if the port changed
-            if (!this._server || (this._server && (port != this._config.port || hostname != this._config.hostname))) {
-                // start listening on a random port
-                this._server = Net.createServer(socket => {
-                    const session = new ASDebugSession();
-                    session.setRunAsServer(true);
 
-                    if (port !== undefined)
-                    {
-                        session.port = port;
-                    }
+        // start port listener on launch of first debug session
+        // or if the port changed
+        if (!this._server || (this._server && (port != this._config.port || hostname != this._config.hostname))) {
+            // start listening on a random port
+            this._server = Net.createServer(socket => {
+                const session = new ASDebugSession();
+                session.setRunAsServer(true);
 
-                    if (hostname !== undefined)
-                    {
-                        session.hostname = hostname;
-                    }
+                if (port !== undefined)
+                {
+                    session.port = port;
+                }
 
-                    session.start(<NodeJS.ReadableStream>socket, socket);
-                }).listen(0);
-            }
+                if (hostname !== undefined)
+                {
+                    session.hostname = hostname;
+                }
 
-            // make VS Code connect to debug server instead of launching debug adapter
-            //config.debugServer = (this._server.address() as Net.AddressInfo).port;
+                session.start(<NodeJS.ReadableStream>socket, socket);
+            }).listen(0);
         }
+
+        // make VS Code connect to debug server instead of launching debug adapter
+        config.debugServer = (this._server.address() as Net.AddressInfo).port;
+
         this._config = config;
         return config;
     }
