@@ -10,8 +10,12 @@ import {
     ContinuedEvent,
     Thread, StackFrame, Scope, Source, Handles, Breakpoint
 } from 'vscode-debugadapter';
+
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { basename } from 'path';
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 
 import * as unreal from './unreal-debugclient';
 
@@ -21,6 +25,7 @@ const { Subject } = require('await-notify');
 interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
     trace?: boolean;
     port?: number;
+    hostname?: string;
 }
 
 interface ASBreakpoint
@@ -41,7 +46,17 @@ export class ASDebugSession extends LoggingDebugSession
 
     private _configurationDone = new Subject();
 
+    private _rootPaths = this.gatherRootPaths();
+
+    hostname = "localhost";
     port = 27099;
+
+    // Version of this debug adapter.
+    debugAdapterVersion = 1;
+
+    // Version of the Unreal Angelscript Debug Server we attach to.
+    // Received during the DebugServerVersion event
+    debugServerVersion = 0;
 
     /**
      * Creates a new debug adapter that is used for one debug session.
@@ -86,6 +101,10 @@ export class ASDebugSession extends LoggingDebugSession
         unreal.events.on("SetBreakpoint", (msg : unreal.Message) => {
             this.receiveBreakpoint(msg);
         });
+
+        unreal.events.on("DebugServerVersion", (msg : unreal.Message) => {
+            this.receiveDebugVersion(msg);
+        });
     }
 
     /**
@@ -106,7 +125,7 @@ export class ASDebugSession extends LoggingDebugSession
         response.body.supportsEvaluateForHovers = true;
         response.body.supportsExceptionInfoRequest = true;
 
-        unreal.connect(this.port);
+        unreal.connect(this.hostname, this.port);
         unreal.sendRequestBreakFilters();
 
         this.waitingInitializeResponse = response;
@@ -157,8 +176,11 @@ export class ASDebugSession extends LoggingDebugSession
         // make sure to 'Stop' the buffered logging if 'trace' is not set
         logger.setup(args.trace ? Logger.LogLevel.Verbose : Logger.LogLevel.Stop, false);
 
-        unreal.connect(args.port !== undefined ? args.port : this.port);
-        unreal.sendStartDebugging();
+        let hostname = args.hostname ?? this.hostname;
+        let port = args.port ?? this.port;
+
+        unreal.connect(hostname, port);
+        unreal.sendStartDebugging(this.debugAdapterVersion);
 
         for (let clientPath of this.breakpoints.keys())
         {
@@ -166,11 +188,13 @@ export class ASDebugSession extends LoggingDebugSession
             if (breakpointList.length != 0)
             {
                 const debugPath = this.convertClientPathToDebugger(clientPath);
-                unreal.clearBreakpoints(debugPath);
+                const moduleName = this.GetModuleNameForFilepath(debugPath);
+
+                unreal.clearBreakpoints(debugPath, moduleName);
 
                 for(let breakpoint of breakpointList)
                 {
-                    unreal.setBreakpoint(breakpoint.id, debugPath, breakpoint.line);
+                    unreal.setBreakpoint(breakpoint.id, debugPath, breakpoint.line, moduleName);
                 }
             }
         }
@@ -205,13 +229,14 @@ export class ASDebugSession extends LoggingDebugSession
         const clientLines = args.lines || [];
         const clientPath = <string>args.source.path;
         const debugPath = this.convertClientPathToDebugger(clientPath);
+        const moduleName = this.GetModuleNameForFilepath(debugPath);
 
         let clientBreakpoints = new Array<DebugProtocol.Breakpoint>();
         let oldBreakpointList = this.getBreakpointList(clientPath);
         let breakpointList = new Array<ASBreakpoint>();
 
         if(unreal.connected)
-            unreal.clearBreakpoints(debugPath);
+            unreal.clearBreakpoints(debugPath, moduleName);
 
         for (let line of clientLines)
         {
@@ -236,7 +261,7 @@ export class ASDebugSession extends LoggingDebugSession
             breakpointList.push(breakpoint);
 
             if(unreal.connected)
-                unreal.setBreakpoint(breakpoint.id, debugPath, line);
+                unreal.setBreakpoint(breakpoint.id, debugPath, line, moduleName);
         }
 
         this.breakpoints.set(clientPath, breakpointList);
@@ -359,6 +384,12 @@ export class ASDebugSession extends LoggingDebugSession
             let sourcePath = msg.readString();
             let line = msg.readInt();
 
+            let moduleName = "";
+            if (this.debugServerVersion > 0)
+            {
+                moduleName = msg.readString();
+            }
+
             let frame : StackFrame = null;
             if (sourcePath && sourcePath.length != 0)
             {
@@ -375,7 +406,9 @@ export class ASDebugSession extends LoggingDebugSession
                 {
                     previousSourceLine = line;
                     previousSourcePath = sourcePath;
-                    frame = new StackFrame(i, name, this.createSource(sourcePath), line, 1);
+
+                    const absoluteSourcePath = this.debugServerVersion > 0 ? this.resolvePathsToSourcePath(sourcePath, moduleName) : sourcePath;
+                    frame = new StackFrame(i, name, this.createSource(absoluteSourcePath), line, 1);
                 }
             }
             else
@@ -403,6 +436,28 @@ export class ASDebugSession extends LoggingDebugSession
 
             this.sendResponse(response);
         }
+    }
+
+    private resolvePathsToSourcePath(sourcePath : string, moduleName : string) : string
+    {
+        if (fs.existsSync(sourcePath))
+        {
+            return sourcePath;
+        }
+
+        let relativeFilename = moduleName.split(".").join(path.sep);
+        relativeFilename += ".as";
+
+        for (let root of this._rootPaths)
+        {
+            let absoluteFilename = root + path.sep + relativeFilename;
+            if (fs.existsSync(absoluteFilename))
+            {
+                return absoluteFilename;
+            }
+        }
+
+        return sourcePath;
     }
 
     protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments) : void
@@ -643,5 +698,34 @@ export class ASDebugSession extends LoggingDebugSession
     private createSource(filePath: string): Source
     {
         return new Source(basename(filePath), this.convertDebuggerPathToClient(filePath), undefined, undefined, "as-script");
+    }
+
+    private gatherRootPaths() : Array<string>
+    {
+        let roots = [];
+        for (let workspaceFolder of vscode.workspace.workspaceFolders)
+        {
+            roots.push(workspaceFolder.uri.fsPath);
+        }
+        return roots;
+    }
+
+    private GetModuleNameForFilepath(filePath: string) : string
+    {
+        for (let root of this._rootPaths)
+        {
+            let relativePath = path.relative(root, filePath);
+            if (filePath.includes(relativePath))
+            {
+                return relativePath.split(path.sep).join(".").replace(".as", "");
+            }
+        }
+
+        return "";
+    }
+
+    private receiveDebugVersion(msg: unreal.Message)
+    {
+        this.debugServerVersion = msg.readInt();
     }
 }

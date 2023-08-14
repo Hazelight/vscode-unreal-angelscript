@@ -247,16 +247,26 @@ class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
         }
 
         let port = config.port;
+        let hostname = config.hostname;
         if (EMBED_DEBUG_ADAPTER) {
             // start port listener on launch of first debug session
             // or if the port changed
-            if (!this._server || (this._server && port != this._config.port)) {
+            if (!this._server || (this._server && (port != this._config.port || hostname != this._config.hostname))) {
                 // start listening on a random port
                 this._server = Net.createServer(socket => {
                     const session = new ASDebugSession();
                     session.setRunAsServer(true);
+
                     if (port !== undefined)
+                    {
                         session.port = port;
+                    }
+
+                    if (hostname !== undefined)
+                    {
+                        session.hostname = hostname;
+                    }
+
                     session.start(<NodeJS.ReadableStream>socket, socket);
                 }).listen(0);
             }

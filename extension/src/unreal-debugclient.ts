@@ -40,7 +40,18 @@ export enum MessageType
     RequestBreakFilters,
     BreakFilters,
 
-    Disconnect
+    Disconnect,
+
+    DebugDatabaseFinished,
+    AssetDatabaseInit,
+    AssetDatabase,
+    AssetDatabaseFinished,
+    FindAssets,
+    DebugDatabaseSettings,
+
+    PingAlive,
+
+    DebugServerVersion,
 }
 
 export class Message
@@ -156,7 +167,7 @@ let unreal : Socket | null = null;
 export let connected = false;
 export let events = new EventEmitter();
 
-export function connect(port : number)
+export function connect(hostname: string, port : number)
 {
     if (unreal != null)
     {
@@ -165,8 +176,9 @@ export function connect(port : number)
     }
     unreal = new Socket;
     connected = true;
+
 	//connection.console.log('Connecting to unreal editor...');
-	unreal.connect(port, "localhost", function()
+	unreal.connect(port, hostname, function()
 	{
 		//connection.console.log('Connection to unreal editor established.');
 	});
@@ -202,6 +214,10 @@ export function connect(port : number)
             else if (msg.type == MessageType.SetBreakpoint)
             {
                 events.emit("SetBreakpoint", msg);
+            }
+            else if (msg.type == MessageType.DebugServerVersion)
+            {
+                events.emit("DebugServerVersion", msg);
             }
 		}
 	});
@@ -280,11 +296,14 @@ export function sendDisconnect()
     unreal.write(msg);
 }
 
-export function sendStartDebugging()
+export function sendStartDebugging(version: number)
 {
     let msg = Buffer.alloc(5);
     msg.writeUInt32LE(1, 0);
     msg.writeUInt8(MessageType.StartDebugging, 4);
+    msg = Buffer.concat([msg, writeInt(version)]);
+
+    msg.writeUInt32LE(msg.length - 4, 0);
 
     unreal.write(msg);
 }
@@ -298,24 +317,24 @@ export function sendStopDebugging()
     unreal.write(msg);
 }
 
-export function clearBreakpoints(pathname : string)
+export function clearBreakpoints(pathname : string, moduleName : string)
 {
     let msg = Buffer.alloc(5);
     msg.writeUInt8(MessageType.ClearBreakpoints, 4);
-    msg = Buffer.concat([msg, writeString(pathname)]);
+    msg = Buffer.concat([msg, writeString(pathname), writeString(moduleName)]);
 
     msg.writeUInt32LE(msg.length - 4, 0);
     unreal.write(msg);
 }
 
-export function setBreakpoint(id : number, pathname : string, line : number)
+export function setBreakpoint(id : number, pathname : string, line : number, moduleName : string)
 {
     let head = Buffer.alloc(5);
     head.writeUInt32LE(1, 0);
     head.writeUInt8(MessageType.SetBreakpoint, 4);
 
     let msg = Buffer.concat([
-        head, writeString(pathname), writeInt(line), writeInt(id)
+        head, writeString(pathname), writeInt(line), writeInt(id), writeString(moduleName)
     ]);
 
     msg.writeUInt32LE(msg.length - 4, 0);
