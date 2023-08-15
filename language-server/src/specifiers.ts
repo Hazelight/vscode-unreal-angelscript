@@ -16,6 +16,7 @@ export let ASPropertySpecifiers : any = {
     "Transient": "Property is never saved into the on-disk asset",
     "Config": "Property can be saved and loaded from config ini files",
     "Interp": "Property can be modified by sequence tracks",
+    "AssetRegistrySearchable": "Property is indexed for searching in the Asset Registry",
     "NoClear": "Property is not allowed to be changed to nullptr",
     "Category": "Category to list this under in the editor",
     "Keywords": "Keywords this can be found by in the editor",
