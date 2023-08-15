@@ -72,7 +72,7 @@
                 },
                 {
                     "name": "keyword.specifier.angelscript",
-                    "match": "\\b(BlueprintReadWrite|BlueprintReadOnly|BlueprintHidden|EditInstanceOnly|EditDefaultsOnly|EditAnywhere|NotEditable|NotVisible|EditConst|VisibleAnywhere|VisibleInstanceOnly|VisibleDefaultsOnly|AdvancedDisplay|Transient|Config|Interp|NoClear|Category|Keywords|ToolTip|DisplayName|EditInline|ExposeOnSpawn|EditFixedSize|BlueprintProtected|DefaultComponent|OverrideComponent|RootComponent|ShowOnActor|Attach|AttachSocket|Meta|Instanced|BlueprintSetter|BlueprintGetter|Replicated|ReplicatedUsing|NotReplicated|ReplicationCondition|BindWidget|SaveGame)\\b"
+                    "match": "\\b(BlueprintReadWrite|BlueprintReadOnly|BlueprintHidden|EditInstanceOnly|EditDefaultsOnly|EditAnywhere|NotEditable|NotVisible|EditConst|VisibleAnywhere|VisibleInstanceOnly|VisibleDefaultsOnly|AdvancedDisplay|Transient|Config|Interp|AssetRegistrySearchable|NoClear|Category|Keywords|ToolTip|DisplayName|EditInline|ExposeOnSpawn|EditFixedSize|BlueprintProtected|DefaultComponent|OverrideComponent|RootComponent|ShowOnActor|Attach|AttachSocket|Meta|Instanced|BlueprintSetter|BlueprintGetter|Replicated|ReplicatedUsing|NotReplicated|ReplicationCondition|BindWidget|SaveGame)\\b"
                 }
             ]
         },
