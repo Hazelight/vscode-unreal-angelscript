@@ -2287,7 +2287,7 @@ function GenerateTypeInformation(scope : ASScope)
                     dbtype.moduleOffset = statement.start_offset + signature.name.start;
                     dbtype.moduleOffsetEnd = statement.start_offset + signature.name.end;
 
-                    dbtype.delegateReturn = signature.returntype ? signature.returntype.value : "void";
+                    dbtype.delegateReturn = signature.returntype ? GetQualifiedTypename(signature.returntype) : "void";
                     dbtype.delegateArgs = [];
                     if (signature.parameters)
                     {
