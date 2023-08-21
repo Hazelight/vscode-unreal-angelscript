@@ -65,7 +65,8 @@ export enum ASScopeType
     Function,
     Enum,
     Code,
-    Namespace
+    Namespace,
+    LiteralAsset,
 }
 
 export class ASModule
@@ -458,6 +459,7 @@ export class ASScope extends ASElement
     dbnamespace : typedb.DBNamespace = null;
     dbtype : typedb.DBType = null;
     dbfunc : typedb.DBMethod = null;
+    assettype : string | null = null;
 
     resolvedNamespace : typedb.DBNamespace = null;
     available_global_types : Array<typedb.DBType> = null;
@@ -468,6 +470,7 @@ export class ASScope extends ASElement
         {
             case ASScopeType.Function:
             case ASScopeType.Code:
+            case ASScopeType.LiteralAsset:
                 return true;
         }
         return false;
@@ -549,6 +552,8 @@ export class ASScope extends ASElement
         {
             if (checkscope.scopetype == ASScopeType.Global)
                 break;
+            if (checkscope.scopetype == ASScopeType.LiteralAsset)
+                return checkscope;
 
             let dbType = checkscope.getDatabaseType();
             if (dbType)
@@ -562,19 +567,23 @@ export class ASScope extends ASElement
     {
         if (this.dbtype)
             return this.dbtype;
+        if (this.scopetype == ASScopeType.LiteralAsset)
+            return typedb.GetTypeByName(this.assettype);
 
         if (this.parentscope)
         {
             if (this.parentscope.dbtype)
                 return this.parentscope.dbtype;
 
-            let checkscope : ASScope = this.parentscope.parentscope;;
+            let checkscope : ASScope = this.parentscope.parentscope;
             while (checkscope != null)
             {
                 if (checkscope.scopetype == ASScopeType.Namespace)
                     break;
                 if (checkscope.scopetype == ASScopeType.Global)
                     break;
+                if (checkscope.scopetype == ASScopeType.LiteralAsset)
+                    return typedb.GetTypeByName(checkscope.assettype);
                 if (checkscope.dbtype)
                     return checkscope.dbtype;
                 checkscope = checkscope.parentscope;
@@ -2172,6 +2181,11 @@ function GenerateTypeInformation(scope : ASScope)
             {
                 scope.parentscope.dbtype.addSymbol(dbfunc);
             }
+        }
+        // Literal asset definitions
+        else if (scope.previous.ast.type == node_types.AssetDefinition)
+        {
+            scope.assettype = scope.previous.ast.typename.value;
         }
     }
 
@@ -5895,7 +5909,7 @@ function DetermineScopeType(scope : ASScope)
     if (scope.parentscope)
     {
         // Scopes underneath a function are never anything but code scopes
-        if (scope.parentscope.scopetype == ASScopeType.Function)
+        if (scope.parentscope.scopetype == ASScopeType.Function || scope.parentscope.scopetype == ASScopeType.LiteralAsset)
         {
             scope.scopetype = ASScopeType.Code;
             return;
@@ -5945,7 +5959,7 @@ function DetermineScopeType(scope : ASScope)
             }
             else if (ast_type == node_types.AssetDefinition)
             {
-                scope.scopetype = ASScopeType.Function;
+                scope.scopetype = ASScopeType.LiteralAsset;
             }
         }
     }
@@ -6325,6 +6339,7 @@ export function ParseStatement(scopetype : ASScopeType, statement : ASStatement,
             parser.restore(parser_enum_statement_initial);
         break;
         case ASScopeType.Function:
+        case ASScopeType.LiteralAsset:
         case ASScopeType.Code:
             parser = parser_statement;
             parser.restore(parser_statement_initial);
