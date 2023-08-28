@@ -3040,11 +3040,34 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
         case node_types.TernaryOperation:
         {
             let left_type = ResolveTypeFromExpression(scope, node.children[1]);
-            if (left_type)
-                return left_type;
             let right_type = ResolveTypeFromExpression(scope, node.children[2]);
-            if (right_type)
+
+            if (left_type)
+            {
+                if (right_type)
+                {
+                    if (left_type != right_type && !left_type.isValueType() && !right_type.isValueType())
+                    {
+                        // Find the common baseclass
+                        let target_type = left_type;
+                        while (target_type && !right_type.inheritsFrom(target_type.name))
+                            target_type = target_type.getSuperType();
+
+                        if (target_type)
+                            return target_type;
+                        else
+                            return left_type;
+                    }
+                }
+                else
+                {
+                    return left_type;
+                }
+            }
+            else
+            {
                 return right_type;
+            }
             return null;
         }
         break;
@@ -4336,11 +4359,29 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             let right_symbol = DetectNodeSymbols(scope, statement, node.children[2], parseContext, typedb.DBAllowSymbol.Properties);
 
             if (left_symbol)
+            {
+                if (left_symbol != right_symbol)
+                {
+                    if (left_symbol instanceof typedb.DBType && right_symbol instanceof typedb.DBType)
+                    {
+                        if (!left_symbol.isValueType() && !right_symbol.isValueType())
+                        {
+                            let target_type = left_symbol;
+                            while (target_type && !right_symbol.inheritsFrom(target_type.name))
+                                target_type = target_type.getSuperType();
+
+                            if (target_type)
+                                return target_type;
+                        }
+                    }
+                }
+
                 return left_symbol;
-            else if (right_symbol)
-                return right_symbol;
+            }
             else
-                return null;
+            {
+                return right_symbol;
+            }
         }
         break;
         // Cast<X>()
