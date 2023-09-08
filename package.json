@@ -2,7 +2,7 @@
     "name": "unreal-angelscript",
     "displayName": "Unreal Angelscript",
     "description": "Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://github.com/Hazelight/UnrealEngine-Angelscript",
-    "version": "1.5.2",
+    "version": "1.5.3",
     "publisher": "Hazelight",
     "engines": {
         "vscode": "^1.65.0"
@@ -232,10 +232,6 @@
         ],
         "commands": [
             {
-                "command": "angelscript.copyImportPath",
-                "title": "Copy Import Path"
-            },
-            {
                 "command": "angelscript.goToSymbol",
                 "title": "Go to Symbol"
             },
@@ -367,7 +363,6 @@
     "dependencies": {
         "@types/glob": "^7.1.3",
         "@types/nearley": "^2.0.0",
-        "copy-paste": "^1.1.3",
         "glob": "^7.1.3",
         "iconv-lite": "^0.6.2",
         "moo": "^0.5.1",
@@ -381,7 +376,7 @@
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -b",
         "watch": "tsc -b -w",
-        "postinstall": "cd extension && npm ci && cd ../language-server && npm ci && cd ..",
+        "postinstall": "cd extension && npm install && cd ../language-server && npm install && cd ..",
         "grammar:compile": "cd language-server/grammar && nearleyc angelscript.ne -o angelscript.js && nearleyc grammar_statement.ne -o grammar_statement.js && nearleyc grammar_class_statement.ne -o grammar_class_statement.js && nearleyc grammar_global_statement.ne -o grammar_global_statement.js && nearleyc grammar_enum_statement.ne -o grammar_enum_statement.js",
         "grammar:test": "nearley-test language-server/grammar/grammar_enum_statement.js -q <test.as",
         "grammar:test_verbose": "nearley-test language-server/grammar/grammar_enum_statement.js <test.as"

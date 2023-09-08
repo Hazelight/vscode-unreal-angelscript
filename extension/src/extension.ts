@@ -14,7 +14,6 @@ import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken 
 import { ASDebugSession } from './debug';
 import * as Net from 'net';
 import { ClientRequest } from 'http';
-let copyPaste = require("copy-paste");
 
 const GetModuleForSymbolRequest: RequestType<TextDocumentPositionParams, string, void> = new RequestType<TextDocumentPositionParams, string, void>('angelscript/getModuleForSymbol');
 const ProvideInlineValuesRequest: RequestType<TextDocumentPositionParams, any[], void> = new RequestType<TextDocumentPositionParams, any[], void>('angelscript/provideInlineValues');
@@ -56,20 +55,6 @@ export function activate(context: ExtensionContext) {
 
     let evaluatableExpressionProvider = new ASEvaluateableExpressionProvider();
     context.subscriptions.push(vscode.languages.registerEvaluatableExpressionProvider('angelscript', evaluatableExpressionProvider));
-
-    // Register the 'copy import path' command
-    let copyImportPath = vscode.commands.registerCommand('angelscript.copyImportPath', (selectedFile : any) => {
-        let relPath = vscode.workspace.asRelativePath(selectedFile, false).trim();
-
-        let extIndex = relPath.indexOf(".as");
-        if (extIndex != -1)
-            relPath = relPath.substr(0, extIndex);
-        relPath = relPath.replace(/[\/\\]/g, ".");
-
-        copyPaste.copy(relPath);
-    });
-
-    context.subscriptions.push(copyImportPath);
 
     // Register 'Go To Symbol'
     let goToSymbol = vscode.commands.registerCommand('angelscript.goToSymbol', (location : any) => {
