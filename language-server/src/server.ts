@@ -216,7 +216,7 @@ function connect_unreal() {
         }
     });
 
-    unreal.connect(27099, "localhost", function()
+    unreal.connect(27099, "127.0.0.1", function()
     {
         //connection.console.log('Connection to unreal editor established.');
         setTimeout(function()
@@ -332,8 +332,8 @@ connection.onInitialize((_params): InitializeResult => {
             codeActionProvider: {
                 resolveProvider: true,
             },
-            semanticTokensProvider: <SemanticTokensOptions> {
-                legend: <SemanticTokensLegend> {
+            semanticTokensProvider: {
+                legend: {
                     tokenTypes: scriptsemantics.SemanticTypeList.map(t => "as_"+t),
                     tokenModifiers: [],
                 },
@@ -559,7 +559,11 @@ connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): Com
 });
 
 connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
-    return parsedcompletion.Resolve(item);
+    let resolvedItem = parsedcompletion.Resolve(item);
+    if (resolvedItem)
+        return resolvedItem;
+    else
+        return item;
 });
 
 connection.onSignatureHelp((_textDocumentPosition: TextDocumentPositionParams): SignatureHelp => {
