@@ -250,13 +250,6 @@
             }
         ],
         "menus": {
-            "explorer/context": [
-                {
-                    "when": "resourceLangId == angelscript",
-                    "command": "angelscript.copyImportPath",
-                    "group": "5_cutcopypaste"
-                }
-            ],
             "editor/context": [
                 {
                     "when": "resourceLangId == angelscript",

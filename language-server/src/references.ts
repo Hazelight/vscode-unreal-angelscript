@@ -523,6 +523,9 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
         // Look in all considered modules (Slow!)
         for (let checkmodule of considerModules)
         {
+            if (!checkmodule.exists)
+                continue;
+
             // Count how much parsing we're doing
             if (!checkmodule.resolved)
                 parseCount += 100;
@@ -562,6 +565,12 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
                         isAccessor ? accessorReplaceText : replaceText
                     )
                 );
+            }
+
+            if (fileEdits)
+            {
+                // Make sure we re-resolve the module before we use it again later
+                checkmodule.resolved = false;
             }
 
             // Yield out after we've done some amount of parse work
