@@ -36,7 +36,8 @@ const lexer = moo.compile({
     hex_number: /0[xX][0-9A-Fa-f]*/,
     octal_number: /0[oO][0-8]*/,
     binary_number: /0[bB][01]*/,
-    identifier: { match: /[A-Za-z_][A-Za-z0-9_]*/, 
+    exponent_number: /[0-9]+e-?[0-9]+/,
+    identifier: { match: /[A-Za-z_][A-Za-z0-9_]*/,
         type: moo.keywords({
             if_token: "if",
             enum_token: "enum",
@@ -762,7 +763,7 @@ macro_list -> macro_argument (_ "," _ macro_argument):* (_ %comma):? {%
     }
 %}
 
-macro_argument -> macro_identifier {% 
+macro_argument -> macro_identifier {%
     function (d) { return {
         ...Compound(d, n.MacroArgument, null),
         name: d[0],
@@ -894,7 +895,7 @@ expr_leaf -> lvalue {% id %}
 expr_leaf -> constant {% id %}
 
 # INCOMPLETE: a unary operator where we haven't typed an operand yet
-expr_leaf -> unary_operator {% 
+expr_leaf -> unary_operator {%
     function (d) { return {
         ...Compound(d, n.UnaryOperation, []),
         operator: Operator(d[0]),
@@ -905,7 +906,7 @@ lvalue -> %identifier {%
     function(d, l) { return Identifier(d[0]); }
 %}
 
-lvalue -> %this_token {% 
+lvalue -> %this_token {%
     function (d) { return Literal(n.This, d[0]); }
 %}
 
@@ -1006,7 +1007,7 @@ argumentlist -> _ %comma {%
     function(d) { return null; }
 %}
 argumentlist -> _ (%comma _):* (argument _ (%comma _):+ ):* argument (_ %comma):* {%
-    function(d) { 
+    function(d) {
         let args = [];
         if (d[2])
         {
@@ -1091,12 +1092,36 @@ constant -> "f" %dqstring {%
 
 constant -> const_number {% id %}
 
-constant -> %bool_token {% 
+constant -> %bool_token {%
     function (d) { return Literal(n.ConstBool, d[0]); }
 %}
 
-constant -> %nullptr_token {% 
+constant -> %nullptr_token {%
     function (d) { return Literal(n.ConstNullptr, d[0]); }
+%}
+
+const_number -> %exponent_number {%
+    function(d) { return Literal(n.ConstDouble, d[0]); }
+%}
+
+const_number -> %exponent_number "f" {%
+    function(d) { return Literal(n.ConstFloat, d[0]); }
+%}
+
+const_number -> %dot %exponent_number {%
+    function(d) { return CompoundLiteral(n.ConstDouble, d, null); }
+%}
+
+const_number -> %dot %exponent_number "f" {%
+    function(d) { return CompoundLiteral(n.ConstFloat, d, null); }
+%}
+
+const_number -> %number %dot %exponent_number {%
+    function(d) { return CompoundLiteral(n.ConstDouble, d, null); }
+%}
+
+const_number -> %number %dot %exponent_number "f" {%
+    function(d) { return CompoundLiteral(n.ConstFloat, d, null); }
 %}
 
 unary_operator -> %op_binary_sum {% id %}
@@ -1247,11 +1272,11 @@ func_qualifiers -> _ (func_qualifier __ ):* func_qualifier {%
     }
 %}
 
-func_qualifier -> (%const_token | %final_token | %override_token | %property_token) {% 
+func_qualifier -> (%const_token | %final_token | %override_token | %property_token) {%
     function (d) { return d[0][0]; }
 %}
 
-func_qualifier -> %identifier {% 
+func_qualifier -> %identifier {%
     function (d) { return d[0].value; }
 %}
 
@@ -1293,7 +1318,7 @@ __ -> _ %prepocessor_statement _ {%
     function (d) { return null; }
 %}
 
-case_label -> %lparen _ case_label _ %rparen {% 
+case_label -> %lparen _ case_label _ %rparen {%
     function (d) { return d[2]; }
 %}
 case_label -> ("-" _):? %number {%

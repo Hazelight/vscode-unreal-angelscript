@@ -40,7 +40,8 @@ const lexer = moo.compile({
     hex_number: /0[xX][0-9A-Fa-f]*/,
     octal_number: /0[oO][0-8]*/,
     binary_number: /0[bB][01]*/,
-    identifier: { match: /[A-Za-z_][A-Za-z0-9_]*/, 
+    exponent_number: /[0-9]+e-?[0-9]+/,
+    identifier: { match: /[A-Za-z_][A-Za-z0-9_]*/,
         type: moo.keywords({
             if_token: "if",
             enum_token: "enum",
@@ -816,7 +817,7 @@ var grammar = {
             return args;
         }
         },
-    {"name": "macro_argument", "symbols": ["macro_identifier"], "postprocess":  
+    {"name": "macro_argument", "symbols": ["macro_identifier"], "postprocess": 
         function (d) { return {
             ...Compound(d, n.MacroArgument, null),
             name: d[0],
@@ -960,7 +961,7 @@ var grammar = {
         },
     {"name": "expr_leaf", "symbols": ["lvalue"], "postprocess": id},
     {"name": "expr_leaf", "symbols": ["constant"], "postprocess": id},
-    {"name": "expr_leaf", "symbols": ["unary_operator"], "postprocess":  
+    {"name": "expr_leaf", "symbols": ["unary_operator"], "postprocess": 
         function (d) { return {
             ...Compound(d, n.UnaryOperation, []),
             operator: Operator(d[0]),
@@ -969,7 +970,7 @@ var grammar = {
     {"name": "lvalue", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
         function(d, l) { return Identifier(d[0]); }
         },
-    {"name": "lvalue", "symbols": [(lexer.has("this_token") ? {type: "this_token"} : this_token)], "postprocess":  
+    {"name": "lvalue", "symbols": [(lexer.has("this_token") ? {type: "this_token"} : this_token)], "postprocess": 
         function (d) { return Literal(n.This, d[0]); }
         },
     {"name": "lvalue", "symbols": ["lvalue", "_", (lexer.has("dot") ? {type: "dot"} : dot), "_", (lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
@@ -1074,7 +1075,7 @@ var grammar = {
     {"name": "argumentlist$ebnf$3$subexpression$1", "symbols": ["_", (lexer.has("comma") ? {type: "comma"} : comma)]},
     {"name": "argumentlist$ebnf$3", "symbols": ["argumentlist$ebnf$3", "argumentlist$ebnf$3$subexpression$1"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
     {"name": "argumentlist", "symbols": ["_", "argumentlist$ebnf$1", "argumentlist$ebnf$2", "argument", "argumentlist$ebnf$3"], "postprocess": 
-        function(d) { 
+        function(d) {
             let args = [];
             if (d[2])
             {
@@ -1138,11 +1139,29 @@ var grammar = {
         function(d) { return CompoundLiteral(n.ConstFormatString, d, null); }
         },
     {"name": "constant", "symbols": ["const_number"], "postprocess": id},
-    {"name": "constant", "symbols": [(lexer.has("bool_token") ? {type: "bool_token"} : bool_token)], "postprocess":  
+    {"name": "constant", "symbols": [(lexer.has("bool_token") ? {type: "bool_token"} : bool_token)], "postprocess": 
         function (d) { return Literal(n.ConstBool, d[0]); }
         },
-    {"name": "constant", "symbols": [(lexer.has("nullptr_token") ? {type: "nullptr_token"} : nullptr_token)], "postprocess":  
+    {"name": "constant", "symbols": [(lexer.has("nullptr_token") ? {type: "nullptr_token"} : nullptr_token)], "postprocess": 
         function (d) { return Literal(n.ConstNullptr, d[0]); }
+        },
+    {"name": "const_number", "symbols": [(lexer.has("exponent_number") ? {type: "exponent_number"} : exponent_number)], "postprocess": 
+        function(d) { return Literal(n.ConstDouble, d[0]); }
+        },
+    {"name": "const_number", "symbols": [(lexer.has("exponent_number") ? {type: "exponent_number"} : exponent_number), {"literal":"f"}], "postprocess": 
+        function(d) { return Literal(n.ConstFloat, d[0]); }
+        },
+    {"name": "const_number", "symbols": [(lexer.has("dot") ? {type: "dot"} : dot), (lexer.has("exponent_number") ? {type: "exponent_number"} : exponent_number)], "postprocess": 
+        function(d) { return CompoundLiteral(n.ConstDouble, d, null); }
+        },
+    {"name": "const_number", "symbols": [(lexer.has("dot") ? {type: "dot"} : dot), (lexer.has("exponent_number") ? {type: "exponent_number"} : exponent_number), {"literal":"f"}], "postprocess": 
+        function(d) { return CompoundLiteral(n.ConstFloat, d, null); }
+        },
+    {"name": "const_number", "symbols": [(lexer.has("number") ? {type: "number"} : number), (lexer.has("dot") ? {type: "dot"} : dot), (lexer.has("exponent_number") ? {type: "exponent_number"} : exponent_number)], "postprocess": 
+        function(d) { return CompoundLiteral(n.ConstDouble, d, null); }
+        },
+    {"name": "const_number", "symbols": [(lexer.has("number") ? {type: "number"} : number), (lexer.has("dot") ? {type: "dot"} : dot), (lexer.has("exponent_number") ? {type: "exponent_number"} : exponent_number), {"literal":"f"}], "postprocess": 
+        function(d) { return CompoundLiteral(n.ConstFloat, d, null); }
         },
     {"name": "unary_operator", "symbols": [(lexer.has("op_binary_sum") ? {type: "op_binary_sum"} : op_binary_sum)], "postprocess": id},
     {"name": "unary_operator", "symbols": [(lexer.has("op_unary") ? {type: "op_unary"} : op_unary)], "postprocess": id},
@@ -1309,10 +1328,10 @@ var grammar = {
     {"name": "func_qualifier$subexpression$1", "symbols": [(lexer.has("final_token") ? {type: "final_token"} : final_token)]},
     {"name": "func_qualifier$subexpression$1", "symbols": [(lexer.has("override_token") ? {type: "override_token"} : override_token)]},
     {"name": "func_qualifier$subexpression$1", "symbols": [(lexer.has("property_token") ? {type: "property_token"} : property_token)]},
-    {"name": "func_qualifier", "symbols": ["func_qualifier$subexpression$1"], "postprocess":  
+    {"name": "func_qualifier", "symbols": ["func_qualifier$subexpression$1"], "postprocess": 
         function (d) { return d[0][0]; }
         },
-    {"name": "func_qualifier", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess":  
+    {"name": "func_qualifier", "symbols": [(lexer.has("identifier") ? {type: "identifier"} : identifier)], "postprocess": 
         function (d) { return d[0].value; }
         },
     {"name": "access_specifier$subexpression$1", "symbols": [{"literal":"private"}]},
@@ -1363,7 +1382,7 @@ var grammar = {
     {"name": "__", "symbols": ["_", (lexer.has("prepocessor_statement") ? {type: "prepocessor_statement"} : prepocessor_statement), "_"], "postprocess": 
         function (d) { return null; }
         },
-    {"name": "case_label", "symbols": [(lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "case_label", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess":  
+    {"name": "case_label", "symbols": [(lexer.has("lparen") ? {type: "lparen"} : lparen), "_", "case_label", "_", (lexer.has("rparen") ? {type: "rparen"} : rparen)], "postprocess": 
         function (d) { return d[2]; }
         },
     {"name": "case_label$ebnf$1$subexpression$1", "symbols": [{"literal":"-"}, "_"]},
