@@ -364,9 +364,11 @@ function TickQueues()
 {
     IsServicingQueues = true;
 
+    // let startTime = performance.now();
+
     if (LoadQueueIndex < LoadQueue.length)
     {
-        for (let n = 0; n < 10 && LoadQueueIndex < LoadQueue.length; ++n, ++LoadQueueIndex)
+        for (let n = 0; n < 200 && LoadQueueIndex < LoadQueue.length; ++n, ++LoadQueueIndex)
         {
             if (!LoadQueue[LoadQueueIndex].loaded)
                 scriptfiles.UpdateModuleFromDisk(LoadQueue[LoadQueueIndex]);
@@ -380,7 +382,7 @@ function TickQueues()
     }
     else if (ParseQueueIndex < ParseQueue.length)
     {
-        for (let n = 0; n < 5 && ParseQueueIndex < ParseQueue.length; ++n, ++ParseQueueIndex)
+        for (let n = 0; n < 10 && ParseQueueIndex < ParseQueue.length; ++n, ++ParseQueueIndex)
         {
             if (!ParseQueue[ParseQueueIndex].parsed)
                 scriptfiles.ParseModule(ParseQueue[ParseQueueIndex]);
@@ -397,7 +399,7 @@ function TickQueues()
     {
         if (CanResolveModules())
         {
-            for (let n = 0; n < 5 && PostProcessTypesQueueIndex < PostProcessTypesQueue.length; ++n, ++PostProcessTypesQueueIndex)
+            for (let n = 0; n < 50 && PostProcessTypesQueueIndex < PostProcessTypesQueue.length; ++n, ++PostProcessTypesQueueIndex)
             {
                 if (!PostProcessTypesQueue[PostProcessTypesQueueIndex].typesPostProcessed)
                     scriptfiles.PostProcessModuleTypes(PostProcessTypesQueue[PostProcessTypesQueueIndex]);
@@ -414,7 +416,7 @@ function TickQueues()
     {
         if (CanResolveModules())
         {
-            for (let n = 0; n < 1 && ResolveQueueIndex < ResolveQueue.length; ++n, ++ResolveQueueIndex)
+            for (let n = 0; n < 20 && ResolveQueueIndex < ResolveQueue.length; ++n, ++ResolveQueueIndex)
             {
                 if (!ResolveQueue[ResolveQueueIndex].resolved)
                 {
@@ -430,12 +432,31 @@ function TickQueues()
         ResolveQueueIndex = 0;
     }
 
-    if (LoadQueue.length != 0 || ParseQueue.length != 0 || PostProcessTypesQueue.length != 0)
+    // let endTime = performance.now();
+    // if (endTime - startTime > 40.0)
+    // {
+    //     let type = "";
+    //     if (LoadQueue.length != 0)
+    //         type = "Load";
+    //     else if (ParseQueue.length != 0)
+    //         type = "Parse";
+    //     else if (PostProcessTypesQueue.length != 0)
+    //         type = "PostProcess";
+    //     else if (ResolveQueue.length != 0)
+    //         type = "Resolve";
+
+    //     console.log("Servicing queues took "+(endTime - startTime)+" ms for "+type);
+    // }
+
+    if (LoadQueue.length != 0 || ParseQueue.length != 0 || PostProcessTypesQueue.length != 0 || ResolveQueue.length != 0)
+    {
         setTimeout(TickQueues, 1);
-    else if (ResolveQueue.length != 0)
-        setTimeout(TickQueues, 2);
+    }
     else
+    {
         IsServicingQueues = false;
+        // console.log("Finished servicing queues");
+    }
 }
 
 function DirtyAllDiagnostics()

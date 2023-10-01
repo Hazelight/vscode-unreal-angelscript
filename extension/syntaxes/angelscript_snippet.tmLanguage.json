@@ -8,7 +8,7 @@
         },
         {
             "name": "support.type.struct.angelscript",
-            "match": "\\b(FVector|FVector2D|TArray|TMap|TSet|FRotator|FQuat|FString|FName|FText|FTransform|TPerPlayer|TSubclassOf|TInstigated|TSoftObjectPtr|TSoftClassPtr)\\b"
+            "match": "\\b(FVector|FVector2D|TArray|TMap|TSet|FRotator|FQuat|FString|FName|FText|FTransform|TPerPlayer|TSubclassOf|TInstigated|TSoftObjectPtr|TSoftClassPtr|TWeakObjectPtr|TOptional)\\b"
         },
         {
             "name": "support.type.struct.angelscript",

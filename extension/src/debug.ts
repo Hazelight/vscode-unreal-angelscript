@@ -48,7 +48,7 @@ export class ASDebugSession extends LoggingDebugSession
 
     private _rootPaths = this.gatherRootPaths();
 
-    hostname = "localhost";
+    hostname = "127.0.0.1";
     port = 27099;
 
     // Version of this debug adapter.

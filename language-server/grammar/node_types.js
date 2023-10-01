@@ -57,7 +57,7 @@ module.exports = {
     DelegateDecl: indexed ? i++ : "DelegateDecl",
     EventDecl: indexed ? i++ : "EventDecl",
     ConstructorDecl: indexed ? i++ : "ConstructorDecl",
-    DestructorDecl: indexed ? i++ : "ConstructorDecl",
+    DestructorDecl: indexed ? i++ : "DestructorDecl",
 
     ForLoop: indexed ? i++ : "ForLoop",
     ForEachLoop: indexed ? i++ : "ForEachLoop",

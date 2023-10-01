@@ -370,9 +370,11 @@
         "compile": "tsc -b",
         "watch": "tsc -b -w",
         "postinstall": "cd extension && npm install && cd ../language-server && npm install && cd ..",
-        "grammar:compile": "cd language-server/grammar && nearleyc angelscript.ne -o angelscript.js && nearleyc grammar_statement.ne -o grammar_statement.js && nearleyc grammar_class_statement.ne -o grammar_class_statement.js && nearleyc grammar_global_statement.ne -o grammar_global_statement.js && nearleyc grammar_enum_statement.ne -o grammar_enum_statement.js",
-        "grammar:test": "nearley-test language-server/grammar/grammar_statement.js -q <test.as",
-        "grammar:test_verbose": "nearley-test language-server/grammar/grammar_statement.js <test.as"
+        "pegjs:compile": "cd language-server/pegjs && peggy angelscript.pegjs --allowed-start-rules start,start_global,start_class,start_enum",
+        "pegjs:test": "cd language-server/pegjs && peggy angelscript.pegjs --allowed-start-rules start,start_global,start_class,start_enum --trace --test-file test.as -S start",
+        "nearley:compile": "cd language-server/grammar && nearleyc angelscript.ne -o angelscript.js && nearleyc grammar_statement.ne -o grammar_statement.js && nearleyc grammar_class_statement.ne -o grammar_class_statement.js && nearleyc grammar_global_statement.ne -o grammar_global_statement.js && nearleyc grammar_enum_statement.ne -o grammar_enum_statement.js",
+        "nearley:test": "nearley-test language-server/grammar/grammar_statement.js -q <test.as",
+        "nearley:test_verbose": "nearley-test language-server/grammar/grammar_statement.js <test.as"
     },
     "devDependencies": {
         "@types/mocha": "^8.2.2",
@@ -381,6 +383,7 @@
         "@typescript-eslint/parser": "^4.21.0",
         "eslint": "^7.23.0",
         "mocha": "^8.3.2",
+        "peggy": "^3.0.2",
         "typescript": "^4.6.2"
     }
 }

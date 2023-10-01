@@ -23,6 +23,9 @@ let parser_class_statement_initial = parser_class_statement.save();
 let parser_global_statement_initial = parser_global_statement.save();
 let parser_enum_statement_initial = parser_enum_statement.save();
 
+let USE_PEGGY = true;
+let PEGGY_GRAMMAR = require("../pegjs/angelscript.js")
+
 export interface ASSettings
 {
     automaticImports : boolean,
@@ -761,7 +764,19 @@ export function ParseModule(module : ASModule, debug : boolean = false)
     ParseScopeIntoStatements(module.rootscope);
 
     // Parse each statement into an abstract syntax tree
+    // USE_PEGGY = false;
+    // module.cachedStatements = [];
+
+    // let startTime_nearley = performance.now()
+    // ParseAllStatements(module.rootscope, debug);
+    // let endTime_nearley = performance.now()
+
+    // USE_PEGGY = true;
+    // module.cachedStatements = [];
+
+    // let startTime_peggy = performance.now()
     ParseAllStatements(module.rootscope, debug);
+    // let endTime_peggy = performance.now()
 
     // Traverse syntax trees to lift out functions, variables and imports during this first parse step
     GenerateTypeInformation(module.rootscope);
@@ -769,6 +784,9 @@ export function ParseModule(module : ASModule, debug : boolean = false)
     //let parseTime = performance.now() - startTime;
     //if (parseTime > 50)
         //console.log("Parse "+module.modulename+" " + (parseTime) + " ms - "+module.loadedFromCacheCount+" cached, "+module.parsedStatementCount+" parsed")
+
+    // if (endTime_peggy - startTime_peggy > 10 || endTime_nearley - startTime_nearley > 40)
+    //     console.log("Parse "+module.modulename+" took "+(endTime_peggy-startTime_peggy)+" ms with peggy, "+(endTime_nearley-startTime_nearley)+" ms with nearley");
 }
 
 // Parse the specified module and all its unparsed dependencies
@@ -4755,6 +4773,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         case node_types.ReturnStatement:
         case node_types.DefaultStatement:
         case node_types.SwitchStatement:
+        case node_types.CommaExpression:
         {
             // Detect in each subexpression
             for (let child of node.children)
@@ -5038,7 +5057,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
 
     // We might be typing a typename at the start of a declaration, which accidentally got parsed as an identifier due to incompleteness
     let isTypingSingleIdentifier = (node == statement.ast && scope.module.isEditingInside(statement.start_offset + node.start, statement.end_offset + node.end + 2));
-    if (isTypingSingleIdentifier)
+    if (isTypingSingleIdentifier || node.maybeTypename)
     {
         // It could be a type as well
         let symType = typedb.LookupType(scope.getNamespace(), node.value);
@@ -6362,82 +6381,129 @@ export function ParseStatement(scopetype : ASScopeType, statement : ASStatement,
     statement.ast = null;
     statement.parsedType = scopetype;
 
-    let parser : nearley.Parser = null;
-    switch (scopetype)
+    if (USE_PEGGY)
     {
-        default:
-        case ASScopeType.Global:
-        case ASScopeType.Namespace:
-            parser = parser_global_statement;
-            parser.restore(parser_global_statement_initial);
-        break;
-        case ASScopeType.Class:
-            parser = parser_class_statement;
-            parser.restore(parser_class_statement_initial);
-        break;
-        case ASScopeType.Enum:
-            parser = parser_enum_statement;
-            parser.restore(parser_enum_statement_initial);
-        break;
-        case ASScopeType.Function:
-        case ASScopeType.LiteralAsset:
-        case ASScopeType.Code:
-            parser = parser_statement;
-            parser.restore(parser_statement_initial);
-        break
-    }
-
-    let parseError = false;
-    try
-    {
-        parser.feed(statement.content);
-    }
-    catch (error)
-    {
-        // Debugging for unparseable statements
-        if (debug)
+        let startRule : string = null;
+        switch (scopetype)
         {
-            console.log("Error Parsing Statement: ");
-            console.log(statement.content);
-            console.log(error);
-            throw "ParseError";
+            default:
+            case ASScopeType.Global:
+            case ASScopeType.Namespace:
+                startRule = "start_global";
+            break;
+            case ASScopeType.Class:
+                startRule = "start_class";
+            break;
+            case ASScopeType.Enum:
+                startRule = "start_enum";
+            break;
+            case ASScopeType.Function:
+            case ASScopeType.LiteralAsset:
+            case ASScopeType.Code:
+                startRule = "start";
+            break;
         }
 
-        parseError = true;
-        statement.parseError = true;
-    }
-
-    if (!parseError)
-    {
-        if (parser.results.length == 0)
+        let parseError = false;
+        try
         {
-            statement.ast = null;
+            statement.ast = PEGGY_GRAMMAR.parse(statement.content, {
+                startRule: startRule
+            });
+            statement.parseError = false;
+        }
+        catch (error)
+        {
+            // Debugging for unparseable statements
+            if (debug)
+            {
+                console.log("Error Parsing Statement: ");
+                console.log(statement.content);
+                console.log(error);
+            }
+
+            parseError = true;
             statement.parseError = true;
         }
-        else if (parser.results.length == 1)
+    }
+    else
+    {
+        let parser : nearley.Parser = null;
+        switch (scopetype)
         {
-            // Unambiguous, take the first one
-            statement.ast = parser.results[0];
-            statement.parseError = false;
+            default:
+            case ASScopeType.Global:
+            case ASScopeType.Namespace:
+                parser = parser_global_statement;
+                parser.restore(parser_global_statement_initial);
+            break;
+            case ASScopeType.Class:
+                parser = parser_class_statement;
+                parser.restore(parser_class_statement_initial);
+            break;
+            case ASScopeType.Enum:
+                parser = parser_enum_statement;
+                parser.restore(parser_enum_statement_initial);
+            break;
+            case ASScopeType.Function:
+            case ASScopeType.LiteralAsset:
+            case ASScopeType.Code:
+                parser = parser_statement;
+                parser.restore(parser_statement_initial);
+            break;
         }
-        else
+
+        let parseError = false;
+        try
         {
-            // We have some simple disambiguation rules to apply first
-            statement.ast = DisambiguateStatement(statement, parser.results);
-            statement.parseError = false;
-
-            // If the disambiguation failed, take the first one anyway
-            if (!statement.ast)
+            parser.feed(statement.content);
+        }
+        catch (error)
+        {
+            // Debugging for unparseable statements
+            if (debug)
             {
-                statement.ast = parser.results[0];
+                console.log("Error Parsing Statement: ");
+                console.log(statement.content);
+                console.log(error);
+            }
 
-                // Debugging for ambiguous statements
-                if (debug)
+            parseError = true;
+            statement.parseError = true;
+        }
+
+        if (!parseError)
+        {
+            if (parser.results.length == 0)
+            {
+                statement.ast = null;
+                statement.parseError = true;
+            }
+            else if (parser.results.length == 1)
+            {
+                // Unambiguous, take the first one
+                statement.ast = parser.results[0];
+                statement.parseError = false;
+            }
+            else
+            {
+                // We have some simple disambiguation rules to apply first
+                statement.ast = DisambiguateStatement(statement, parser.results);
+                statement.parseError = false;
+
+                // If the disambiguation failed, take the first one anyway
+                if (!statement.ast)
                 {
-                    console.log("Ambiguous Statement: ");
-                    console.log(statement.content);
-                    console.dir(parser.results, {depth:null});
-                    throw "Ambiguous!";
+                    statement.ast = parser.results[0];
+
+                    // Debugging for ambiguous statements
+                    if (debug)
+                    {
+                        console.log("Ambiguous Statement: ");
+                        console.log(statement.content);
+                        console.dir(parser.results, {depth:null});
+                        throw "Ambiguous!";
+                    }
                 }
             }
         }
