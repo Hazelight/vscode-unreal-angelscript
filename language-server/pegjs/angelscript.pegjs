@@ -1299,12 +1299,12 @@ struct_decl
 
 class_decl
     = macro:(@uclass_macro _)? &"c" "class" _ name:identifier superclass:(
-        _ ":" _ @(
+        _ ":" @(_ @(
             identifier_name (_ ":" ":" _ identifier_name)*
             {
                 return Identifier(range(), text());
             }
-        )
+        ))?
     )?
     {
         let node = Compound(range(), n.ClassDefinition, null);
