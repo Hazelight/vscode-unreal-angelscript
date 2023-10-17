@@ -160,10 +160,7 @@ export function* FindReferences(uri : string, position : Position) : any
     for (let checkmodule of considerModules)
     {
         // Count how much parsing we're doing
-        if (!checkmodule.resolved)
-            parseCount += 100;
-        else
-            parseCount += 1;
+        parseCount += 1;
 
         // Make sure the module is parsed and resolved
         scriptfiles.ParseModuleAndDependencies(checkmodule);
@@ -527,10 +524,7 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
                 continue;
 
             // Count how much parsing we're doing
-            if (!checkmodule.resolved)
-                parseCount += 100;
-            else
-                parseCount += 1;
+            parseCount += 1;
 
             // Make sure the module is parsed and resolved
             scriptfiles.ParseModuleAndDependencies(checkmodule);

@@ -471,16 +471,19 @@ function DirtyAllDiagnostics()
 
     function UpdateDiagnostics()
     {
-        if (moduleIndex >= moduleList.length)
+        for (let i = 0; i < 20; ++i)
         {
-            clearInterval(timerHandle);
-            return;
-        }
+            if (moduleIndex >= moduleList.length)
+            {
+                clearInterval(timerHandle);
+                return;
+            }
 
-        let module = moduleList[moduleIndex];
-        if (module && module.resolved)
-            scriptdiagnostics.UpdateScriptModuleDiagnostics(module);
-        moduleIndex += 1;
+            let module = moduleList[moduleIndex];
+            if (module && module.resolved)
+                scriptdiagnostics.UpdateScriptModuleDiagnostics(module);
+            moduleIndex += 1;
+        }
     }
 }
 
@@ -498,20 +501,22 @@ function ReResolveAllModules()
 
     function ReResolveModules()
     {
-        if (moduleIndex >= moduleList.length)
+        for (let i = 0; i < 20; ++i)
         {
-            clearInterval(timerHandle);
-            return;
-        }
+            if (moduleIndex >= moduleList.length)
+            {
+                clearInterval(timerHandle);
+                return;
+            }
 
-        let module = moduleList[moduleIndex];
-        if (module && !module.resolved)
-        {
-            scriptfiles.ResolveModule(module);
-            scriptdiagnostics.UpdateScriptModuleDiagnostics(module);
+            let module = moduleList[moduleIndex];
+            if (module && !module.resolved)
+            {
+                scriptfiles.ResolveModule(module);
+                scriptdiagnostics.UpdateScriptModuleDiagnostics(module);
+            }
+            moduleIndex += 1;
         }
-
-        moduleIndex += 1;
     }
 }
 
