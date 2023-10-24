@@ -176,11 +176,11 @@ global_declaration
     / namespace_decl
     / asset_decl
     / macro:(@ufunction_macro _)? scope:(@("mixin" / "local") _)? decl:function_signature
-    {
-        decl.macro = macro;
-        decl.scoping = scope;
-        return decl;
-    }
+        {
+            decl.macro = macro;
+            decl.scoping = scope;
+            return decl;
+        }
     / var_decl
     / incomplete_var_decl
 
@@ -1082,7 +1082,35 @@ comment_documentation
     }
 
 function_signature
-    = ret:function_return name:identifier _ "(" params:parameter_list _ ")" quals:func_qualifiers
+    = ret:function_return name:identifier _ "("
+        params:(
+            // An incomplete parameter list is allowed if this is likely a function declaration
+            &{ return options.precedesBlock && !options.endsWithSemicolon; }
+            @parameter_list_incomplete
+            // Otherwise we require the first parameter to be complete
+            / &{ return !options.precedesBlock || options.endsWithSemicolon; }
+            @parameter_list
+        ) _ ")" quals:func_qualifiers
+    {
+        let node = Compound(range(), n.FunctionDecl, null);
+        node.name = name;
+        node.returntype = ret;
+        node.parameters = params;
+        node.qualifiers = quals;
+        return node;
+    }
+    / void_type __ name:identifier params:(_ "(" @params:parameter_list_incomplete _ ")")? // INCOMPLETE: Rest of the function signature isn't there yet
+    {
+        let node = Compound(range(), n.FunctionDecl, null);
+        node.name = name;
+        node.returntype = null;
+        node.parameters = params;
+        node.qualifiers = [];
+        return node;
+    }
+
+function_signature_incomplete
+    = ret:function_return name:identifier _ "(" params:parameter_list_incomplete _ ")" quals:func_qualifiers
     {
         let node = Compound(range(), n.FunctionDecl, null);
         node.name = name;
@@ -1277,13 +1305,13 @@ macro_value
     / macro_identifier
 
 delegate_decl
-    = &"d" "delegate" _ sig:function_signature
+    = &"d" "delegate" _ sig:function_signature_incomplete
     {
         return Compound(range(), n.DelegateDecl, [sig]);
     }
 
 event_decl
-    = &"e" "event" _ sig:function_signature
+    = &"e" "event" _ sig:function_signature_incomplete
     {
         return Compound(range(), n.EventDecl, [sig]);
     }

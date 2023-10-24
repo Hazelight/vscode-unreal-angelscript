@@ -6404,11 +6404,14 @@ export function ParseStatement(scopetype : ASScopeType, statement : ASStatement,
             break;
         }
 
+        let precedesBlock = statement.next && statement.next instanceof ASScope;
         let parseError = false;
         try
         {
             statement.ast = PEGGY_GRAMMAR.parse(statement.content, {
-                startRule: startRule
+                startRule: startRule,
+                precedesBlock: precedesBlock,
+                endsWithSemicolon: statement.endsWithSemicolon,
             });
             statement.parseError = false;
         }
