@@ -782,19 +782,25 @@ function peg$parse(input, options) {
         return tail.reduce(function (result, element) {
             if (element[0] == 0)
             {
-                return InnerCompound(
+                let expr = InnerCompound(
                     range(),
                     n.FunctionCall,
                     [result, element[1]]
                 );
+                // Need to include the ")" in the range
+                expr.end += 1;
+                return expr;
             }
             else if (element[0] == 1)
             {
-                return InnerCompound(
+                let expr = InnerCompound(
                     range(),
                     n.IndexOperator,
                     [result, element[1]]
                 );
+                // Need to include the "]" in the range
+                expr.end += 1;
+                return expr;
             }
             else if (element[0] == 2)
             {
