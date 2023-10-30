@@ -129,6 +129,11 @@
                     "type": "array",
                     "default": ["**/Saved/**", "**/.plastic/**"],
                     "description": "Glob patterns to ignore when searching for script files to parse."
+                },
+                "UnrealAngelscript.codeLenses.showCreateBlueprintClasses": {
+                    "type": "array",
+                    "default": ["AActor"],
+                    "description": "Script classes inheriting from the specified classes will have a 'Create Blueprint' prompt above them if they don't already have a blueprint implementation."
                 }
             }
         },

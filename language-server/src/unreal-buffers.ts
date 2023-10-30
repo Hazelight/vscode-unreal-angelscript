@@ -44,7 +44,10 @@ export enum MessageType
     FindAssets,
     DebugDatabaseSettings,
 
+    PingAlive,
+
     DebugServerVersion,
+    CreateBlueprint,
 }
 
 export class Message
@@ -177,7 +180,7 @@ export function buildDisconnect() : Buffer
     return msg;
 }
 
-export function buildOpenAssets(assets : Array<string>) : Buffer
+export function buildOpenAssets(assets : Array<string>, className : string) : Buffer
 {
     let head = Buffer.alloc(5);
     head.writeUInt8(MessageType.FindAssets, 4);
@@ -185,7 +188,18 @@ export function buildOpenAssets(assets : Array<string>) : Buffer
     let parts = [head, writeInt(1), writeInt(assets.length)];
     for (let asset of assets)
         parts.push(writeString(asset));
+    parts.push(writeString(className));
+    let msg = Buffer.concat(parts);
+    msg.writeUInt32LE(msg.length - 4, 0);
+    return msg;
+}
 
+export function buildCreateBlueprint(className : string) : Buffer
+{
+    let head = Buffer.alloc(5);
+    head.writeUInt8(MessageType.CreateBlueprint, 4);
+
+    let parts = [head, writeString(className)];
     let msg = Buffer.concat(parts);
     msg.writeUInt32LE(msg.length - 4, 0);
     return msg;

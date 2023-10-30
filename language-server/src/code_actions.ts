@@ -3,6 +3,7 @@ import * as typedb from "./database";
 import * as scriptfiles from "./as_parser";
 import * as scriptsymbols from "./symbols";
 import * as completion from "./parsed_completion";
+import { AllowCreateBlueprintForClass } from "./code_lenses";
 
 class CodeActionContext
 {
@@ -69,6 +70,9 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
 
     // Actions for generating delegate bind functions
     AddGenerateDelegateFunctionActions(context);
+
+    // Actions for method override snippets
+    AddCreateBlueprintActions(context);
 
     // Actions for method override snippets
     AddMethodOverrideSnippets(context);
@@ -466,6 +470,10 @@ function AddMethodOverrideSnippets(context : CodeActionContext)
         if (foundOverrides.has(method.name))
             return;
 
+        // Methods starting with underscore are internal and should be hidden
+        if (method.name.startsWith("_"))
+            return;
+
         // Ignore methods we've already overridden
         let existingSymbol = typeOfScope.findFirstSymbol(method.name, typedb.DBAllowSymbol.Functions);
         if (!existingSymbol || !existingSymbol.containingType)
@@ -495,6 +503,51 @@ function AddMethodOverrideSnippets(context : CodeActionContext)
         });
     });
 }
+
+function AddCreateBlueprintActions(context : CodeActionContext)
+{
+    if (!context.scope)
+        return;
+
+    let typeOfScope = context.scope.getParentType();
+    if (!typeOfScope || !typeOfScope.supertype)
+        return;
+
+    let validScope = false;
+    if (context.scope.scopetype == scriptfiles.ASScopeType.Class)
+    {
+        validScope = true;
+    }
+    // If we're inside the actual function declaration that's fine too
+    else if (context.scope.scopetype == scriptfiles.ASScopeType.Function)
+    {
+        if (context.statement && context.statement.ast && context.statement.ast.type == scriptfiles.node_types.FunctionDecl)
+        {
+            validScope = true;
+        }
+    }
+    if (!validScope)
+        return;
+
+    if (AllowCreateBlueprintForClass(typeOfScope))
+    {
+        let title = "Create Blueprint";
+        if (typeOfScope.inheritsFrom("UDataAsset"))
+            title = "Create Asset";
+
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.Empty,
+            title: title,
+            source: "angelscript",
+            command: {
+                title: title,
+                command: "angelscript.createBlueprint",
+                arguments: [typeOfScope.name],
+            }
+        });
+    }
+}
+
 
 function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : CodeAction, data : any)
 {

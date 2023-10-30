@@ -46,7 +46,10 @@ import * as typehierarchy from './type_hierarchy';
 import * as fs from 'fs';
 import * as glob from 'glob';
 
-import { Message, MessageType, readMessages, buildGoTo, buildDisconnect, buildOpenAssets } from './unreal-buffers';
+import {
+    Message, MessageType, readMessages, buildGoTo,
+    buildDisconnect, buildOpenAssets, buildCreateBlueprint
+} from './unreal-buffers';
 
 // Create a connection for the server. The connection uses Node's IPC as a transport
 let connection: Connection = createConnection(new IPCMessageReader(process), new IPCMessageWriter(process));
@@ -194,6 +197,7 @@ function connect_unreal() {
                     scriptSettings.floatIsFloat64 = msg.readBool();
                 if (version >= 3)
                     scriptSettings.useAngelscriptHaze = msg.readBool();
+                scriptlenses.GetCodeLensSettings().engineSupportsCreateBlueprint = (version >= 4);
             }
         }
     });
@@ -327,7 +331,7 @@ connection.onInitialize((_params): InitializeResult => {
                 resolveProvider: false
             },
             executeCommandProvider: {
-                commands: ["angelscript.openAssets"],
+                commands: ["angelscript.openAssets", "angelscript.createBlueprint"],
             },
             codeActionProvider: {
                 resolveProvider: true,
@@ -762,14 +766,27 @@ connection.onExecuteCommand(function (params : ExecuteCommandParams)
         if (params.arguments && params.arguments[0])
         {
             let argList = params.arguments as Array<any>;
+            let className = argList[0];
+
             let references = assets.GetAssetsImplementing(argList[0]);
             if (!references || references.length == 0)
                 return;
 
             if (unreal)
-                unreal.write(buildOpenAssets(references));
+                unreal.write(buildOpenAssets(references, className));
             else
                 connection.window.showErrorMessage("Cannot open asset: not connected to unreal editor.");
+        }
+    }
+    else if (params.command == "angelscript.createBlueprint")
+    {
+        if (params.arguments && params.arguments[0])
+        {
+            let className = params.arguments[0] as string;
+            if (unreal)
+                unreal.write(buildCreateBlueprint(className));
+            else
+                connection.window.showErrorMessage("Cannot create blueprint: not connected to unreal editor.");
         }
     }
 });
@@ -1061,6 +1078,9 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
     inlineValueSettings.showInlineValueForLocalVariables = settings.inlineValues.showInlineValueForLocalVariables;
     inlineValueSettings.showInlineValueForParameters = settings.inlineValues.showInlineValueForParameters;
     inlineValueSettings.showInlineValueForMemberAssignment = settings.inlineValues.showInlineValueForMemberAssignment;
+
+    let codeLensSettings = scriptlenses.GetCodeLensSettings();
+    codeLensSettings.showCreateBlueprintClasses = settings.codeLenses.showCreateBlueprintClasses;
 });
 
 function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : Array<InlayHint> | null
