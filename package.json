@@ -252,6 +252,11 @@
                 "command": "angelscript.paren",
                 "title": "Angelscript Parenthesis Completion",
                 "enablement": "false"
+            },
+            {
+                "command": "angelscript.saveAndCreateBlueprint",
+                "title": "Angelscript Save and Create Blueprint",
+                "enablement": "false"
             }
         ],
         "menus": {

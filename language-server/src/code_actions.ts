@@ -541,8 +541,8 @@ function AddCreateBlueprintActions(context : CodeActionContext)
             source: "angelscript",
             command: {
                 title: title,
-                command: "angelscript.createBlueprint",
-                arguments: [typeOfScope.name],
+                command: "angelscript.saveAndCreateBlueprint",
+                arguments: [context.module.uri, typeOfScope.name],
             }
         });
     }

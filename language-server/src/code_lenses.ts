@@ -157,8 +157,8 @@ function AddAssetImplementationsLense(scope : scriptfiles.ASScope, dbtype : type
                 range: Range.create(Position.create(lensLine, 0), Position.create(lensLine, 10000)),
                 command: <Command> {
                     title: "Create Asset",
-                    command: "angelscript.createBlueprint",
-                    arguments: [dbtype.name],
+                    command: "angelscript.saveAndCreateBlueprint",
+                    arguments: [scope.module.uri, dbtype.name],
                 }
             });
         }
@@ -179,8 +179,8 @@ function AddAssetImplementationsLense(scope : scriptfiles.ASScope, dbtype : type
             range: Range.create(Position.create(lensLine, 0), Position.create(lensLine, 10000)),
             command: <Command> {
                 title: message,
-                command: "angelscript.createBlueprint",
-                arguments: [dbtype.name],
+                command: "angelscript.saveAndCreateBlueprint",
+                arguments: [scope.module.uri, dbtype.name],
             }
         });
     }
