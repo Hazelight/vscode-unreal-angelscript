@@ -249,7 +249,7 @@ for_statement
         {
             return Compound(range(), n.ForLoop, loop ? [init, loop[0], loop[1], body] : [init, null, null, body]);
         }
-        / type:typename _ iterator:identifier _ ":" _ expr:optional_expression ")" body:optional_statement
+        / _ type:typename _ iterator:identifier _ ":" _ expr:optional_expression ")" body:optional_statement
         {
             return Compound(range(), n.ForEachLoop, [type, iterator, expr, body]);
         }

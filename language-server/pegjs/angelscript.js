@@ -3815,33 +3815,34 @@ function peg$parse(input, options) {
           }
           if (s5 === peg$FAILED) {
             s5 = peg$currPos;
-            s6 = peg$parsetypename();
-            if (s6 !== peg$FAILED) {
-              s7 = peg$parse_();
-              s8 = peg$parseidentifier();
-              if (s8 !== peg$FAILED) {
-                s9 = peg$parse_();
+            s6 = peg$parse_();
+            s7 = peg$parsetypename();
+            if (s7 !== peg$FAILED) {
+              s8 = peg$parse_();
+              s9 = peg$parseidentifier();
+              if (s9 !== peg$FAILED) {
+                s10 = peg$parse_();
                 if (input.charCodeAt(peg$currPos) === 58) {
-                  s10 = peg$c29;
+                  s11 = peg$c29;
                   peg$currPos++;
                 } else {
-                  s10 = peg$FAILED;
+                  s11 = peg$FAILED;
                   if (peg$silentFails === 0) { peg$fail(peg$e33); }
                 }
-                if (s10 !== peg$FAILED) {
-                  s11 = peg$parse_();
-                  s12 = peg$parseoptional_expression();
+                if (s11 !== peg$FAILED) {
+                  s12 = peg$parse_();
+                  s13 = peg$parseoptional_expression();
                   if (input.charCodeAt(peg$currPos) === 41) {
-                    s13 = peg$c19;
+                    s14 = peg$c19;
                     peg$currPos++;
                   } else {
-                    s13 = peg$FAILED;
+                    s14 = peg$FAILED;
                     if (peg$silentFails === 0) { peg$fail(peg$e23); }
                   }
-                  if (s13 !== peg$FAILED) {
-                    s14 = peg$parseoptional_statement();
+                  if (s14 !== peg$FAILED) {
+                    s15 = peg$parseoptional_statement();
                     peg$savedPos = s5;
-                    s5 = peg$f13(s6, s8, s12, s14);
+                    s5 = peg$f13(s7, s9, s13, s15);
                   } else {
                     peg$currPos = s5;
                     s5 = peg$FAILED;
