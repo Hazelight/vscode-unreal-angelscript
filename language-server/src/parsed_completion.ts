@@ -9,10 +9,13 @@ import * as specifiers from './specifiers';
 import { FormatFunctionDocumentation, FormatPropertyDocumentation } from './documentation';
 
 let CommonTypenames = new Set<string>([
-    "FVector", "FRotator", "FTransform", "FQuat"
+    "FVector", "FRotator", "FTransform", "FQuat",
+]);
+let CommonNamespaces = new Set<string>([
+    "Math",
 ]);
 let CommonTemplateTypes = new Set<string>(
-    ['TArray', 'TMap', 'TSet', 'TSubclassOf', 'TSoftObjectPtr', 'TSoftClassPtr', 'TInstigated', 'TPerPlayer'],
+    ['TArray', 'TMap', 'TSet', 'TSubclassOf', 'TSoftObjectPtr', 'TSoftClassPtr', 'TInstigated', 'TPerPlayer', 'TOptional'],
 );
 
 export interface CompletionSettings
@@ -58,7 +61,9 @@ namespace Sort
     export const GlobalProp_Expected = "d";
     export const Global = "k";
     export const Global_Expected = "d";
-    export const Typename = "f";
+    export const Typename_Common = "fa";
+    export const Typename_SameFile = "fb";
+    export const Typename = "fc";
     export const Typename_Expected = "3";
     export const Unimported = "x";
     export const Method_Override_Snippet = "0";
@@ -76,6 +81,7 @@ class CompletionContext
     completingSymbol: string = null;
     completingNode: any = null;
     priorExpression: any = null;
+    previousLineContent : string = null;
 
     priorType: typedb.DBType | typedb.DBNamespace = null;
     priorTypeWasNamespace : boolean = false;
@@ -116,6 +122,7 @@ class CompletionContext
 
     completionsMatchingExpected : Array<CompletionItem> = [];
     havePreselection : boolean = false;
+    forceCaseInsensitive : boolean = false;
 
     isTypeExpected(typename : string) : boolean
     {
@@ -272,7 +279,28 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
     if (!context.havePreselection)
         DeterminePreSelectedCompletion(context);
 
+    // Some completions force the entire completion list to be case-insensitivy for usability reasons
+    if (context.forceCaseInsensitive)
+        MakeCompletionsLowerCase(completions);
+
     return completions;
+}
+
+function MakeCompletionsLowerCase(completions : Array<CompletionItem>)
+{
+    for (let compl of completions)
+    {
+        if (compl.filterText)
+        {
+            compl.filterText = compl.filterText.toLowerCase();
+        }
+        else
+        {
+            let lowercaseLabel = compl.label.toLowerCase();
+            if (lowercaseLabel != compl.label)
+                compl.filterText = lowercaseLabel;
+        }
+    }
 }
 
 function DeterminePreSelectedCompletion(context: CompletionContext)
@@ -992,14 +1020,19 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                 "override", "final", "property", "private", "protected", "access"
             ], completions);
 
-            if (CanCompleteTo(context, "UPROPERTY"))
+            if (CanCompleteToOnlyStart(context, "UPROPERTY"))
             {
-                completions.push({
-                        label: "UPROPERTY",
-                        kind: CompletionItemKind.Keyword,
-                        commitCharacters: ["("],
-                        sortText: Sort.Keyword,
-                });
+                // Don't complete to a macro if there was already a macro on the previous line
+                if (!/[\r\n\s]*(UFUNCTION|UPROPERTY)\s*\(/.test(context.previousLineContent))
+                {
+                    completions.push({
+                            label: "UPROPERTY",
+                            kind: CompletionItemKind.Keyword,
+                            commitCharacters: ["("],
+                            sortText: Sort.Keyword,
+                    });
+                    context.forceCaseInsensitive = true;
+                }
             }
         }
 
@@ -1008,14 +1041,19 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         {
             if (!context.isRightExpression && !context.isSubExpression)
             {
-                if (CanCompleteTo(context, "UFUNCTION"))
+                if (CanCompleteToOnlyStart(context, "UFUNCTION"))
                 {
-                    completions.push({
-                            label: "UFUNCTION",
-                            kind: CompletionItemKind.Keyword,
-                            commitCharacters: ["("],
-                            sortText: Sort.Keyword,
-                    });
+                    // Don't complete to a macro if there was already a macro on the previous line
+                    if (!/[\r\n\s]*(UFUNCTION|UPROPERTY)\s*\(/.test(context.previousLineContent))
+                    {
+                        completions.push({
+                                label: "UFUNCTION",
+                                kind: CompletionItemKind.Keyword,
+                                commitCharacters: ["("],
+                                sortText: Sort.Keyword,
+                        });
+                        context.forceCaseInsensitive = true;
+                    }
                 }
             }
         }
@@ -1029,14 +1067,19 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                 "mixin", "property",
             ], completions)
 
-            if (CanCompleteTo(context, "UFUNCTION"))
+            if (CanCompleteToOnlyStart(context, "UFUNCTION"))
             {
-                completions.push({
-                        label: "UFUNCTION",
-                        kind: CompletionItemKind.Keyword,
-                        commitCharacters: ["("],
-                        sortText: Sort.Keyword,
-                });
+                // Don't complete to a macro if there was already a macro on the previous line
+                if (!/[\r\n\s]*(UFUNCTION|UPROPERTY)\s*\(/.test(context.previousLineContent))
+                {
+                    completions.push({
+                            label: "UFUNCTION",
+                            kind: CompletionItemKind.Keyword,
+                            commitCharacters: ["("],
+                            sortText: Sort.Keyword,
+                    });
+                    context.forceCaseInsensitive = true;
+                }
             }
         }
     }
@@ -1528,7 +1571,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                                 data: ["type", dbtype.name],
                                 commitCharacters: commitChars,
                                 filterText: GetSymbolFilterText(context, dbtype),
-                                sortText: Sort.Typename,
+                                sortText: GetTypenamePriority(context, dbtype),
                         };
 
                         if (context.expectedType == dbtype)
@@ -1558,7 +1601,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                             data: ["type", dbtype.name],
                             commitCharacters: commitChars,
                             filterText: GetSymbolFilterText(context, dbtype),
-                            sortText: Sort.Typename,
+                            sortText: GetTypenamePriority(context, dbtype),
                     };
 
                     if (context.maybeTypename && context.typenameExpected && context.typenameExpected == dbtype.name)
@@ -1604,7 +1647,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                         kind: kind,
                         data: ["namespace", namespace.getQualifiedNamespace()],
                         commitCharacters: commitChars,
-                        sortText: Sort.Typename,
+                        sortText: GetNamespacePriority(context, namespace),
                 };
 
                 if (namespace.isShadowingType() && context.expectedType && context.expectedType.name == namespace.name)
@@ -1790,6 +1833,22 @@ function GetSymbolFilterText(context : CompletionContext, symbol : typedb.DBSymb
     return [symbol.name, ...symbol.keywords].join(" ");
 }
 
+function GetTypenamePriority(context : CompletionContext, type : typedb.DBType) : string
+{
+    if (CommonTypenames.has(type.name))
+        return Sort.Typename_Common;
+    if (type.declaredModule == context.scope.module.modulename)
+        return Sort.Typename_SameFile;
+    return Sort.Typename;
+}
+
+function GetNamespacePriority(context : CompletionContext, namespace : typedb.DBNamespace) : string
+{
+    if (CommonNamespaces.has(namespace.name))
+        return Sort.Typename_Common;
+    return Sort.Typename;
+}
+
 function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : number) : CompletionContext
 {
     let context = new CompletionContext();
@@ -1839,6 +1898,18 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
 
     let candidates = ExtractExpressionPreceding(content, offset-contentOffset, ignoreTable);
     context.scope = asmodule.getScopeAt(offset);
+
+    // Record what was on the line before this line, it can help determine appropriate completions
+    let currentLine = asmodule.getPosition(offset).line;
+    if (currentLine > 0)
+    {
+        context.previousLineContent = asmodule.textDocument.getText(
+            Range.create(Position.create(currentLine-1, 0), Position.create(currentLine-1, 99999))
+        );
+    }
+
+    if (!context.previousLineContent)
+        context.previousLineContent = "";
 
     // Try to parse each candidate in the scope
     //  In reverse order, we prefer the longest candidate
