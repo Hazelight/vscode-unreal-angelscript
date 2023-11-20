@@ -63,7 +63,8 @@ namespace Sort
     export const Global_Expected = "d";
     export const Typename_Common = "fa";
     export const Typename_SameFile = "fb";
-    export const Typename = "fc";
+    export const Typename_NearbyUsage = "fc";
+    export const Typename = "fd";
     export const Typename_Expected = "3";
     export const Unimported = "x";
     export const Method_Override_Snippet = "0";
@@ -123,6 +124,7 @@ class CompletionContext
     completionsMatchingExpected : Array<CompletionItem> = [];
     havePreselection : boolean = false;
     forceCaseInsensitive : boolean = false;
+    nearbyTypenames = new Set<string>();
 
     isTypeExpected(typename : string) : boolean
     {
@@ -1839,6 +1841,8 @@ function GetTypenamePriority(context : CompletionContext, type : typedb.DBType) 
         return Sort.Typename_Common;
     if (type.declaredModule == context.scope.module.modulename)
         return Sort.Typename_SameFile;
+    if (context.nearbyTypenames.has(type.name))
+        return Sort.Typename_NearbyUsage;
     return Sort.Typename;
 }
 
@@ -2396,6 +2400,28 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
     else
     {
         context.completingSymbolLowerCase = "";
+    }
+
+    // Mark which types have been used as local variables in the current function,
+    // or as class members in the current class. This way we can prioritize them during completion
+    if (context.scope)
+    {
+        let inClass = context.scope.getParentType();
+        if (inClass)
+        {
+            inClass.forEachSymbol(function (symbol : typedb.DBSymbol)
+            {
+                if (symbol instanceof typedb.DBProperty)
+                    context.nearbyTypenames.add(symbol.typename);
+            }, false);
+        }
+
+        let functionScope = context.scope.getParentFunctionScope();
+        if (functionScope)
+        {
+            for (let localVariable of functionScope.variables)
+                context.nearbyTypenames.add(localVariable.typename);
+        }
     }
 
     return context;
