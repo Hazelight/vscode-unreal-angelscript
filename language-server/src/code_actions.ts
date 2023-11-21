@@ -1438,17 +1438,23 @@ function AddSwitchCaseActions(context : CodeActionContext)
         else if (caseStatement.ast.type != scriptfiles.node_types.CaseStatement)
             continue;
 
-        let labelNode = caseStatement.ast.children[0];
-        if (!labelNode || labelNode.type != scriptfiles.node_types.NamespaceAccess)
-            continue;
+        // Find all case nodes nested within this, can be multiple due to fallthrough
+        for (let caseNode = caseStatement.ast;
+            caseNode && (caseNode.type == scriptfiles.node_types.CaseStatement || caseNode.type == scriptfiles.node_types.DefaultCaseStatement);
+            caseNode = caseNode.children[1])
+        {
+            let labelNode = caseNode.children[0];
+            if (!labelNode || labelNode.type != scriptfiles.node_types.NamespaceAccess)
+                continue;
 
-        if (!labelNode.children[0] || !labelNode.children[0].value)
-            continue;
-        if (!labelNode.children[1] || !labelNode.children[1].value)
-            continue;
+            if (!labelNode.children[0] || !labelNode.children[0].value)
+                continue;
+            if (!labelNode.children[1] || !labelNode.children[1].value)
+                continue;
 
-        let label = labelNode.children[0].value + "::" + labelNode.children[1].value;
-        implementedCases.push(label);
+            let label = labelNode.children[0].value + "::" + labelNode.children[1].value;
+            implementedCases.push(label);
+        }
     }
 
     // Check if there are any missing cases left
