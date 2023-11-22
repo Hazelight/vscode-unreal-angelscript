@@ -2893,13 +2893,19 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
         // 0.f
         case node_types.ConstFloat:
         {
-            return typedb.GetTypeByName("float");
+            if (ScriptSettings.floatIsFloat64)
+                return typedb.GetTypeByName("float32");
+            else
+                return typedb.GetTypeByName("float");
         }
         break;
         // 0.0
         case node_types.ConstDouble:
         {
-            return typedb.GetTypeByName("double");
+            if (ScriptSettings.floatIsFloat64)
+                return typedb.GetTypeByName("float");
+            else
+                return typedb.GetTypeByName("double");
         }
         // 0
         case node_types.ConstInteger:
@@ -3419,11 +3425,19 @@ function ResolveTypeFromOperator(scope : ASScope, leftType : typedb.DBType, righ
     {
         if (leftType.name == "double")
             return leftType;
+        if (leftType.name == "float64")
+            return leftType;
         if (rightType.name == "double")
+            return rightType;
+        if (rightType.name == "float64")
             return rightType;
         if (leftType.name == "float")
             return leftType;
         if (rightType.name == "float")
+            return rightType;
+        if (leftType.name == "float32")
+            return leftType;
+        if (rightType.name == "float32")
             return rightType;
         return leftType;
     }
@@ -3887,14 +3901,24 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
         // this and other constants
         case node_types.This: return scope.getParentType(); break;
         case node_types.ConstBool: return typedb.GetTypeByName("bool"); break;
-        case node_types.ConstDouble: return typedb.GetTypeByName("double"); break;
+        case node_types.ConstDouble:
+            if (ScriptSettings.floatIsFloat64)
+                return typedb.GetTypeByName("float");
+            else
+                return typedb.GetTypeByName("double");
+        break;
         case node_types.ConstInteger:
         case node_types.ConstHexInteger:
         case node_types.ConstOctalInteger:
         case node_types.ConstBinaryInteger:
             return typedb.GetTypeByName("int");
         break;
-        case node_types.ConstFloat: return typedb.GetTypeByName("float"); break;
+        case node_types.ConstFloat:
+            if (ScriptSettings.floatIsFloat64)
+                return typedb.GetTypeByName("float32");
+            else
+                return typedb.GetTypeByName("float");
+        break;
         case node_types.ConstName: return typedb.GetTypeByName("FName"); break;
         case node_types.ConstString: return typedb.GetTypeByName("FString"); break;
         case node_types.ConstNullptr: return typedb.GetTypeByName("UObject"); break;
