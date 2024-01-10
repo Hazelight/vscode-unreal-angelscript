@@ -202,6 +202,7 @@ statement
     / for_statement
     / case_statement
     / default_case_statement
+    / fallthrough_statement
     / var_decl
     / assignment
     / incomplete_var_decl
@@ -336,6 +337,12 @@ break_statement
     = &"b" token:"break"
     {
         return Literal(range(), n.BreakStatement, token);
+    }
+
+fallthrough_statement
+    = &"f" token:"fallthrough"
+    {
+        return Literal(range(), n.FallthroughStatement, token);
     }
 
 while_statement
@@ -996,6 +1003,7 @@ keyword
         "false"
         / "final"
         / "for"
+        / "fallthrough"
     )
     / &"a" @(
         "access"
