@@ -944,7 +944,7 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
     if (!context.isRightExpression && !context.isSubExpression)
     {
         AddCompletionsFromKeywordList(context, [
-            "const", "case", "default",
+            "const", "case", "default", "fallthrough",
         ], completions);
     }
 
