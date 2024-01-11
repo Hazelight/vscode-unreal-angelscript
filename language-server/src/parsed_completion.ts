@@ -919,6 +919,55 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
 {
     let inFunctionBody = !context.scope || context.scope.isInFunctionBody();
 
+    let scopeType = context.scope ? context.scope.getParentType() : null;
+    let isInClass = (context.scope && context.scope.scopetype == scriptfiles.ASScopeType.Class) && scopeType && !scopeType.isStruct;
+    let isInStruct = (context.scope && context.scope.scopetype == scriptfiles.ASScopeType.Class) && scopeType && scopeType.isStruct;
+
+    let isInSwitch = false;
+    let isInLoop = false;
+
+    let checkScope = context.scope;
+    while (checkScope)
+    {
+        if (checkScope.previous && checkScope.previous instanceof scriptfiles.ASStatement)
+        {
+            let heading = checkScope.previous;
+            if (heading.ast)
+            {
+                if (heading.ast.type == scriptfiles.node_types.SwitchStatement)
+                {
+                    isInSwitch = true;
+                }
+                else if (
+                    heading.ast.type == scriptfiles.node_types.ForLoop
+                    || heading.ast.type == scriptfiles.node_types.ForEachLoop
+                    || heading.ast.type == scriptfiles.node_types.WhileLoop
+                )
+                {
+                    isInLoop = true;
+                }
+            }
+        }
+
+        if (checkScope.element_head && checkScope.element_head instanceof scriptfiles.ASStatement)
+        {
+            let heading = checkScope.element_head;
+            if (heading.ast)
+            {
+                if (
+                    heading.ast.type == scriptfiles.node_types.ForLoop
+                    || heading.ast.type == scriptfiles.node_types.ForEachLoop
+                )
+                {
+                    isInLoop = true;
+                    break;
+                }
+            }
+        }
+
+        checkScope = checkScope.parentscope;
+    }
+
     AddCompletionsFromKeywordList(context, [
         "auto"
     ], completions);
@@ -944,8 +993,44 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
     if (!context.isRightExpression && !context.isSubExpression)
     {
         AddCompletionsFromKeywordList(context, [
-            "const", "case", "default", "fallthrough",
+            "const",
         ], completions);
+
+        if (isInSwitch)
+        {
+            if (CanCompleteTo(context, "case"))
+            {
+                completions.push({
+                        label: "case",
+                        kind: CompletionItemKind.Keyword,
+                        commitCharacters: [" "],
+                        sortText: Sort.Keyword,
+                });
+            }
+
+            if (CanCompleteTo(context, "fallthrough"))
+            {
+                completions.push({
+                        label: "fallthrough",
+                        kind: CompletionItemKind.Keyword,
+                        commitCharacters: [";"],
+                        sortText: Sort.Keyword,
+                });
+            }
+        }
+
+        if (isInClass || isInSwitch)
+        {
+            if (CanCompleteTo(context, "default"))
+            {
+                completions.push({
+                        label: "default",
+                        kind: CompletionItemKind.Keyword,
+                        commitCharacters: [" ", ":"],
+                        sortText: Sort.Keyword,
+                });
+            }
+        }
     }
 
     if ((!context.scope || context.scope.scopetype == scriptfiles.ASScopeType.Global || context.scope.scopetype == scriptfiles.ASScopeType.Namespace)
@@ -992,8 +1077,34 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
         if (!context.isRightExpression && !context.isSubExpression)
         {
             AddCompletionsFromKeywordList(context, [
-                "if", "else", "while", "for", "break", "continue", "switch",
+                "if", "else", "while", "for", "switch",
             ], completions);
+
+            if (isInLoop)
+            {
+                if (CanCompleteTo(context, "continue"))
+                {
+                    completions.push({
+                            label: "continue",
+                            kind: CompletionItemKind.Keyword,
+                            commitCharacters: [";"],
+                            sortText: Sort.Keyword,
+                    });
+                }
+            }
+
+            if (isInSwitch || isInLoop)
+            {
+                if (CanCompleteTo(context, "break"))
+                {
+                    completions.push({
+                            label: "break",
+                            kind: CompletionItemKind.Keyword,
+                            commitCharacters: [";"],
+                            sortText: Sort.Keyword,
+                    });
+                }
+            }
 
             completions.push({
                     label: "return",
