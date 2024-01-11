@@ -241,7 +241,7 @@ function peg$parse(input, options) {
   var peg$FAILED = {};
   var peg$source = options.grammarSource;
 
-  var peg$startRuleFunctions = { start: peg$parsestart };
+  var peg$startRuleFunctions = { start: peg$parsestart, start_global: peg$parsestart_global, start_class: peg$parsestart_class, start_enum: peg$parsestart_enum };
   var peg$startRuleFunction = peg$parsestart;
 
   var peg$c0 = "/";
