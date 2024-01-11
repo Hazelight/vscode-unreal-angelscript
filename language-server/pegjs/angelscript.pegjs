@@ -241,7 +241,7 @@ for_statement
         loop:(
             _ ";" _ cond:optional_expression
             iter:(
-                ";" _ @for_comma_expression_list
+                ";" @(_ @for_comma_expression_list)?
             )?
             {
                 return [cond, iter];
