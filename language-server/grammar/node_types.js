@@ -44,6 +44,7 @@ module.exports = {
     DefaultCaseStatement: indexed ? i++ : "DefaultCaseStatement",
     ContinueStatement: indexed ? i++ : "ContinueStatement",
     BreakStatement: indexed ? i++ : "BreakStatement",
+    FallthroughStatement: indexed ? i++ : "FallthroughStatement",
 
     StructDefinition: indexed ? i++ : "StructDefinition",
     ClassDefinition: indexed ? i++ : "ClassDefinition",
