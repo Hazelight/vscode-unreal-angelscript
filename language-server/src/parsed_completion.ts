@@ -68,6 +68,7 @@ namespace Sort
     export const Typename_Expected = "3";
     export const Unimported = "x";
     export const Method_Override_Snippet = "0";
+    export const Namespace_Unexpected = "z";
     export const Snippet = "z";
     export const Math_Shortcut = "z";
 };
@@ -1959,6 +1960,8 @@ function GetTypenamePriority(context : CompletionContext, type : typedb.DBType) 
 
 function GetNamespacePriority(context : CompletionContext, namespace : typedb.DBNamespace) : string
 {
+    if (context.scope && context.scope.scopetype == scriptfiles.ASScopeType.Class)
+        return Sort.Namespace_Unexpected;
     if (CommonNamespaces.has(namespace.name))
         return Sort.Typename_Common;
     return Sort.Typename;
@@ -3893,7 +3896,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
 
             completions.push({
                 label: method.returnType+" "+method.name+"(...)",
-                filterText: method.name+"(...)",
+                filterText: method.name,
                 insertText: complStr+"{\n"+currentIndent+superStr,
                 kind: CompletionItemKind.Snippet,
                 data: ["decl_snippet", method.containingType.name, method.name, method.id],
