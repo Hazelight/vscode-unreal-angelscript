@@ -1017,7 +1017,7 @@ connection.onDidOpenTextDocument(function (params : DidOpenTextDocumentParams)
 
     let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
     asmodule.isOpened = true;
-    scriptfiles.UpdateModuleFromDisk(asmodule);
+    scriptfiles.UpdateModuleFromContent(asmodule, params.textDocument.text);
     scriptfiles.ParseModuleAndDependencies(asmodule);
     if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
     {
