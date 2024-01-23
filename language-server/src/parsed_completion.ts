@@ -7,6 +7,7 @@ import * as typedb from './database';
 import * as scriptfiles from './as_parser';
 import * as specifiers from './specifiers';
 import { FormatFunctionDocumentation, FormatPropertyDocumentation } from './documentation';
+import * as path from 'path';
 
 let CommonTypenames = new Set<string>([
     "FVector", "FRotator", "FTransform", "FQuat",
@@ -102,7 +103,9 @@ class CompletionContext
 
     isSubExpression: boolean = false;
     isAssignment: boolean = false;
-    isNamingVariable: boolean = false;
+    isNamingSomethingNew: boolean = false;
+    isNamingNewClass : boolean = false;
+    isNamingNewStruct : boolean = false;
     isTypingAccessSpecifier: boolean = false;
     isIgnoredCode: boolean = false;
     isIncompleteNamespace: boolean = false;
@@ -173,9 +176,12 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
     if (context.isIgnoredCode)
         return [];
 
-    // No completions at all when we are typing the name in a variable declaration
-    if (context.isNamingVariable)
-        return [];
+    // If we're typing a name for a new symbol, we only do special completions
+    if (context.isNamingSomethingNew)
+    {
+        AddCompletionsForNamingSomethingNew(context, completions);
+        return completions;
+    }
 
     // Add completions from import statements
     if (AddCompletionsFromImportStatement(context, completions))
@@ -724,6 +730,58 @@ function AddCompletionsFromSpecifiers(context : CompletionContext, specifiers : 
             });
         }
     }
+}
+
+function AddCompletionsForNamingSomethingNew(context : CompletionContext, completions : Array<CompletionItem>) : boolean
+{
+    if (!context.scope)
+        return false;
+    if (!context.scope.module)
+        return false;
+
+    let filebasename = path.basename(context.scope.module.filename, ".as");
+
+    let proposedNames = [];
+    if (context.isNamingNewClass)
+    {
+        proposedNames.push("U"+filebasename);
+        proposedNames.push("A"+filebasename);
+    }
+    else if (context.isNamingNewStruct)
+    {
+        proposedNames.push("F"+filebasename);
+    }
+
+    if (proposedNames.length == 0)
+        return false;
+
+    for (let proposed of proposedNames)
+    {
+        // Only allow it if we're already typing it
+        if (!CanCompleteToOnlyStart(context, proposed))
+            continue;
+
+        // Don't allow the suggested name if we already have a type by that name
+        let hasType = false;
+        for (let existingType of context.scope.module.types)
+        {
+            if (existingType.name == proposed)
+            {
+                hasType = true;
+                break;
+            }
+        }
+
+        if (hasType)
+            continue;
+
+        completions.push({
+            label: proposed,
+            kind: CompletionItemKind.Text,
+        });
+    }
+
+    return true;
 }
 
 function AddCompletionsFromImportStatement(context : CompletionContext, completions : Array<CompletionItem>) : boolean
@@ -2415,7 +2473,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
             context.maybeTypename = true;
         if (context.isFunctionDeclaration && context.isSubExpression && context.completingNode == context.statement.ast)
             context.maybeTypename = true;
-        if (context.completingNode == context.statement.ast && !context.isRightExpression && !context.isSubExpression && !context.isNamingVariable)
+        if (context.completingNode == context.statement.ast && !context.isRightExpression && !context.isSubExpression && !context.isNamingSomethingNew)
             context.maybeTypename = true;
     }
 
@@ -2703,7 +2761,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
                 context.priorExpression = null;
                 if (node.name)
                 {
-                    context.isNamingVariable = !!declType;
+                    context.isNamingSomethingNew = !!declType;
                     context.completingSymbol = node.name.value;
                     context.completingNode = node.name;
                 }
@@ -2719,7 +2777,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         break;
         case scriptfiles.node_types.FunctionDecl:
         {
-            context.isNamingVariable = true;
+            context.isNamingSomethingNew = true;
             context.priorExpression = null;
             if (node.name)
                 context.completingSymbol = node.name.value;
@@ -2743,7 +2801,8 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             }
             else
             {
-                context.isNamingVariable = true;
+                context.isNamingSomethingNew = true;
+                context.isNamingNewClass = true;
                 context.completingNode = node.name;
                 if (node.name)
                     context.completingSymbol = node.name.value;
@@ -2759,7 +2818,9 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         {
             context.priorExpression = null;
             context.priorType = null;
-            context.isNamingVariable = true;
+            context.isNamingSomethingNew = true;
+            if (node.type == scriptfiles.node_types.StructDefinition)
+                context.isNamingNewStruct = true;
             context.completingNode = node.name;
             if (node.name)
                 context.completingSymbol = node.name.value;
@@ -2772,7 +2833,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         {
             context.priorExpression = null;
             context.priorType = null;
-            context.isNamingVariable = false;
+            context.isNamingSomethingNew = false;
             if (node.children && node.children[0])
             {
                 context.completingNode = node.children[0];
@@ -2785,7 +2846,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         {
             context.priorExpression = null;
             context.priorType = null;
-            context.isNamingVariable = false;
+            context.isNamingSomethingNew = false;
             context.isTypingAccessSpecifier = true;
             return true;
         }
@@ -2796,7 +2857,7 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             {
                 context.priorExpression = null;
                 context.priorType = null;
-                context.isNamingVariable = true;
+                context.isNamingSomethingNew = true;
                 context.completingNode = node.name;
                 context.completingSymbol = node.name.value;
                 return true;
