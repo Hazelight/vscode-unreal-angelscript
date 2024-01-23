@@ -6,7 +6,14 @@ import * as path from 'path';
 
 import { Range, Position, Location, CodeLens, InitializedNotification, Command } from "vscode-languageserver";
 
-let FileTemplates = new Map<string,string>();
+class ASFileTemplate
+{
+    name : string;
+    content : string;
+    order : number = 0;
+}
+
+let FileTemplates = new Array<ASFileTemplate>();
 
 export interface CodeLensSettings
 {
@@ -31,13 +38,38 @@ export function LoadFileTemplates(filenames : Array<string>)
         try
         {
             let content = fs.readFileSync(file, 'utf8');
-            FileTemplates.set(path.basename(file, ".as.template").replace("_", " "), content);
+
+            let basename = path.basename(file, ".as.template");
+
+            let template = new ASFileTemplate();
+            template.content = content;
+            template.name = basename.replace("_", " ");
+
+            let match = template.name.match(/^([0-9]+)\.(.*)/);
+            if (match)
+            {
+                template.name = match[2];
+                template.order = parseInt(match[1]);
+            }
+
+            FileTemplates.push(template);
         }
         catch (readError)
         {
             continue;
         }
     }
+
+    FileTemplates.sort(
+        function(a : ASFileTemplate, b : ASFileTemplate) : number {
+            if (a.order < b.order)
+                return -1;
+            else if (a.order > b.order)
+                return 1;
+            else
+                return 0;
+        }
+    );
 }
 
 export function ComputeCodeLenses(asmodule : scriptfiles.ASModule) : Array<CodeLens>
@@ -48,17 +80,17 @@ export function ComputeCodeLenses(asmodule : scriptfiles.ASModule) : Array<CodeL
     AddScopeLenses(asmodule.rootscope, lenses);
 
     // If the file is empty, add lenses for activating templates
-    if (asmodule.rootscope.next == null && FileTemplates.size != 0 && asmodule.content.match(/^[\s\r\n]*$/))
+    if (asmodule.rootscope.next == null && FileTemplates.length != 0 && asmodule.content.match(/^[\s\r\n]*$/))
     {
-        for (let [name, content] of FileTemplates)
+        for (let template of FileTemplates)
         {
             lenses.push(<CodeLens> {
                 range: Range.create(Position.create(0, 0), Position.create(0, 10000)),
                 command: <Command> {
-                    title: "Create "+name,
+                    title: "Create "+template.name,
                     command: "editor.action.insertSnippet",
                     arguments: [{
-                        "snippet": content
+                        "snippet": template.content
                     }],
                 }
             });
