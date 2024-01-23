@@ -240,13 +240,14 @@ function ResolveImportAction(asmodule : scriptfiles.ASModule, action : CodeActio
 
 function AddGenerateDelegateFunctionActions(context : CodeActionContext)
 {
+    let generateFromDiagnostics = [];
     for (let diag of context.diagnostics)
     {
         let data = diag.data as any;
         if (data && data.type == "delegateBind")
         {
             context.actions.push(<CodeAction> {
-                kind: CodeActionKind.RefactorExtract,
+                kind: CodeActionKind.QuickFix,
                 title: "Generate Method: "+data.name+"()",
                 source: "angelscript",
                 diagnostics: [diag],
@@ -257,6 +258,45 @@ function AddGenerateDelegateFunctionActions(context : CodeActionContext)
                     delegate: data.delegate,
                     name: data.name,
                     position: diag.range.start,
+                }
+            });
+
+            generateFromDiagnostics.push(data.name);
+        }
+    }
+
+    for (let delegateBind of context.module.delegateBinds)
+    {
+        if (delegateBind.statement == context.statement)
+        {
+            if (!delegateBind.node_name)
+                continue;
+            if (!delegateBind.node_object)
+                continue;
+
+            let funcName = delegateBind.node_name.value;
+
+            // Chop off the n"" part from the function name
+            if (delegateBind.node_name.type == scriptfiles.node_types.ConstName)
+                funcName = funcName.substring(2, funcName.length-1);
+            else
+                funcName = funcName.substring(1, funcName.length-1);
+
+            if (generateFromDiagnostics.includes(funcName))
+                continue;
+            generateFromDiagnostics.push(funcName);
+
+            context.actions.push(<CodeAction> {
+                kind: CodeActionKind.QuickFix,
+                title: "Generate Method: "+funcName+"()",
+                source: "angelscript",
+                isPreferred: true,
+                data: {
+                    uri: context.module.uri,
+                    type: "delegateBind",
+                    delegate: delegateBind.delegateType,
+                    name: funcName,
+                    position: context.module.getPosition(delegateBind.statement.start_offset + delegateBind.node_expression.start),
                 }
             });
         }
