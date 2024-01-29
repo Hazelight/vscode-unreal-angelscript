@@ -286,6 +286,17 @@ function AddGenerateDelegateFunctionActions(context : CodeActionContext)
                 continue;
             generateFromDiagnostics.push(funcName);
 
+            let objType = scriptfiles.ResolveTypeFromExpression(delegateBind.scope, delegateBind.node_object);
+            if (!objType)
+                continue;
+
+            let foundFunc = objType.findFirstSymbol(funcName, typedb.DBAllowSymbol.Functions);
+            if (!foundFunc)
+                foundFunc = objType.findMethodByUnrealName(funcName);
+
+            if (foundFunc && foundFunc instanceof typedb.DBMethod)
+                continue;
+
             context.actions.push(<CodeAction> {
                 kind: CodeActionKind.QuickFix,
                 title: "Generate Method: "+funcName+"()",
