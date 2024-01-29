@@ -2022,6 +2022,16 @@ function GetNamespacePriority(context : CompletionContext, namespace : typedb.DB
         return Sort.Namespace_Unexpected;
     if (CommonNamespaces.has(namespace.name))
         return Sort.Typename_Common;
+
+    let shadowType = namespace.getShadowedType();
+    if (shadowType)
+    {
+        if (shadowType.declaredModule == context.scope.module.modulename)
+            return Sort.Typename_SameFile;
+        if (context.nearbyTypenames.has(shadowType.name))
+            return Sort.Typename_NearbyUsage;
+    }
+
     return Sort.Typename;
 }
 
