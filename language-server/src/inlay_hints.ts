@@ -264,6 +264,17 @@ function ShouldLabelComplexExpressionNode(node : any, argName : string) : boolea
     switch (node.type)
     {
         case node_types.FunctionCall:
+        {
+            if (node.children[0] && node.children[0].type == node_types.NamespaceAccess)
+            {
+                if (node.children[0].children[1] && node.children[0].children[1].type == node_types.Identifier)
+                {
+                    if (node.children[0].children[1].value == "StaticClass")
+                        return false;
+                }
+            }
+            return true;
+        }
         case node_types.ConstructorCall:
             return true;
 
