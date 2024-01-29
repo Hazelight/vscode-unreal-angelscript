@@ -33,6 +33,7 @@ export function GetCodeLensSettings() : CodeLensSettings
 
 export function LoadFileTemplates(filenames : Array<string>)
 {
+    let templateNames = new Set<string>();
     for (let file of filenames)
     {
         try
@@ -52,12 +53,50 @@ export function LoadFileTemplates(filenames : Array<string>)
                 template.order = parseInt(match[1]);
             }
 
-            FileTemplates.push(template);
+            if (!templateNames.has(template.name.toLowerCase()))
+            {
+                templateNames.add(template.name.toLowerCase());
+                FileTemplates.push(template);
+            }
         }
         catch (readError)
         {
             continue;
         }
+    }
+
+    // Add default templates for actor and component if they don't already exist
+    if (!templateNames.has("actor"))
+    {
+        let template = new ASFileTemplate();
+        template.content =
+`class A\${TM_FILENAME_BASE} : AActor
+{
+	UPROPERTY(DefaultComponent, RootComponent)
+	USceneComponent Root;$0
+
+	UFUNCTION(BlueprintOverride)
+	void BeginPlay()
+	{
+	}
+};`;
+        template.name = "Actor";
+        FileTemplates.push(template);
+    }
+
+    if (!templateNames.has("component"))
+    {
+        let template = new ASFileTemplate();
+        template.content =
+`class U\${TM_FILENAME_BASE} : UActorComponent
+{$0
+	UFUNCTION(BlueprintOverride)
+	void BeginPlay()
+	{
+	}
+};`;
+        template.name = "Component";
+        FileTemplates.push(template);
     }
 
     FileTemplates.sort(
@@ -84,6 +123,9 @@ export function ComputeCodeLenses(asmodule : scriptfiles.ASModule) : Array<CodeL
     {
         for (let template of FileTemplates)
         {
+            if (template.content.length == 0)
+                continue;
+
             lenses.push(<CodeLens> {
                 range: Range.create(Position.create(0, 0), Position.create(0, 10000)),
                 command: <Command> {
