@@ -4264,7 +4264,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     if (!childNode)
                         continue;
 
-                    if (childNode == delegateBind.node_name)
+                    if (childNode == delegateBind.node_name && childNode.type == node_types.ConstName)
                     {
                         // Add a symbol for the function we're binding if this is a delegate bind
                         // This allows "Go to Symbol" to work here, even though it's a name
@@ -4645,7 +4645,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         if (!childNode)
                             continue;
 
-                        if (childNode == delegateBind.node_name)
+                        if (childNode == delegateBind.node_name && childNode.type == node_types.ConstName)
                         {
                             // Add a symbol for the function we're binding if this is a delegate bind
                             // This allows "Go to Symbol" to work here, even though it's a name
