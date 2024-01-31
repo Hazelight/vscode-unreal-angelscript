@@ -171,6 +171,8 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
             continue;
 
         let funcName = delegateBind.node_name.value;
+        if (!funcName)
+            continue;
 
         // Chop off the n"" part from the function name
         if (delegateBind.node_name.type == node_types.ConstName)

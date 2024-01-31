@@ -275,6 +275,12 @@ function AddGenerateDelegateFunctionActions(context : CodeActionContext)
                 continue;
 
             let funcName = delegateBind.node_name.value;
+            if (!funcName)
+                continue;
+
+            if (delegateBind.node_name.type != scriptfiles.node_types.ConstName
+                && delegateBind.node_name.type != scriptfiles.node_types.ConstString)
+                continue;
 
             // Chop off the n"" part from the function name
             if (delegateBind.node_name.type == scriptfiles.node_types.ConstName)
