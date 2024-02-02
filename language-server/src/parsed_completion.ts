@@ -4251,6 +4251,8 @@ function AddSuperCallSnippet(context : CompletionContext, completions : Array<Co
         return;
 
     let nsNode = context.statement.ast;
+    if (context.statement.ast.type == scriptfiles.node_types.ReturnStatement)
+        nsNode = context.statement.ast.children[0];
     if (nsNode.type != scriptfiles.node_types.NamespaceAccess)
         return;
     if (!nsNode.children[0] || nsNode.children[0].value != 'Super')
