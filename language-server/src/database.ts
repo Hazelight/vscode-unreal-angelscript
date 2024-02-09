@@ -22,6 +22,11 @@ export function AllowsProperties(allowSymbol : DBAllowSymbol)
     return (allowSymbol & DBAllowSymbol.Properties) != 0;
 }
 
+export function AllowsTypes(allowSymbol : DBAllowSymbol)
+{
+    return (allowSymbol & DBAllowSymbol.Types) != 0;
+}
+
 export function FilterAllowsSymbol(symbol : DBSymbol, allowSymbol : DBAllowSymbol) : boolean
 {
     if (symbol instanceof DBProperty)
@@ -240,6 +245,7 @@ export class DBMethod implements DBSymbol
     isMixin : boolean = false;
     accessSpecifier : DBAccessSpecifier = null;
     auxiliarySymbols : Array<DBAuxiliarySymbol> | null = null;
+    determinesOutputTypeArgumentIndex : number = -1;
 
     isUFunction : boolean = false;
     unrealName : string | null = null;
@@ -278,6 +284,7 @@ export class DBMethod implements DBSymbol
         inst.isConst = this.isConst;
         inst.isProperty = this.isProperty;
         inst.isDefaultsOnly = this.isDefaultsOnly;
+        inst.determinesOutputTypeArgumentIndex = this.determinesOutputTypeArgumentIndex;
 
         inst.args = [];
         for(let argval of this.args)
@@ -346,6 +353,9 @@ export class DBMethod implements DBSymbol
 
         if ('keywords' in input)
             this.keywords = input['keywords'];
+
+        if ('outputTypeIndex' in input)
+            this.determinesOutputTypeArgumentIndex = input['outputTypeIndex'];
 
         if ('ufunction' in input)
         {
@@ -520,6 +530,79 @@ export class DBMethod implements DBSymbol
 
         return true;
     }
+
+    applyDeterminesOutputType(determineType : DBType) : DBType
+    {
+        let returnType = LookupType(this.namespace, this.returnType);
+        if (!returnType)
+            return returnType;
+        if (!determineType)
+            return returnType;
+
+        if (determineType.isTemplateInstantiation)
+        {
+            let foundSubType = false;
+            for (let subTypeName of determineType.templateSubTypes)
+            {
+                let subType = LookupType(this.namespace, subTypeName);
+                if (!subType)
+                    continue;
+                if (subType.isValueType())
+                    continue;
+
+                foundSubType = true;
+                determineType = subType;
+                break;
+            }
+
+            if (!foundSubType)
+                return returnType;
+        }
+
+        if (determineType.isValueType())
+            return returnType;
+
+        if (returnType.isTemplateInstantiation)
+        {
+            let replacedAny = false;
+            let newDeclaration = returnType.templateBaseType + "<";
+            for (let i = 0, Count = returnType.templateSubTypes.length; i < Count; ++i)
+            {
+                if (i != 0)
+                    newDeclaration += ",";
+
+                let subType = LookupType(this.namespace, returnType.templateSubTypes[i]);
+                if (subType && !subType.isValueType() && determineType.inheritsFrom(subType.name) && !replacedAny)
+                {
+                    newDeclaration += TransferTypeQualifiers(
+                        returnType.templateSubTypes[i],
+                        determineType.getQualifiedTypenameInNamespace(this.namespace)
+                    );
+                    replacedAny = true;
+                }
+                else
+                {
+                    newDeclaration += returnType.templateSubTypes[i];
+                }
+            }
+
+            if (replacedAny)
+            {
+                newDeclaration += ">";
+                let newType = LookupType(this.namespace, newDeclaration);
+                if (newType)
+                    return newType;
+            }
+        }
+
+        if (returnType.isValueType())
+            return returnType;
+
+        if (!determineType.inheritsFrom(returnType.name))
+            return returnType;
+
+        return determineType;
+    }
 };
 
 export class DBType implements DBSymbol
@@ -537,6 +620,7 @@ export class DBType implements DBSymbol
     isEvent : boolean = false;
     isPrimitive : boolean = false;
     isTemplateInstantiation : boolean = false;
+    templateBaseType : string = null;
 
     classification : DBTypeClassification = DBTypeClassification.Unknown;
     acccessSpecifiers : Array<DBAccessSpecifier> = null;
@@ -576,6 +660,7 @@ export class DBType implements DBSymbol
         inst.moduleOffsetEnd = this.moduleOffsetEnd;
         inst.isTemplateInstantiation = true;
         inst.templateSubTypes = actualTypes;
+        inst.templateBaseType = this.name;
 
         let baseType = this;
         this.forEachSymbol(function (sym : DBSymbol)
@@ -1829,7 +1914,7 @@ export function TransferTypeQualifiers(typename : string, newtype : string) : st
     return newtype;
 }
 
-let re_template = /([A-Za-z_0-9]+)\<(([A-Za-z_0-9]+\s*(<[A-Za-z_0-9,\s]+>)?,?)+)\>/;
+let re_template = /([A-Za-z_0-9]+)\<(([A-Za-z_0-9:]+\s*(<[A-Za-z_0-9,:\s]+>)?,?)+)\>/;
 export function ReplaceTemplateType(typename : string, templateTypes : Array<string>, actualTypes : Array<string>)
 {
     let cleanType = CleanTypeName(typename);

@@ -198,6 +198,11 @@ function connect_unreal() {
                 if (version >= 3)
                     scriptSettings.useAngelscriptHaze = msg.readBool();
                 scriptlenses.GetCodeLensSettings().engineSupportsCreateBlueprint = (version >= 4);
+                if (version >= 5)
+                {
+                    scriptSettings.deprecateStaticClass = msg.readBool();
+                    scriptSettings.disallowStaticClass = msg.readBool();
+                }
             }
         }
     });

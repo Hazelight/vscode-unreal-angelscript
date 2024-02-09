@@ -80,6 +80,7 @@ function AddProperty(dbtype : typedb.DBType, name : string) : typedb.DBProperty
 
 function AddGeneratedCodeForUObject(asmodule : scriptfiles.ASModule, dbtype : typedb.DBType, nsType : typedb.DBNamespace)
 {
+    if (!scriptfiles.GetScriptSettings().deprecateStaticClass && !scriptfiles.GetScriptSettings().disallowStaticClass)
     {
         let method = AddGlobalFunction(asmodule, dbtype, nsType, "StaticClass");
         method.returnType = "UClass";
