@@ -406,7 +406,7 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
                 parsedcompletion.SortMethodsBasedOnArgumentTypes(methods, asmodule, findSymbol.end + 2);
 
             if (methods.length != 0)
-                return GetHoverForFunction(insideType, methods[0], false);
+                return GetHoverForFunction(asmodule, findSymbol.end + 2, insideType, methods[0], false);
         }
         break;
         case scriptfiles.ASSymbolType.GlobalFunction:
@@ -428,7 +428,7 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
                 parsedcompletion.SortMethodsBasedOnArgumentTypes(methods, asmodule, findSymbol.end + 2);
 
             if (methods.length != 0)
-                return GetHoverForFunction(namespace, methods[0], false);
+                return GetHoverForFunction(asmodule, findSymbol.end + 2, namespace, methods[0], false);
         }
         break;
         case scriptfiles.ASSymbolType.MemberVariable:
@@ -477,7 +477,7 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
                 // Find the symbol that has documentation
                 if (sym instanceof typedb.DBMethod && sym.findAvailableDocumentation())
                 {
-                    return GetHoverForFunction(insideType, sym, true)
+                    return GetHoverForFunction(asmodule, findSymbol.end + 2, insideType, sym, true)
                 }
             }
 
@@ -486,7 +486,7 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
                 // Fall back to first symbol
                 if (sym instanceof typedb.DBMethod)
                 {
-                    return GetHoverForFunction(insideType, sym, true)
+                    return GetHoverForFunction(asmodule, findSymbol.end + 2, insideType, sym, true)
                 }
             }
         }
@@ -511,7 +511,7 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
                 // Find the symbol that has documentation
                 if (sym instanceof typedb.DBMethod && sym.findAvailableDocumentation())
                 {
-                    return GetHoverForFunction(namespace, sym, true)
+                    return GetHoverForFunction(asmodule, findSymbol.end + 2, namespace, sym, true)
                 }
             }
 
@@ -520,7 +520,7 @@ export function GetHover(asmodule : scriptfiles.ASModule, position : Position) :
                 // Fall back to first symbol
                 if (sym instanceof typedb.DBMethod)
                 {
-                    return GetHoverForFunction(namespace, sym, true)
+                    return GetHoverForFunction(asmodule, findSymbol.end + 2, namespace, sym, true)
                 }
             }
         }
@@ -739,7 +739,7 @@ function GetHoverForProperty(type : typedb.DBType | typedb.DBNamespace, prop : t
     }};
 }
 
-function GetHoverForFunction(type : typedb.DBType | typedb.DBNamespace, func : typedb.DBMethod, isAccessor : boolean) : Hover
+function GetHoverForFunction(asmodule : scriptfiles.ASModule, offset : number, type : typedb.DBType | typedb.DBNamespace, func : typedb.DBMethod, isAccessor : boolean) : Hover
 {
     let prefix = "";
     let suffix = "";
@@ -764,6 +764,10 @@ function GetHoverForFunction(type : typedb.DBType | typedb.DBNamespace, func : t
     if (doc)
         hover += FormatFunctionDocumentation(doc, func);
 
+    let determineType : typedb.DBType = null;
+    if (func.determinesOutputTypeArgumentIndex != -1)
+        determineType = parsedcompletion.GetDetermineTypeFromArguments(asmodule, offset, func.determinesOutputTypeArgumentIndex);
+
     if (isAccessor)
     {
         if (func.name.startsWith("Get"))
@@ -773,7 +777,7 @@ function GetHoverForFunction(type : typedb.DBType | typedb.DBNamespace, func : t
     }
     else
     {
-        hover += "```angelscript_snippet\n"+func.format(prefix, func.isMixin)+suffix+"\n```";
+        hover += "```angelscript_snippet\n"+func.format(prefix, func.isMixin, false, null, determineType)+suffix+"\n```";
     }
 
     return <Hover> {contents: <MarkupContent> {

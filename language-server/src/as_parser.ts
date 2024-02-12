@@ -2982,7 +2982,7 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
                 let argumentExpr = node.children[1].children[left_func.determinesOutputTypeArgumentIndex];
                 let argumentType = ResolveTypeFromExpression(scope, argumentExpr);
                 if (argumentType)
-                    return left_func.applyDeterminesOutputType(argumentType);
+                    return left_func.applyDeterminesOutputType(left_func.returnType, argumentType);
             }
 
             return typedb.LookupType(left_func.namespace, left_func.returnType);
@@ -4326,7 +4326,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         let argumentSymbol = DetectNodeSymbols(scope, statement, argumentNodes[i], parseContext);
                         if (i == left_symbol.determinesOutputTypeArgumentIndex && argumentSymbol instanceof typedb.DBType)
                         {
-                            left_type = left_symbol.applyDeterminesOutputType(argumentSymbol);
+                            left_type = left_symbol.applyDeterminesOutputType(left_symbol.returnType, argumentSymbol);
                         }
                     }
                 }

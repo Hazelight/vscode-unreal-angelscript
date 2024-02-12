@@ -191,9 +191,12 @@ export class DBArg
         this.defaultvalue = 'default' in input ? input['default'] : null;
     }
 
-    format() : string
+    format(overrideType : string = null) : string
     {
         let decl = this.typename;
+        if (overrideType)
+            decl = overrideType;
+
         if (this.name != null)
             decl += " " + this.name;
         if (this.defaultvalue != null)
@@ -400,11 +403,16 @@ export class DBMethod implements DBSymbol
         }
     }
 
-    format(prefix : string = null, skipFirstArg = false, skipReturn = false, replaceName : string = null) : string
+    format(prefix : string = null, skipFirstArg = false, skipReturn = false, replaceName : string = null, determineType : DBType = null) : string
     {
         let decl : string = "";
         if (!skipReturn)
-            decl += this.returnType + " ";
+        {
+            if (determineType)
+                decl += this.applyDeterminesOutputType(this.returnType, determineType).name + " ";
+            else
+                decl += this.returnType + " ";
+        }
         if(prefix != null)
             decl += prefix;
         if (replaceName)
@@ -431,10 +439,12 @@ export class DBMethod implements DBSymbol
             {
                 if (skipFirstArg && i == 0)
                     continue;
-
+                let argDecl = this.args[i].format();
+                if (determineType && this.determinesOutputTypeArgumentIndex == i)
+                    argDecl = this.args[i].format(this.applyDeterminesOutputType(this.args[i].typename, determineType).name);
                 if (i > 0 || (skipFirstArg && i > 1))
                     decl += ", ";
-                decl += this.args[i].format();
+                decl += argDecl;
             }
         }
         decl += ")";
@@ -531,13 +541,13 @@ export class DBMethod implements DBSymbol
         return true;
     }
 
-    applyDeterminesOutputType(determineType : DBType) : DBType
+    applyDeterminesOutputType(originalType : string, determineType : DBType) : DBType
     {
-        let returnType = LookupType(this.namespace, this.returnType);
-        if (!returnType)
-            return returnType;
+        let resultType = LookupType(this.namespace, originalType);
+        if (!resultType)
+            return resultType;
         if (!determineType)
-            return returnType;
+            return resultType;
 
         if (determineType.isTemplateInstantiation)
         {
@@ -556,33 +566,33 @@ export class DBMethod implements DBSymbol
             }
 
             if (!foundSubType)
-                return returnType;
+                return resultType;
         }
 
         if (determineType.isValueType())
-            return returnType;
+            return resultType;
 
-        if (returnType.isTemplateInstantiation)
+        if (resultType.isTemplateInstantiation)
         {
             let replacedAny = false;
-            let newDeclaration = returnType.templateBaseType + "<";
-            for (let i = 0, Count = returnType.templateSubTypes.length; i < Count; ++i)
+            let newDeclaration = resultType.templateBaseType + "<";
+            for (let i = 0, Count = resultType.templateSubTypes.length; i < Count; ++i)
             {
                 if (i != 0)
                     newDeclaration += ",";
 
-                let subType = LookupType(this.namespace, returnType.templateSubTypes[i]);
+                let subType = LookupType(this.namespace, resultType.templateSubTypes[i]);
                 if (subType && !subType.isValueType() && determineType.inheritsFrom(subType.name) && !replacedAny)
                 {
                     newDeclaration += TransferTypeQualifiers(
-                        returnType.templateSubTypes[i],
+                        resultType.templateSubTypes[i],
                         determineType.getQualifiedTypenameInNamespace(this.namespace)
                     );
                     replacedAny = true;
                 }
                 else
                 {
-                    newDeclaration += returnType.templateSubTypes[i];
+                    newDeclaration += resultType.templateSubTypes[i];
                 }
             }
 
@@ -595,11 +605,11 @@ export class DBMethod implements DBSymbol
             }
         }
 
-        if (returnType.isValueType())
-            return returnType;
+        if (resultType.isValueType())
+            return resultType;
 
-        if (!determineType.inheritsFrom(returnType.name))
-            return returnType;
+        if (!determineType.inheritsFrom(resultType.name))
+            return resultType;
 
         return determineType;
     }

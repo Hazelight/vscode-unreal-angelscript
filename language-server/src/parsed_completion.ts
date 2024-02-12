@@ -524,6 +524,22 @@ export function SortMethodsBasedOnArgumentTypes(methods: Array<typedb.DBMethod>,
         methods.push(func);
 }
 
+export function GetDetermineTypeFromArguments(asmodule : scriptfiles.ASModule, offset : number, argumentIndex : number) : typedb.DBType
+{
+    if (argumentIndex < 0)
+        return null;
+    let context = GenerateCompletionContext(asmodule, offset - 1);
+    let argContext = GenerateCompletionArguments(context);
+    if (argContext && argumentIndex < argContext.nodesForPositionalArguments.length)
+    {
+        let argnode = argContext.nodesForPositionalArguments[argumentIndex];
+        let argType = scriptfiles.ResolveTypeFromExpression(context.scope, argnode);
+        return argType;
+    }
+
+    return null;
+}
+
 export function Signature(asmodule: scriptfiles.ASModule, position: Position): SignatureHelp
 {
     if (!asmodule)
@@ -554,6 +570,16 @@ export function Signature(asmodule: scriptfiles.ASModule, position: Position): S
     {
         let func = context.subOuterFunctions[i];
 
+        let determineType : typedb.DBType = null;
+        if (func.determinesOutputTypeArgumentIndex != -1)
+        {
+            if (argContext && func.determinesOutputTypeArgumentIndex < argContext.nodesForPositionalArguments.length)
+            {
+                let argnode = argContext.nodesForPositionalArguments[func.determinesOutputTypeArgumentIndex];
+                determineType = scriptfiles.ResolveTypeFromExpression(context.scope, argnode);
+            }
+        }
+
         // Keep track of the best function
         let [score, activeArg] = ScoreMethodOverload(context, func, argContext);
         if (score > bestFunctionScore || bestFunction == -1)
@@ -578,15 +604,25 @@ export function Signature(asmodule: scriptfiles.ASModule, position: Position): S
         {
             for (let a = skipFirstArg ? 1 : 0; a < func.args.length; ++a)
             {
-                params.push(<ParameterInformation>
-                    {
-                        label: func.args[a].format()
-                    });
+                if (determineType && a == func.determinesOutputTypeArgumentIndex)
+                {
+                    params.push(<ParameterInformation>
+                        {
+                            label: func.args[a].format(determineType.name)
+                        });
+                }
+                else
+                {
+                    params.push(<ParameterInformation>
+                        {
+                            label: func.args[a].format()
+                        });
+                }
             }
         }
 
         let sig = <SignatureInformation>{
-            label: func.format(null, skipFirstArg),
+            label: func.format(null, skipFirstArg, false, null, determineType),
             parameters: params,
         };
 
