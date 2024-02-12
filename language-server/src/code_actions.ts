@@ -1758,7 +1758,13 @@ function AddGenerateMethodActions(context : CodeActionContext)
             continue;
 
         let functionName = callNode.children[0].value;
+
+        // Don't suggest generating for methods that already exist
         if (dbtype.findFirstSymbol(functionName, typedb.DBAllowSymbol.Functions))
+            continue;
+
+        // Don't suggest generating methods for things that could be constructors
+        if (typedb.LookupType(context.scope.getNamespace(), functionName))
             continue;
 
         let globalSyms = typedb.LookupGlobalSymbol(context.scope.getNamespace(), functionName, typedb.DBAllowSymbol.Functions);
