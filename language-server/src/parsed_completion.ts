@@ -1405,6 +1405,13 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
     let scopeType = context.scope ? context.scope.getParentType() : null;
     let props = new Set<string>();
 
+    let expectedSubclassOf : string = null;
+    if (context.expectedType && context.expectedType.templateBaseType && context.expectedType.templateBaseType == "TSubclassOf")
+    {
+        if (context.expectedType.templateSubTypes && context.expectedType.templateSubTypes[0])
+            expectedSubclassOf = context.expectedType.templateSubTypes[0];
+    }
+
     // Complete symbols
     let propertyIndex = 0;
     curtype.forEachSymbol(function(symbol : typedb.DBSymbol)
@@ -1499,7 +1506,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 return;
 
             // Don't show constructors if we're probably completing the name of a type
-            if (func.isConstructor && context.maybeTypename)
+            if (func.isConstructor && (context.maybeTypename || (expectedSubclassOf && !func.returnType.startsWith("TSubclassOf"))))
                 return;
 
             if (func.isProperty)
@@ -1684,12 +1691,14 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             {
                 if (context.isInsideType && !context.priorTypeWasNamespace)
                     return;
+                if (expectedSubclassOf)
+                    return;
             }
             else
             {
                 if (context.isInsideType && !context.priorTypeWasNamespace)
                     return;
-                if (!context.maybeTypename && (context.isSubExpression || context.isRightExpression) && !dbtype.isPrimitive)
+                if (!context.maybeTypename && !expectedSubclassOf && (context.isSubExpression || context.isRightExpression) && !dbtype.isPrimitive)
                     return;
             }
 
@@ -1798,6 +1807,13 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             }
             else
             {
+                if (expectedSubclassOf)
+                {
+                    // If we're expecting a particular type of class, don't list other classes
+                    if (!dbtype.inheritsFrom(expectedSubclassOf))
+                        return;
+                }
+
                 if (CanCompleteSymbol(context, dbtype))
                 {
                     let commitChars : Array<string> = [];
@@ -1812,7 +1828,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                             sortText: GetTypenamePriority(context, dbtype),
                     };
 
-                    if (context.maybeTypename && context.typenameExpected && context.typenameExpected == dbtype.name)
+                    if ((context.maybeTypename && context.typenameExpected && context.typenameExpected == dbtype.name) || expectedSubclassOf)
                     {
                         // We might be expecting a specific typename, in which case we should preselect it
                         complItem.sortText = Sort.Typename_Expected;
@@ -1838,7 +1854,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 continue;
 
             let kind : CompletionItemKind = CompletionItemKind.Module;
-            if ((!context.isSubExpression && !context.isRightExpression) || context.maybeTypename)
+            if ((!context.isSubExpression && !context.isRightExpression) || context.maybeTypename || expectedSubclassOf)
             {
                 if (namespace.isShadowingType())
                     continue;
