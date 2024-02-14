@@ -572,6 +572,9 @@ export class DBMethod implements DBSymbol
         if (determineType.isValueType())
             return resultType;
 
+        if (determineType.name == "UClass")
+            return resultType;
+
         if (resultType.isTemplateInstantiation)
         {
             let replacedAny = false;
