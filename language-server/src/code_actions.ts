@@ -646,8 +646,8 @@ function ResolveMethodOverrideSnippet(asmodule : scriptfiles.ASModule, action : 
             let parentMethod = parentType.findFirstSymbol(method.name, typedb.DBAllowSymbol.Functions);
             if (parentMethod instanceof typedb.DBMethod && parentMethod.declaredModule && !parentMethod.isEmpty)
             {
-                let hasReturnValue = !method.returnType || method.returnType == "void";
-                if (hasReturnValue || parentMethod.hasMetaData("RequireSuperCall"))
+                let hasReturnValue = method.returnType && method.returnType != "void";
+                if (!hasReturnValue || parentMethod.hasMetaData("RequireSuperCall"))
                 {
                     snippet += indent+indent;
                     if (hasReturnValue)
