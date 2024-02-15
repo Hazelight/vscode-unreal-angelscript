@@ -983,7 +983,7 @@ function peg$parse(input, options) {
         {
             return Literal(range(), n.ConstFloat, text());
         }
-        else if (exponent || head[0])
+        else if (exponent || head[1])
         {
             return Literal(range(), n.ConstDouble, text());
         }
