@@ -1669,7 +1669,10 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
                 if (func.returnType && func.returnType != "void")
                 {
-                    compl.labelDetails.description = func.returnType;
+                    if (func.determinesOutputTypeArgumentIndex != -1)
+                        compl.labelDetails.description = "auto";
+                    else
+                        compl.labelDetails.description = func.returnType;
 
                     if (!typedb.IsPrimitive(func.returnType))
                         compl.commitCharacters.push(".");

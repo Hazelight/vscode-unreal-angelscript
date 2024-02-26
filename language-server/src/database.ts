@@ -410,6 +410,8 @@ export class DBMethod implements DBSymbol
         {
             if (determineType)
                 decl += this.applyDeterminesOutputType(this.returnType, determineType).name + " ";
+            else if (this.determinesOutputTypeArgumentIndex != -1)
+                decl += "auto ";
             else
                 decl += this.returnType + " ";
         }
