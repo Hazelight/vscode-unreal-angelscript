@@ -4324,9 +4324,17 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                     {
                         parseContext.argumentFunction = outerArgumentFunction;
                         let argumentSymbol = DetectNodeSymbols(scope, statement, argumentNodes[i], parseContext);
-                        if (i == left_symbol.determinesOutputTypeArgumentIndex && argumentSymbol instanceof typedb.DBType)
+                        if (i == left_symbol.determinesOutputTypeArgumentIndex)
                         {
-                            left_type = left_symbol.applyDeterminesOutputType(left_symbol.returnType, argumentSymbol);
+                            if (argumentSymbol instanceof typedb.DBType)
+                            {
+                                left_type = left_symbol.applyDeterminesOutputType(left_symbol.returnType, argumentSymbol);
+                            }
+                            else if (argumentSymbol instanceof typedb.DBProperty)
+                            {
+                                let property_type = typedb.LookupType(scope.getNamespace(), argumentSymbol.typename);
+                                left_type = left_symbol.applyDeterminesOutputType(left_symbol.returnType, property_type);
+                            }
                         }
                     }
                 }
