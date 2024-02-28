@@ -367,6 +367,12 @@ function DetectUnrealConnectionTimeout()
 function DetectUnrealTypeListTimeout()
 {
     typedb.FinishTypesFromUnreal();
+
+    let scriptSettings = scriptfiles.GetScriptSettings()
+    typedb.AddPrimitiveTypes(scriptSettings.floatIsFloat64);
+
+    // Make sure no modules are resolved anymore
+    ReResolveAllModules();
 }
 
 function TickQueues()
