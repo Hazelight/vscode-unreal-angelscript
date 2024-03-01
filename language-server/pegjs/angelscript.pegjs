@@ -592,9 +592,11 @@ namespaced_identifier_no_trailing
 call_expression
     = head:primary_expression
       tail:(
-        "(" _ args:argument_list? ")" _ { return [0, args]; }
-        / "[" _ inner:optional_expression "]" _ { return [1, inner]; }
-        / "." inner:(_ @identifier)? _ { return [2, inner]; }
+        @(
+            "(" _ args:argument_list? ")" { return [0, args, range()]; }
+            / "[" _ inner:optional_expression "]" { return [1, inner, range()]; }
+            / "." inner:(_ @identifier)? { return [2, inner]; }
+        ) _
       )*
     {
         return tail.reduce(function (result, element) {
@@ -605,8 +607,8 @@ call_expression
                     n.FunctionCall,
                     [result, element[1]]
                 );
-                // Need to include the ")" in the range
-                expr.end += 1;
+                if (element[2].end > expr.end)
+                    expr.end = element[2].end;
                 return expr;
             }
             else if (element[0] == 1)
@@ -616,8 +618,8 @@ call_expression
                     n.IndexOperator,
                     [result, element[1]]
                 );
-                // Need to include the "]" in the range
-                expr.end += 1;
+                if (element[2].end > expr.end)
+                    expr.end = element[2].end;
                 return expr;
             }
             else if (element[0] == 2)
