@@ -261,7 +261,6 @@ for_statement
 
 for_declaration
     = var_decl
-    / expression
     / assignment
 
 for_comma_expression_list

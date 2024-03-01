@@ -3901,10 +3901,7 @@ function peg$parse(input, options) {
 
     s0 = peg$parsevar_decl();
     if (s0 === peg$FAILED) {
-      s0 = peg$parseexpression();
-      if (s0 === peg$FAILED) {
-        s0 = peg$parseassignment();
-      }
+      s0 = peg$parseassignment();
     }
 
     return s0;
