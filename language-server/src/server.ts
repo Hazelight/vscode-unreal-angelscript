@@ -71,7 +71,7 @@ let ReceivingTypesTimeout : any = null;
 let SetTypeTimeout = false;
 let UnrealTypesTimedOut = false;
 
-export let settings : any = null;
+let settings : any = null;
 
 function connect_unreal() {
     if (unreal != null)

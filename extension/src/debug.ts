@@ -8,7 +8,7 @@ import {
     LoggingDebugSession,
     InitializedEvent, TerminatedEvent, StoppedEvent, BreakpointEvent, OutputEvent,
     ContinuedEvent,
-    Thread, StackFrame, Scope, Source, Handles, Breakpoint, Variable
+    Thread, StackFrame, Scope, Source, Handles, Breakpoint
 } from 'vscode-debugadapter';
 
 import { DebugProtocol } from 'vscode-debugprotocol';
@@ -18,7 +18,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 import * as unreal from './unreal-debugclient';
-import { debug } from 'console';
 
 const { Subject } = require('await-notify');
 
@@ -148,7 +147,6 @@ export class ASDebugSession extends LoggingDebugSession
         response.body.supportsEvaluateForHovers = true;
         response.body.supportsExceptionInfoRequest = true;
         response.body.supportsDataBreakpoints = true;
-        response.body.supportsHitConditionalBreakpoints = true;
 
         unreal.connect(this.hostname, this.port);
         unreal.sendRequestBreakFilters();
@@ -369,7 +367,7 @@ export class ASDebugSession extends LoggingDebugSession
 
     protected receiveClearDataBreakpoints(msg : unreal.Message)
     {
-        // If we receive this message it means the debug server has clear all data breakpoints on their own
+        // If we receive this message it means the debug server has cleared some data breakpoints on their own
         // accord, so we clear our breakpoints on the debug client as well to match.
 
         let count = msg.readInt();
@@ -691,6 +689,10 @@ export class ASDebugSession extends LoggingDebugSession
                 case 4:
                 case 8:
                     breakpointSupported = true;
+                    break;
+                default:
+                    breakpointSupported = false;
+                    break;
             }
 
             if (breakpointSupported)
@@ -721,8 +723,9 @@ export class ASDebugSession extends LoggingDebugSession
 
         const triggerCppDataBreakpoints: boolean = dataBreakpointConfig.get("cppBreakpoints.enable");
 
-        // TODO: Send whether or not this is a C++ breakpoint in the message
-        const hitCount: number = triggerCppDataBreakpoints ? dataBreakpointConfig.get("cppBreakpoints.triggerCount") : dataBreakpointConfig.get("asBreakpoints.triggerCount");
+        const hitCount: number = triggerCppDataBreakpoints ?
+            dataBreakpointConfig.get("cppBreakpoints.triggerCount") :
+            dataBreakpointConfig.get("asBreakpoints.triggerCount");
 
         for (let i = 0; i < args.breakpoints.length; i++)
         {
