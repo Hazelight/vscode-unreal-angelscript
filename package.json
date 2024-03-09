@@ -143,12 +143,12 @@
                 "UnrealAngelscript.dataBreakpoints.cppBreakpoints.triggerCount": {
                     "type": "number",
                     "default": 1,
-                    "description": "How many times a C++ Data Breakpoint should trigger before disabling, -1 means it will never disable automatically."
+                    "description": "How many times a C++ Data Breakpoint should trigger (silently) before activating and disabling, -1 means it will never disable automatically."
                 },
                 "UnrealAngelscript.dataBreakpoints.asBreakpoints.triggerCount": {
                     "type": "number",
                     "default": -1,
-                    "description": "How many times a AS Data Breakpoint should trigger before disabling, -1 means it will never disable automatically."
+                    "description": "How many times a AS Data Breakpoint should trigger (silently) before activating and disabling, -1 means it will never disable automatically."
                 }
             }
         },
