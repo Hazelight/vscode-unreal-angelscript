@@ -48,6 +48,9 @@ export enum MessageType
 
     DebugServerVersion,
     CreateBlueprint,
+
+    SetDataBreakpoints,
+    ClearDataBreakpoints,
 }
 
 export class Message

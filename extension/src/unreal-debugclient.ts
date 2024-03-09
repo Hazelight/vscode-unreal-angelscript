@@ -52,6 +52,10 @@ export enum MessageType
     PingAlive,
 
     DebugServerVersion,
+    CreateBlueprint,
+
+    SetDataBreakpoints,
+    ClearDataBreakpoints,
 }
 
 export class Message
@@ -87,6 +91,13 @@ export class Message
     readBool() : boolean
     {
         return this.readInt() != 0;
+    }
+
+    readAddress() : bigint
+    {
+        let value = this.buffer.readBigUInt64LE(this.offset);
+        this.offset += 8;
+        return value;
     }
 
     readString() : string
@@ -215,6 +226,10 @@ export function connect(hostname: string, port : number)
             {
                 events.emit("SetBreakpoint", msg);
             }
+            else if (msg.type == MessageType.ClearDataBreakpoints)
+            {
+                events.emit("ClearDataBreakpoints", msg);
+            }
             else if (msg.type == MessageType.DebugServerVersion)
             {
                 events.emit("DebugServerVersion", msg);
@@ -339,6 +354,52 @@ export function setBreakpoint(id : number, pathname : string, line : number, mod
 
     msg.writeUInt32LE(msg.length - 4, 0);
     unreal.write(msg);
+}
+
+export interface UnrealDataBreakpoint
+{
+    id: number,
+    address: bigint,
+    size: number,
+
+    // -1 = Always Trigger
+    // >0 = Trigger after X hits, then disable
+    hitCount: number,
+    cppBreakpoint: boolean,
+
+    name: string
+}
+
+export function setDataBreakpoints(breakpoints: UnrealDataBreakpoint[])
+{
+    let count = breakpoints.length <= 4 ? breakpoints.length : 4;
+
+    let header = Buffer.alloc(5);
+    header.writeUInt32LE(1, 0);
+    header.writeUInt8(MessageType.SetDataBreakpoints, 4);
+
+    // Number of breakpoints
+    let payload = Buffer.alloc(1);
+    payload.writeUInt8(count, 0);
+
+    payload = Buffer.concat([header, payload]);
+
+    for (let i = 0; i < count; i++)
+    {
+        const breakpoint = breakpoints[i];
+        let breakpointPayload = Buffer.alloc(4 + 8 + 1 + 1 + 4);
+        breakpointPayload.writeInt32LE(breakpoint.id, 0);
+        breakpointPayload.writeBigUInt64LE(breakpoint.address, 4);
+        breakpointPayload.writeUInt8(breakpoint.size, 4 + 8);
+        breakpointPayload.writeInt8(breakpoint.hitCount, 4 + 8 + 1);
+        breakpointPayload.writeInt32LE(breakpoint.cppBreakpoint ? 1 : 0, 4 + 8 + 1 + 1);
+
+
+        payload = Buffer.concat([payload, breakpointPayload, writeString(breakpoint.name)]);
+    }
+
+    payload.writeUInt32LE(payload.length - 4, 0);
+    unreal.write(payload);
 }
 
 export function sendStepIn()
