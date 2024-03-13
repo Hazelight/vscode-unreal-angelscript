@@ -159,8 +159,8 @@ export function ComputeCodeLenses(asmodule : scriptfiles.ASModule) : Array<CodeL
                 range: Range.create(Position.create(lensLine, 0), Position.create(lensLine, 10000)),
                 command: <Command> {
                     title: "Edit "+asset.name+" in Unreal",
-                    command: "angelscript.editAsset",
-                    arguments: ["/Script/AngelscriptAssets."+asset.name],
+                    command: "angelscript.saveAndEditAsset",
+                    arguments: [asmodule.uri, "/Script/AngelscriptAssets."+asset.name],
                 }
             });
         }

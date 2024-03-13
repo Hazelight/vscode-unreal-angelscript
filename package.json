@@ -257,6 +257,11 @@
                 "command": "angelscript.saveAndCreateBlueprint",
                 "title": "Angelscript Save and Create Blueprint",
                 "enablement": "false"
+            },
+            {
+                "command": "angelscript.saveAndEditAsset",
+                "title": "Angelscript Save and Edit Asset",
+                "enablement": "false"
             }
         ],
         "menus": {

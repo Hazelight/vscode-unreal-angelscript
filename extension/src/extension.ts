@@ -233,6 +233,32 @@ export function activate(context: ExtensionContext) {
         });
     context.subscriptions.push(saveAndCreateBlueprint);
 
+    let saveAndEditAsset = vscode.commands.registerCommand('angelscript.saveAndEditAsset',
+        function(uri : string, assetPath : string)
+        {
+            let activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor != null)
+            {
+                if (activeEditor.document.isDirty)
+                {
+                    activeEditor.document.save().then(
+                        function(success : boolean)
+                        {
+                            setTimeout(function()
+                            {
+                                vscode.commands.executeCommand('angelscript.editAsset', assetPath);
+                            }, 300);
+                        }
+                    );
+                }
+                else
+                {
+                    vscode.commands.executeCommand('angelscript.editAsset', assetPath);
+                }
+            }
+        });
+    context.subscriptions.push(saveAndEditAsset);
+
     console.log("Done activating angelscript extension");
 }
 
