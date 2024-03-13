@@ -1662,7 +1662,7 @@ function ResolveInsertCases(asmodule : scriptfiles.ASModule, action : CodeAction
     ];
 }
 
-function GetIndentForStatement(statement : scriptfiles.ASStatement) : string
+export function GetIndentForStatement(statement : scriptfiles.ASStatement) : string
 {
     let indent : string = null;
     let lines = statement.content.split("\n");
@@ -1698,7 +1698,7 @@ function GetIndentForStatement(statement : scriptfiles.ASStatement) : string
     return indent;
 }
 
-function GetIndentForBlock(scope : scriptfiles.ASScope) : string
+export function GetIndentForBlock(scope : scriptfiles.ASScope) : string
 {
     if (scope.statements.length != 0 && scope.statements[0])
     {
@@ -1726,7 +1726,7 @@ function GetIndentForBlock(scope : scriptfiles.ASScope) : string
     return null;
 }
 
-function ExtendIndent(indent : string) : string
+export function ExtendIndent(indent : string) : string
 {
     if (!indent || indent.length == 0)
         return "\t";

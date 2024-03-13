@@ -204,6 +204,16 @@ function connect_unreal() {
                     scriptSettings.disallowStaticClass = msg.readBool();
                 }
             }
+            else if(msg.type == MessageType.ReplaceAssetDefinition)
+            {
+                let assetName = msg.readString();
+                let lineCount = msg.readInt();
+                let lines : Array<string> = [];
+                for (let i = 0; i < lineCount; i += 1)
+                    lines.push(msg.readString());
+
+                ReplaceScriptAssetDefinition(assetName, lines);
+            }
         }
     });
 
@@ -336,7 +346,7 @@ connection.onInitialize((_params): InitializeResult => {
                 resolveProvider: false
             },
             executeCommandProvider: {
-                commands: ["angelscript.openAssets", "angelscript.createBlueprint"],
+                commands: ["angelscript.openAssets", "angelscript.createBlueprint", "angelscript.editAsset"],
             },
             codeActionProvider: {
                 resolveProvider: true,
@@ -789,6 +799,17 @@ connection.onExecuteCommand(function (params : ExecuteCommandParams)
                 connection.window.showErrorMessage("Cannot open asset: not connected to unreal editor.");
         }
     }
+    else if (params.command == "angelscript.editAsset")
+    {
+        if (params.arguments && params.arguments[0])
+        {
+            let assetPath = params.arguments[0] as string;
+            if (unreal)
+                unreal.write(buildOpenAssets([assetPath], ""));
+            else
+                connection.window.showErrorMessage("Cannot edit asset: not connected to unreal editor.");
+        }
+    }
     else if (params.command == "angelscript.createBlueprint")
     {
         if (params.arguments && params.arguments[0])
@@ -826,6 +847,36 @@ connection.onCodeActionResolve(function (action : CodeAction) : CodeAction
 
     return scriptactions.ResolveCodeAction(asmodule, action, data);
 });
+
+function ReplaceScriptAssetDefinition(assetName : string, assetContent : Array<string>)
+{
+    // Find the literal asset
+    let asset = scriptfiles.ScriptLiteralAssetsByName.get(assetName);
+    if (!asset)
+        return;
+
+    let outerIndent = scriptactions.GetIndentForStatement(asset.statement);
+    let indent = scriptactions.GetIndentForBlock(asset.content_scope);
+
+    let newContent = "\n";
+    for (let line of assetContent)
+    {
+        newContent += indent+line;
+        newContent += "\n";
+    }
+    newContent += outerIndent;
+
+    let edit = <WorkspaceEdit> {};
+    edit.changes = {};
+    edit.changes[asset.module.displayUri] = [
+        TextEdit.replace(
+            asset.module.getRange(asset.content_scope.start_offset, asset.content_scope.end_offset),
+            newContent)
+    ];
+
+    connection.workspace.applyEdit(edit);
+    connection.sendNotification("angelscript/wantSave", [asset.module.displayUri]);
+}
 
 function TryResolveSymbols(asmodule : scriptfiles.ASModule) : SemanticTokens | null
 {

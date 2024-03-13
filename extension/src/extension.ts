@@ -48,6 +48,10 @@ export function activate(context: ExtensionContext) {
     let client = new LanguageClient('angelscriptLanguageServer', 'Angelscript Language Server', serverOptions, clientOptions)
     let started_client = client.start();
 
+    client.onNotification("angelscript/wantSave", (uri : string) => {
+        setTimeout(() => vscode.workspace.saveAll(), 100);
+    });
+
     // register a configuration provider for 'mock' debug type
     const provider = new ASConfigurationProvider();
     context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('angelscript', provider));

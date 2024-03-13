@@ -86,6 +86,7 @@ export class ASModule
     types : Array<typedb.DBType> = [];
     globalSymbols : Array<typedb.DBSymbol> = [];
     semanticSymbols : Array<ASSemanticSymbol> = [];
+    literalAssets : Array<ASLiteralAsset> = [];
 
     importedModules : Array<ASModule> = [];
     delegateBinds : Array<ASDelegateBind> = [];
@@ -661,8 +662,19 @@ export class ASAnnotatedCall
     node_call : any = null;
 };
 
+export class ASLiteralAsset
+{
+    name : string;
+    type : string;
+
+    module : ASModule = null;
+    statement : ASStatement = null;
+    content_scope : ASScope = null;
+};
+
 export let ModuleDatabase = new Map<string, ASModule>();
 let ModulesByUri = new Map<string, ASModule>();
+export let ScriptLiteralAssetsByName = new Map<string, ASLiteralAsset>();
 
 // Get all modules currently loaded
 export function GetAllLoadedModules() : Array<ASModule>
@@ -1449,6 +1461,10 @@ function ClearModule(module : ASModule)
         // Remove types declared in this file
         for (let type of module.types)
             typedb.RemoveTypeFromDatabase(type);
+
+        // Remove literal assets declared in this file
+        for (let asset of module.literalAssets)
+            ScriptLiteralAssetsByName.delete(asset.name);
     }
 
     module.loaded = false;
@@ -1456,6 +1472,7 @@ function ClearModule(module : ASModule)
     module.semanticSymbols = [];
     module.types = [];
     module.delegateBinds = [];
+    module.literalAssets = [];
     module.annotatedFunctionCalls = [];
     module.namespaces = [];
     module.globalSymbols = [];
@@ -2174,6 +2191,18 @@ function GenerateTypeInformation(scope : ASScope)
         else if (scope.previous.ast.type == node_types.AssetDefinition)
         {
             scope.assettype = scope.previous.ast.typename.value;
+            if (scope.previous.ast.name)
+            {
+                let asset = new ASLiteralAsset;
+                asset.name = scope.previous.ast.name.value;
+                asset.type = scope.assettype;
+                asset.content_scope = scope;
+                asset.module = scope.module;
+                asset.statement = scope.previous;
+
+                asset.module.literalAssets.push(asset);
+                ScriptLiteralAssetsByName.set(asset.name, asset);
+            }
         }
     }
 

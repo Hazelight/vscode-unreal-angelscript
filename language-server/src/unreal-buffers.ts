@@ -48,6 +48,8 @@ export enum MessageType
 
     DebugServerVersion,
     CreateBlueprint,
+
+    ReplaceAssetDefinition,
 }
 
 export class Message

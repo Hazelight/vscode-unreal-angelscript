@@ -1,4 +1,3 @@
-
 let AssetPathToClass = new Map<string, string>();
 let ClassToReferencingAssets = new Map<string, Array<string>>();
 

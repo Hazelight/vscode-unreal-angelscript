@@ -139,6 +139,33 @@ export function ComputeCodeLenses(asmodule : scriptfiles.ASModule) : Array<CodeL
         }
     }
 
+    // Some literal assets should be able to open in the editor
+    for (let asset of asmodule.literalAssets)
+    {
+        let dbtype = typedb.GetTypeByName(asset.type);
+        if (!dbtype)
+            continue;
+
+        let canEdit = false;
+        if (dbtype.inheritsFrom("UCurveFloat"))
+            canEdit = true;
+
+        if (canEdit)
+        {
+            let startPos = asmodule.getPosition(asset.statement.end_offset);
+            let lensLine = Math.max(startPos.line-1, 0);
+
+            lenses.push(<CodeLens> {
+                range: Range.create(Position.create(lensLine, 0), Position.create(lensLine, 10000)),
+                command: <Command> {
+                    title: "Edit "+asset.name+" in Unreal",
+                    command: "angelscript.editAsset",
+                    arguments: ["/Script/AngelscriptAssets."+asset.name],
+                }
+            });
+        }
+    }
+
     return lenses;
 }
 
