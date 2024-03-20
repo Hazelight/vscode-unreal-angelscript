@@ -241,14 +241,6 @@
                 "title": "Go to Symbol"
             },
             {
-                "command": "angelscript.addImportTo",
-                "title": "Add Import To"
-            },
-            {
-                "command": "angelscript.quickOpenImport",
-                "title": "Quick Open Import"
-            },
-            {
                 "command": "angelscript.paren",
                 "title": "Angelscript Parenthesis Completion",
                 "enablement": "false"
@@ -269,16 +261,6 @@
                 {
                     "when": "resourceLangId == angelscript",
                     "command": "angelscript.goToSymbol",
-                    "group": "navigation"
-                },
-                {
-                    "when": "resourceLangId == angelscript",
-                    "command": "angelscript.addImportTo",
-                    "group": "navigation"
-                },
-                {
-                    "when": "resourceLangId == angelscript",
-                    "command": "angelscript.quickOpenImport",
                     "group": "navigation"
                 }
             ]
