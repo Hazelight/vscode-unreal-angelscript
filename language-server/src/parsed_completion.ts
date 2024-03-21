@@ -2981,7 +2981,7 @@ function ExtractExpressionPreceding(content : string, offset : number, ignoreTab
 
     let ignoreTableIndex = ignoreTable ? ignoreTable.length-2 : -1;
 
-    for (; exprStartOffset > 0; --exprStartOffset)
+    for (; exprStartOffset >= 0; --exprStartOffset)
     {
         let char = content[exprStartOffset];
         let endParse = false;
