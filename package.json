@@ -132,7 +132,7 @@
                 },
                 "UnrealAngelscript.codeLenses.showCreateBlueprintClasses": {
                     "type": "array",
-                    "default": ["AActor"],
+                    "default": ["AActor", "UUserWidget"],
                     "description": "Script classes inheriting from the specified classes will have a 'Create Blueprint' prompt above them if they don't already have a blueprint implementation."
                 }
             }
