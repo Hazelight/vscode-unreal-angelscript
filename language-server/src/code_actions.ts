@@ -1277,6 +1277,8 @@ function AddMacroActions(context : CodeActionContext)
             let variableName = context.statement.ast.name.value;
             let varType = typedb.LookupType(context.scope.getNamespace(), context.statement.ast.typename.value);
             let isActorComponent = varType && varType.inheritsFrom("UActorComponent");
+            let isWidget = varType && varType.inheritsFrom("UWidget");
+            let isInsideWidget = dbType && dbType.inheritsFrom("UWidget");
 
             if (!dbType.isStruct
                 && isActorComponent
@@ -1295,6 +1297,21 @@ function AddMacroActions(context : CodeActionContext)
                 });
             }
 
+            if (isWidget && isInsideWidget)
+            {
+                context.actions.push(<CodeAction> {
+                    kind: CodeActionKind.QuickFix,
+                    title: `Add UPROPERTY(BindWidget)`,
+                    source: "angelscript",
+                    data: {
+                        uri: context.module.uri,
+                        type: "insertMacro",
+                        macro: "UPROPERTY(BindWidget)",
+                        position: context.range_start,
+                    }
+                });
+            }
+
             context.actions.push(<CodeAction> {
                 kind: CodeActionKind.QuickFix,
                 title: `Add UPROPERTY()`,
@@ -1307,7 +1324,7 @@ function AddMacroActions(context : CodeActionContext)
                 }
             });
 
-            if (!isActorComponent)
+            if (!isActorComponent && !isWidget)
             {
                 context.actions.push(<CodeAction> {
                     kind: CodeActionKind.QuickFix,
