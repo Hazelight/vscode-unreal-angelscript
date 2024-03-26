@@ -34,14 +34,32 @@ interface ASBreakpoint
     line : number;
 }
 
+interface ASDebugVariable
+{
+    name : string,
+    value : string,
+    type : string,
+    address : bigint,
+    valueSize : number,
+    bHasMembers : boolean
+}
+
+interface ASDataBreakpoint
+{
+    id: number,
+    variable: ASDebugVariable
+}
+
 export class ASDebugSession extends LoggingDebugSession
 {
     // we don't support multiple threads, so we can use a hardcoded ID for the default thread
     private static THREAD_ID = 1;
 
     private breakpoints = new Map<string, ASBreakpoint[]>();
+    private dataBreakpoints = new Map<string, ASDataBreakpoint>();
     private nextBreakpointId = 1;
 
+    private variableStore = new Map<string, ASDebugVariable>();
     private _variableHandles = new Handles<string>();
 
     private _configurationDone = new Subject();
@@ -102,6 +120,10 @@ export class ASDebugSession extends LoggingDebugSession
             this.receiveBreakpoint(msg);
         });
 
+        unreal.events.on("ClearDataBreakpoints", (msg : unreal.Message) => {
+            this.receiveClearDataBreakpoints(msg);
+        });
+
         unreal.events.on("DebugServerVersion", (msg : unreal.Message) => {
             this.receiveDebugVersion(msg);
         });
@@ -124,12 +146,14 @@ export class ASDebugSession extends LoggingDebugSession
         // make VS Code to use 'evaluate' when hovering over source
         response.body.supportsEvaluateForHovers = true;
         response.body.supportsExceptionInfoRequest = true;
+        response.body.supportsDataBreakpoints = true;
 
         unreal.connect(this.hostname, this.port);
         unreal.sendRequestBreakFilters();
 
         this.waitingInitializeResponse = response;
     }
+
 
     receiveBreakFilters(msg : unreal.Message) : void
     {
@@ -209,6 +233,7 @@ export class ASDebugSession extends LoggingDebugSession
     {
         unreal.sendStopDebugging();
         unreal.disconnect();
+        this.clearAllDataBreakpoints();
 
         this.sendResponse(response);
     }
@@ -338,6 +363,24 @@ export class ASDebugSession extends LoggingDebugSession
         }
 
         this.breakpoints.set(filename, breakpointList);
+    }
+
+    protected receiveClearDataBreakpoints(msg : unreal.Message)
+    {
+        // If we receive this message it means the debug server has cleared some data breakpoints on their own
+        // accord, so we clear our breakpoints on the debug client as well to match.
+
+        let count = msg.readInt();
+        for (let i = 0; i < count; i++)
+        {
+            let id = msg.readInt();
+            this.clearDataBreakpoint(id);
+        }
+
+        if (count == 0)
+        {
+            this.clearAllDataBreakpoints();
+        }
     }
 
     protected setExceptionBreakPointsRequest(response: DebugProtocol.SetExceptionBreakpointsResponse, args: DebugProtocol.SetExceptionBreakpointsArguments)
@@ -515,37 +558,57 @@ export class ASDebugSession extends LoggingDebugSession
         let count = msg.readInt();
         for(let i = 0; i < count; ++i)
         {
-            let name = msg.readString();
-            let value = msg.readString();
-            let type = msg.readString();
-            let bHasMembers = msg.readBool();
+            let debugVariable : ASDebugVariable = {
+                name: msg.readString(),
+                value: msg.readString(),
+                type: msg.readString(),
+                bHasMembers: msg.readBool(),
+                address: BigInt(0),
+                valueSize: 0,
+            };
+
+            if (this.debugServerVersion > 1)
+            {
+                debugVariable.address = msg.readAddress();
+                debugVariable.valueSize = msg.readByte();
+            }
+
             let hint = <DebugProtocol.VariablePresentationHint>{};
 
-            let evalName = this.combineExpression(id, name);
+            let evalName = this.combineExpression(id, debugVariable.name);
 
             let varRef = 0;
-            if (bHasMembers)
+            if (debugVariable.bHasMembers)
                 varRef = this._variableHandles.create(evalName);
 
-            if (name.endsWith("$"))
+            if (debugVariable.name.endsWith("$"))
             {
-                name = name.substr(0, name.length-1);
+                debugVariable.name = debugVariable.name.substr(0, debugVariable.name.length-1);
                 hint.kind = 'method';
             }
-            else if (name.startsWith("[") && name.endsWith("]"))
+            else if (debugVariable.name.startsWith("[") && debugVariable.name.endsWith("]"))
             {
                 hint.kind = 'data';
             }
 
+            if (this.dataBreakpoints.has(evalName))
+            {
+                hint.attributes = ['hasDataBreakpoint'];
+            }
+
             let variable = {
-                name: name,
-                type: type,
-                value: value,
+                name: debugVariable.name,
+                type: debugVariable.type,
+                value: debugVariable.value,
                 presentationHint: hint,
                 variablesReference: varRef,
-                evaluateName: evalName.replace(/^[0-9]+:%.*%./g, ""),
+                evaluateName: debugVariable.name,
             };
 
+            // Keep the full path in the name for our debug variables
+            debugVariable.name = evalName.replace(/^[0-9]+:%.*%./g, "");
+
+            this.variableStore.set(evalName, debugVariable);
             variables.push(variable);
         }
 
@@ -562,8 +625,8 @@ export class ASDebugSession extends LoggingDebugSession
         }
     }
 
-        protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) : void
-        {
+    protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments) : void
+    {
         unreal.sendContinue();
         this.sendResponse(response);
     }
@@ -601,6 +664,128 @@ export class ASDebugSession extends LoggingDebugSession
             this.previousException = null;
             this.sendEvent(new StoppedEvent(Reason, ASDebugSession.THREAD_ID));
         }
+    }
+
+    protected dataBreakpointInfoRequest(response: DebugProtocol.DataBreakpointInfoResponse, args: DebugProtocol.DataBreakpointInfoArguments, request?: DebugProtocol.Request): void {
+        let id = this._variableHandles.get(args.variablesReference);
+        const evalName = this.combineExpression(id, args.name);
+        const variable = this.variableStore.get(evalName);
+
+        let dataId = null;
+        let description = "Data Breakpoint not available";
+
+        // Don't allow breakpoints for the same variable twice, we also have a hardware limit of 4 data breakpoints
+        if (this.debugServerVersion > 1 &&
+            variable !== undefined &&
+            this.dataBreakpoints.get(evalName) === undefined &&
+            this.dataBreakpoints.size < 4 &&
+            variable.address !== BigInt(0))
+        {
+            let breakpointSupported = false;
+            switch (variable.valueSize)
+            {
+                case 1:
+                case 2:
+                case 4:
+                case 8:
+                    breakpointSupported = true;
+                    break;
+                default:
+                    breakpointSupported = false;
+                    break;
+            }
+
+            if (breakpointSupported)
+            {
+                dataId = evalName;
+                description = `Data Breakpoint for ${variable.name} (${variable.valueSize} bytes 0x${variable.address.toString(16).toUpperCase().padStart(16, "0")})`;
+            }
+        }
+
+        response.body= {
+            dataId: dataId,
+            description: description,
+            accessTypes: ['write'],
+            canPersist: false
+        };
+
+        this.sendResponse(response);
+    }
+
+    protected setDataBreakpointsRequest(response: DebugProtocol.SetDataBreakpointsResponse, args: DebugProtocol.SetDataBreakpointsArguments, request?: DebugProtocol.Request): void
+    {
+        let dataBreakpointConfig = vscode.workspace.getConfiguration("UnrealAngelscript.dataBreakpoints");
+
+        this.dataBreakpoints.clear();
+        let responseBreakpoints = new Array<DebugProtocol.Breakpoint>();
+
+        let dataBreakpoints = new Array<unreal.UnrealDataBreakpoint>();
+
+        const triggerCppDataBreakpoints: boolean = dataBreakpointConfig.get("cppBreakpoints.enable");
+
+        const hitCount: number = triggerCppDataBreakpoints ?
+            dataBreakpointConfig.get("cppBreakpoints.triggerCount") :
+            dataBreakpointConfig.get("asBreakpoints.triggerCount");
+
+        for (let i = 0; i < args.breakpoints.length; i++)
+        {
+            let newBreakpoint = args.breakpoints[i];
+            const variable : ASDebugVariable = this.variableStore.get(newBreakpoint.dataId);
+            const breakpointId = this.nextBreakpointId++;
+            this.dataBreakpoints.set(newBreakpoint.dataId, { variable, id: breakpointId });
+
+            let responseBreakpoint : DebugProtocol.Breakpoint = {
+                id: breakpointId,
+                verified: true,
+                instructionReference: `0x${variable.address.toString(16).toUpperCase().padStart(16, "0")})`
+            }
+            responseBreakpoints.push(responseBreakpoint);
+            dataBreakpoints.push({
+                id: breakpointId,
+                address: variable.address,
+                size: variable.valueSize,
+                hitCount: hitCount,
+                cppBreakpoint: triggerCppDataBreakpoints,
+                name: `${variable.name}, ${variable.valueSize} bytes 0x${variable.address.toString(16).toUpperCase().padStart(16, "0")}`
+            });
+        }
+
+        response.body = {
+            breakpoints: responseBreakpoints
+        }
+
+        if (unreal.connected)
+            unreal.setDataBreakpoints(dataBreakpoints);
+
+        this.sendResponse(response);
+    }
+
+    private clearDataBreakpoint(id: number): void
+    {
+        let keyToDelete = undefined;
+        for (let [key, value] of this.dataBreakpoints.entries())
+        {
+            if (value.id === id)
+            {
+                keyToDelete = key;
+                break;
+            }
+        }
+
+        if (keyToDelete !== undefined)
+        {
+            this.dataBreakpoints.delete(keyToDelete);
+            this.sendEvent(new BreakpointEvent('removed', <DebugProtocol.Breakpoint>{ verified: false, id: id }));
+        }
+    }
+
+    private clearAllDataBreakpoints(): void
+    {
+        this.dataBreakpoints.forEach(function (bp: ASDataBreakpoint, key: string): void {
+            this.sendEvent(new BreakpointEvent('removed', <DebugProtocol.Breakpoint>{ verified: false, id: bp.id }));
+        }, this);
+
+        this.dataBreakpoints.clear();
     }
 
     protected exceptionInfoRequest(response: DebugProtocol.ExceptionInfoResponse, args: DebugProtocol.ExceptionInfoArguments): void

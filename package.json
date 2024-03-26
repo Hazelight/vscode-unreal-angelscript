@@ -134,6 +134,21 @@
                     "type": "array",
                     "default": ["AActor", "UUserWidget"],
                     "description": "Script classes inheriting from the specified classes will have a 'Create Blueprint' prompt above them if they don't already have a blueprint implementation."
+                },
+                "UnrealAngelscript.dataBreakpoints.cppBreakpoints.enable": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Should Data Breakpoints trigger in C++? If not, any Data Breakpoint will surface as an AS breakpoint, potentially missing the C++ callstack."
+                },
+                "UnrealAngelscript.dataBreakpoints.cppBreakpoints.triggerCount": {
+                    "type": "number",
+                    "default": 1,
+                    "description": "How many times a C++ Data Breakpoint should trigger (silently) before activating and disabling, -1 means it will never disable automatically."
+                },
+                "UnrealAngelscript.dataBreakpoints.asBreakpoints.triggerCount": {
+                    "type": "number",
+                    "default": -1,
+                    "description": "How many times a AS Data Breakpoint should trigger (silently) before activating and disabling, -1 means it will never disable automatically."
                 }
             }
         },

@@ -50,6 +50,9 @@ export enum MessageType
     CreateBlueprint,
 
     ReplaceAssetDefinition,
+
+    SetDataBreakpoints,
+    ClearDataBreakpoints,
 }
 
 export class Message
