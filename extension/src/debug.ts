@@ -70,7 +70,7 @@ export class ASDebugSession extends LoggingDebugSession
     port = 27099;
 
     // Version of this debug adapter.
-    debugAdapterVersion = 1;
+    debugAdapterVersion = 2;
 
     // Version of the Unreal Angelscript Debug Server we attach to.
     // Received during the DebugServerVersion event
@@ -567,7 +567,7 @@ export class ASDebugSession extends LoggingDebugSession
                 valueSize: 0,
             };
 
-            if (this.debugServerVersion > 1)
+            if (this.debugServerVersion >= 2)
             {
                 debugVariable.address = msg.readAddress();
                 debugVariable.valueSize = msg.readByte();
@@ -675,7 +675,7 @@ export class ASDebugSession extends LoggingDebugSession
         let description = "Data Breakpoint not available";
 
         // Don't allow breakpoints for the same variable twice, we also have a hardware limit of 4 data breakpoints
-        if (this.debugServerVersion > 1 &&
+        if (this.debugServerVersion >= 2 &&
             variable !== undefined &&
             this.dataBreakpoints.get(evalName) === undefined &&
             this.dataBreakpoints.size < 4 &&
@@ -829,8 +829,9 @@ export class ASDebugSession extends LoggingDebugSession
     }
 
     waitingEvaluateRequests : Array<any>;
-        protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) : void
-        {
+
+    protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments) : void
+    {
         unreal.sendRequestEvaluate(args.expression, args.frameId);
 
         if(!this.waitingEvaluateRequests)

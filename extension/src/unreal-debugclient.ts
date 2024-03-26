@@ -54,6 +54,8 @@ export enum MessageType
     DebugServerVersion,
     CreateBlueprint,
 
+    ReplaceAssetDefinition,
+
     SetDataBreakpoints,
     ClearDataBreakpoints,
 }
