@@ -608,7 +608,7 @@ export class ASDebugSession extends LoggingDebugSession
             // Keep the full path in the name for our debug variables
             debugVariable.name = evalName.replace(/^[0-9]+:%.*%./g, "");
 
-            this.variableStore.set(evalName, debugVariable);
+            this.variableStore.set(this.combineExpression(id, variable.evaluateName), debugVariable);
             variables.push(variable);
         }
 
