@@ -676,11 +676,10 @@ export class ASDebugSession extends LoggingDebugSession
         let dataId = null;
         let description = "Data Breakpoint not available";
 
-        // Don't allow breakpoints for the same variable twice, we also have a hardware limit of 4 data breakpoints
+        // Don't allow breakpoints for the same variable twice, or if the variable has no valid address/size
         if (this.debugServerVersion >= 2 &&
             variable !== undefined &&
             this.dataBreakpoints.get(evalName) === undefined &&
-            this.dataBreakpoints.size < ASDebugSession.SUPPORTED_DATA_BREAKPOINT_COUNT &&
             variable.address !== BigInt(0))
         {
             let breakpointSupported = false;

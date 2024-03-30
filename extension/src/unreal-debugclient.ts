@@ -374,7 +374,7 @@ export interface UnrealDataBreakpoint
 
 export function setDataBreakpoints(breakpoints: UnrealDataBreakpoint[])
 {
-    let count = breakpoints.length <= 4 ? breakpoints.length : 4;
+    let count = breakpoints.length;
 
     let header = Buffer.alloc(5);
     header.writeUInt32LE(1, 0);
