@@ -55,6 +55,8 @@ export class ASDebugSession extends LoggingDebugSession
     // we don't support multiple threads, so we can use a hardcoded ID for the default thread
     private static THREAD_ID = 1;
 
+    private static SUPPORTED_DATA_BREAKPOINT_COUNT = 4;
+
     private breakpoints = new Map<string, ASBreakpoint[]>();
     private dataBreakpoints = new Map<string, ASDataBreakpoint>();
     private nextBreakpointId = 1;
@@ -674,11 +676,10 @@ export class ASDebugSession extends LoggingDebugSession
         let dataId = null;
         let description = "Data Breakpoint not available";
 
-        // Don't allow breakpoints for the same variable twice, we also have a hardware limit of 4 data breakpoints
+        // Don't allow breakpoints for the same variable twice, or if the variable has no valid address/size
         if (this.debugServerVersion >= 2 &&
             variable !== undefined &&
             this.dataBreakpoints.get(evalName) === undefined &&
-            this.dataBreakpoints.size < 4 &&
             variable.address !== BigInt(0))
         {
             let breakpointSupported = false;
@@ -736,7 +737,7 @@ export class ASDebugSession extends LoggingDebugSession
 
             let responseBreakpoint : DebugProtocol.Breakpoint = {
                 id: breakpointId,
-                verified: true,
+                verified: i < ASDebugSession.SUPPORTED_DATA_BREAKPOINT_COUNT,
                 instructionReference: `0x${variable.address.toString(16).toUpperCase().padStart(16, "0")})`
             }
             responseBreakpoints.push(responseBreakpoint);
