@@ -4013,7 +4013,7 @@ function AddMethodOverrideSnippets(context : CompletionContext, completions : Ar
                     TextEdit.replace(
                         Range.create(
                             Position.create(position.line, 0),
-                            Position.create(position.line, position.character-1),
+                            Position.create(position.line, position.character-context.completingSymbol.length),
                         ),
                         currentIndent + method.returnType+" "
                     )
