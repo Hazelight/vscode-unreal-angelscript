@@ -564,6 +564,8 @@ export class ASScope extends ASElement
         {
             if (this.parentscope.dbtype)
                 return this.parentscope.dbtype;
+            if (this.parentscope.scopetype == ASScopeType.LiteralAsset)
+                return typedb.GetTypeByName(this.parentscope.assettype);
 
             let checkscope : ASScope = this.parentscope.parentscope;
             while (checkscope != null)
