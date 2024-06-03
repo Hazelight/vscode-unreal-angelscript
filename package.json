@@ -163,6 +163,7 @@
                 },
                 "UnrealAngelscript.projectCodeGeneration.generators": {
                     "type": "array",
+                    "default": [],
                     "description": "What generators to apply during analysis.",
                     "items": {
                         "type": "object",
