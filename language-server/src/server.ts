@@ -38,6 +38,7 @@ import * as scriptsymbols from './symbols';
 import * as scriptdiagnostics from './ls_diagnostics';
 import * as scriptlenses from './code_lenses';
 import * as scriptactions from './code_actions';
+import * as generatedcode from './generated_code';
 import * as assets from './assets';
 import * as inlayhints from './inlay_hints';
 import * as inlinevalues from './inline_values';
@@ -1143,6 +1144,10 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
 
     let codeLensSettings = scriptlenses.GetCodeLensSettings();
     codeLensSettings.showCreateBlueprintClasses = settings.codeLenses.showCreateBlueprintClasses;
+
+    let projectCodeGenerationSettings = generatedcode.GetProjectCodeGenerationSettings();
+    projectCodeGenerationSettings.enable = settings.projectCodeGeneration.enable;
+    projectCodeGenerationSettings.generators = settings.projectCodeGeneration.generators;
 });
 
 function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : Array<InlayHint> | null

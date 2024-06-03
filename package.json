@@ -127,12 +127,18 @@
                 },
                 "UnrealAngelscript.scriptIgnorePatterns": {
                     "type": "array",
-                    "default": ["**/Saved/**", "**/.plastic/**"],
+                    "default": [
+                        "**/Saved/**",
+                        "**/.plastic/**"
+                    ],
                     "description": "Glob patterns to ignore when searching for script files to parse."
                 },
                 "UnrealAngelscript.codeLenses.showCreateBlueprintClasses": {
                     "type": "array",
-                    "default": ["AActor", "UUserWidget"],
+                    "default": [
+                        "AActor",
+                        "UUserWidget"
+                    ],
                     "description": "Script classes inheriting from the specified classes will have a 'Create Blueprint' prompt above them if they don't already have a blueprint implementation."
                 },
                 "UnrealAngelscript.dataBreakpoints.cppBreakpoints.enable": {
@@ -149,6 +155,232 @@
                     "type": "number",
                     "default": -1,
                     "description": "How many times a AS Data Breakpoint should trigger (silently) before activating and disabling, -1 means it will never disable automatically."
+                },
+                "UnrealAngelscript.projectCodeGeneration.enable": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Should project code generation be enabled? If not, only built-in code generation will be applied."
+                },
+                "UnrealAngelscript.projectCodeGeneration.generators": {
+                    "type": "array",
+                    "description": "What generators to apply during analysis.",
+                    "items": {
+                        "type": "object",
+                        "description": "A code generator to apply to a given class/struct.",
+                        "properties": {
+                            "derivedFrom": {
+                                "type": "string",
+                                "default": "UObject",
+                                "description": "The class this generator will apply to."
+                            },
+                            "staticFunctions": {
+                                "type": "array",
+                                "default": [],
+                                "description": "List of static functions to generate for the target class.",
+                                "required": [
+                                    "returnType",
+                                    "name"
+                                ],
+                                "items": {
+                                    "properties": {
+                                        "returnType": {
+                                            "type": "string",
+                                            "default": "UObject",
+                                            "description": "The type name of the class/struct to be returned. Supports patterns such as `{class}`."
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "default": "MyStaticFunc",
+                                            "description": "Name of this function. Supports patterns such as `{class}`."
+                                        },
+                                        "args": {
+                                            "type": "array",
+                                            "default": [],
+                                            "description": "List of argument types for this function.",
+                                            "items": {
+                                                "type": "object",
+                                                "required": [
+                                                    "type",
+                                                    "name"
+                                                ],
+                                                "properties": {
+                                                    "type": {
+                                                        "type": "string",
+                                                        "default": "UObject",
+                                                        "description": "The type name of the class/struct to be used. Supports patterns such as `{class}`."
+                                                    },
+                                                    "name": {
+                                                        "type": "string",
+                                                        "default": "UObject",
+                                                        "description": "The name of the argument. Supports patterns such as `{class}`."
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "memberFunctions": {
+                                "type": "array",
+                                "default": [],
+                                "description": "List of member functions to generate for the target class.",
+                                "items": {
+                                    "required": [
+                                        "returnType",
+                                        "name"
+                                    ],
+                                    "properties": {
+                                        "returnType": {
+                                            "type": "string",
+                                            "default": "UObject",
+                                            "description": "The type name of the class/struct to be returned. Supports patterns such as `{class}`."
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "default": "MyMemberFunc",
+                                            "description": "Name of this function. Supports patterns such as `{class}`."
+                                        },
+                                        "args": {
+                                            "type": "array",
+                                            "description": "List of argument types for this function.",
+                                            "default": [],
+                                            "items": {
+                                                "type": "object",
+                                                "required": [
+                                                    "type",
+                                                    "name"
+                                                ],
+                                                "properties": {
+                                                    "type": {
+                                                        "type": "string",
+                                                        "default": "UObject",
+                                                        "description": "The type name of the class/struct to be used. Supports patterns such as `{class}`."
+                                                    },
+                                                    "name": {
+                                                        "type": "string",
+                                                        "default": "UObject",
+                                                        "description": "The name of the argument. Supports patterns such as `{class}`."
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "const": {
+                                            "type": "boolean",
+                                            "default": false,
+                                            "description": "Whether or not this function is const qualified."
+                                        }
+                                    }
+                                }
+                            },
+                            "staticAccessors": {
+                                "type": "array",
+                                "default": [],
+                                "description": "List of static accessors to generate for the target class.",
+                                "required": [
+                                    "returnType",
+                                    "name"
+                                ],
+                                "items": {
+                                    "properties": {
+                                        "derivedFrom": {
+                                            "type": "string",
+                                            "description": "The property type this generator will apply to."
+                                        },
+                                        "returnType": {
+                                            "type": "string",
+                                            "default": "UObject",
+                                            "description": "The type name of the class/struct to be returned. Supports patterns such as `{class}, {propType}, {propName}`."
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "default": "MyStaticFunc",
+                                            "description": "Name of this function. Supports patterns such as `{class}, {propType}, {propName}`."
+                                        },
+                                        "args": {
+                                            "type": "array",
+                                            "default": [],
+                                            "description": "List of argument types for this function.",
+                                            "items": {
+                                                "type": "object",
+                                                "required": [
+                                                    "type",
+                                                    "name"
+                                                ],
+                                                "properties": {
+                                                    "type": {
+                                                        "type": "string",
+                                                        "default": "UObject",
+                                                        "description": "The type name of the class/struct to be used. Supports patterns such as `{class}, {propType}, {propName}`."
+                                                    },
+                                                    "name": {
+                                                        "type": "string",
+                                                        "default": "UObject",
+                                                        "description": "The name of the argument. Supports patterns such as `{class}, {propType}, {propName}`."
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "memberAccessors": {
+                                "type": "array",
+                                "default": [],
+                                "description": "List of member accessors to generate for the target class.",
+                                "items": {
+                                    "required": [
+                                        "returnType",
+                                        "name"
+                                    ],
+                                    "properties": {
+                                        "derivedFrom": {
+                                            "type": "string",
+                                            "description": "The property type this generator will apply to."
+                                        },
+                                        "returnType": {
+                                            "type": "string",
+                                            "default": "UObject",
+                                            "description": "The type name of the class/struct to be returned. Supports patterns such as `{class}, {propType}, {propName}`."
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "default": "MyMemberFunc",
+                                            "description": "Name of this function. Supports patterns such as `{class}, {propType}, {propName}`."
+                                        },
+                                        "args": {
+                                            "type": "array",
+                                            "description": "List of argument types for this function.",
+                                            "default": [],
+                                            "items": {
+                                                "type": "object",
+                                                "required": [
+                                                    "type",
+                                                    "name"
+                                                ],
+                                                "properties": {
+                                                    "type": {
+                                                        "type": "string",
+                                                        "default": "UObject",
+                                                        "description": "The type name of the class/struct to be used. Supports patterns such as `{class}, {propType}, {propName}`."
+                                                    },
+                                                    "name": {
+                                                        "type": "string",
+                                                        "default": "UObject",
+                                                        "description": "The name of the argument. Supports patterns such as `{class}, {propType}, {propName}`."
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "const": {
+                                            "type": "boolean",
+                                            "default": false,
+                                            "description": "Whether or not this function is const qualified."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         },
