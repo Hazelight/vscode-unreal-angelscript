@@ -543,6 +543,7 @@ function ApplyProjectGeneratedCode(asmodule : scriptfiles.ASModule, dbtype : typ
         {
             let method = AddMethod(dbtype, Replace(func.name, tokens));
             method.returnType = Replace(func.returnType, tokens);
+            method.isConst = func.const;
             method.args = func.args.map((arg) => {
                 return new typedb.DBArg().init(Replace(arg.type, tokens), Replace(arg.name, tokens));
             });
@@ -581,6 +582,7 @@ function ApplyProjectGeneratedCode(asmodule : scriptfiles.ASModule, dbtype : typ
                 continue;
             let method = AddMethod(dbtype, Replace(func.name, tokens));
             method.returnType = Replace(func.returnType, tokens);
+            method.isConst = func.const;
             method.args = func.args.map((arg) => {
                 return new typedb.DBArg().init(Replace(arg.type, tokens), Replace(arg.name, tokens));
             });
