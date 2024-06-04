@@ -2,6 +2,69 @@ import { assert } from 'console';
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 
+interface ProjectCodeGenerationSettings
+{
+    enable : boolean,
+    generators : Generator[],
+}
+
+interface Generator
+{
+    derivedFrom : string,
+    staticFunctions : GeneratedStaticFunction[],
+    memberFunctions : GeneratedMemberFunction[],
+    staticAccessors : GeneratedStaticAccessor[],
+    memberAccessors : GeneratedMemberAccessor[],
+}
+
+interface GeneratedStaticFunction
+{
+    name : string,
+    returnType : string,
+    args : [GeneratorArgumentType],
+}
+
+interface GeneratedMemberFunction
+{
+    returnType : string,
+    name : string,
+    args : [GeneratorArgumentType],
+    const : boolean,
+}
+
+interface GeneratedStaticAccessor
+{
+    derivedFrom ?: string,
+    name : string,
+    returnType : string,
+    args : [GeneratorArgumentType],
+}
+
+interface GeneratedMemberAccessor
+{
+    derivedFrom ?: string,
+    returnType : string,
+    name : string,
+    args : [GeneratorArgumentType],
+    const : boolean,
+}
+
+interface GeneratorArgumentType
+{
+    type : string,
+    name : string,
+}
+
+let ProjectCodeGenerationSettings : ProjectCodeGenerationSettings = {
+    enable : false,
+    generators : [],
+};
+
+export function GetProjectCodeGenerationSettings() : ProjectCodeGenerationSettings
+{
+    return ProjectCodeGenerationSettings;
+}
+
 export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType, asmodule : scriptfiles.ASModule)
 {
     // Code that all delegate structs have
@@ -37,6 +100,18 @@ export function ProcessScriptTypeGeneratedCode(dbtype : typedb.DBType, asmodule 
         // Hazelight-specific generated code only if it's configured on
         if (scriptfiles.GetScriptSettings().useAngelscriptHaze)
             AddHazeGeneratedCode(asmodule, dbtype, nsType);
+
+        // Project-specific generated code only if it's configured on
+        if (ProjectCodeGenerationSettings.enable)
+        {
+            for (let generator of ProjectCodeGenerationSettings.generators)
+            {
+                if (dbtype.inheritsFrom(generator.derivedFrom))
+                {
+                    ApplyProjectGeneratedCode(asmodule, dbtype, nsType, generator);
+                }
+            }
+        }
 
         // Merge namespace into the type database
         asmodule.namespaces.push(nsType);
@@ -443,4 +518,74 @@ function AddGeneratedCodeForUHazeEffectEventHandler(asmodule : scriptfiles.ASMod
             dbfunc.auxiliarySymbols = [{symbol_name: method.name, container_type: nsType.getQualifiedNamespace()}];
         }
     });
+}
+
+function ApplyProjectGeneratedCode(asmodule : scriptfiles.ASModule, dbtype : typedb.DBType, nsType : typedb.DBNamespace, generator : Generator) {
+    let Replace = (value : string, replacements : [string, string][]) => {
+        for (let [token, replacement] of replacements) {
+            value = value.replace(new RegExp(`\{${token}\}`, 'g'), replacement);
+        }
+        return value;
+    };
+
+    // Apply non-accessors
+    {
+        let tokens : [string, string][] = [['class', dbtype.name]];
+        for (let func of generator.staticFunctions)
+        {
+            let method = AddGlobalFunction(asmodule, dbtype, nsType, Replace(func.name, tokens));
+            method.returnType = Replace(func.returnType, tokens);
+            method.args = func.args.map((arg) => {
+                return new typedb.DBArg().init(Replace(arg.type, tokens), Replace(arg.name, tokens));
+            });
+        }
+        for (let func of generator.memberFunctions)
+        {
+            let method = AddMethod(dbtype, Replace(func.name, tokens));
+            method.returnType = Replace(func.returnType, tokens);
+            method.isConst = func.const;
+            method.args = func.args.map((arg) => {
+                return new typedb.DBArg().init(Replace(arg.type, tokens), Replace(arg.name, tokens));
+            });
+        }
+    }
+
+    // Apply accessors
+    dbtype.forEachSymbol(function (sym : typedb.DBSymbol)
+    {
+        if (!(sym instanceof typedb.DBProperty))
+            return;
+        let prop = sym;
+        if (!prop.declaredModule)
+            return;
+        let propType = typedb.LookupType(prop.namespace, prop.typename);
+        if (!propType)
+            return;
+        let tokens : [string, string][] = [
+            ['class', dbtype.name],
+            ['propType', propType.name],
+            ['propName', prop.name]
+        ];
+        for (let func of generator.staticAccessors)
+        {
+            if (func.derivedFrom !== undefined && !propType.inheritsFrom(func.derivedFrom))
+                continue;
+            let method = AddGlobalFunction(asmodule, dbtype, nsType, Replace(func.name, tokens));
+            method.returnType = Replace(func.returnType, tokens);
+            method.args = func.args.map((arg) => {
+                return new typedb.DBArg().init(Replace(arg.type, tokens), Replace(arg.name, tokens));
+            });
+        }
+        for (let func of generator.memberAccessors)
+        {
+            if (func.derivedFrom !== undefined && !propType.inheritsFrom(func.derivedFrom))
+                continue;
+            let method = AddMethod(dbtype, Replace(func.name, tokens));
+            method.returnType = Replace(func.returnType, tokens);
+            method.isConst = func.const;
+            method.args = func.args.map((arg) => {
+                return new typedb.DBArg().init(Replace(arg.type, tokens), Replace(arg.name, tokens));
+            });
+        }
+    }, false);
 }
