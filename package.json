@@ -269,6 +269,11 @@
                                             "type": "boolean",
                                             "default": false,
                                             "description": "Whether or not this function is const qualified."
+                                        },
+                                        "property": {
+                                            "type": "boolean",
+                                            "default": false,
+                                            "description": "Whether or not this function marked as a property accessor."
                                         }
                                     }
                                 }
@@ -376,6 +381,11 @@
                                             "type": "boolean",
                                             "default": false,
                                             "description": "Whether or not this function is const qualified."
+                                        },
+                                        "property": {
+                                            "type": "boolean",
+                                            "default": false,
+                                            "description": "Whether or not this function marked as a property accessor."
                                         }
                                     }
                                 }
