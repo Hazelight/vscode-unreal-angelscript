@@ -22,6 +22,7 @@ import {
     WorkspaceSymbol, DocumentSymbol,
     InlayHint, InlayHintParams,
     InlineValue, InlineValueParams,
+    WorkspaceFolder,
 } from 'vscode-languageserver/node';
 import { TextDocument, TextDocumentContentChangeEvent } from 'vscode-languageserver-textdocument';
 
@@ -1099,55 +1100,80 @@ connection.onDidCloseTextDocument(function (params : DidCloseTextDocumentParams)
 
 connection.onDidChangeConfiguration(function (change : DidChangeConfigurationParams)
 {
-    let settingsObject = change.settings as any;
-    settings = settingsObject.UnrealAngelscript;
-    if (!settings)
-        return;
-
-    let diagnosticSettings = scriptdiagnostics.GetDiagnosticSettings();
-    let dirtyDiagnostics = false;
-
-    if (diagnosticSettings.namingConventionDiagnostics != settings.diagnosticsForUnrealNamingConvention)
+    function ApplySettings(settings: any)
     {
-        diagnosticSettings.namingConventionDiagnostics = settings.diagnosticsForUnrealNamingConvention;
-        dirtyDiagnostics = true;
-    }
+        if (!settings)
+            return;
 
-    if (diagnosticSettings.markUnreadVariablesAsUnused != settings.markUnreadVariablesAsUnused)
+        let diagnosticSettings = scriptdiagnostics.GetDiagnosticSettings();
+        let dirtyDiagnostics = false;
+
+        if (diagnosticSettings.namingConventionDiagnostics != settings.diagnosticsForUnrealNamingConvention)
+        {
+            diagnosticSettings.namingConventionDiagnostics = settings.diagnosticsForUnrealNamingConvention;
+            dirtyDiagnostics = true;
+        }
+
+        if (diagnosticSettings.markUnreadVariablesAsUnused != settings.markUnreadVariablesAsUnused)
+        {
+            diagnosticSettings.markUnreadVariablesAsUnused = settings.markUnreadVariablesAsUnused;
+            dirtyDiagnostics = true;
+        }
+
+        if (dirtyDiagnostics)
+            DirtyAllDiagnostics();
+
+        let completionSettings = parsedcompletion.GetCompletionSettings();
+        completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;
+        completionSettings.correctFloatLiteralsWhenExpectingDoublePrecision = settings.correctFloatLiteralsWhenExpectingDoublePrecision;
+
+        let inlayHintSettings = inlayhints.GetInlayHintSettings();
+        inlayHintSettings.inlayHintsEnabled = settings.inlayHints.inlayHintsEnabled;
+        inlayHintSettings.parameterHintsForConstants = settings.inlayHints.parameterHintsForConstants;
+        inlayHintSettings.parameterHintsForComplexExpressions = settings.inlayHints.parameterHintsForComplexExpressions;
+        inlayHintSettings.parameterReferenceHints = settings.inlayHints.parameterReferenceHints;
+        inlayHintSettings.parameterHintsForSingleParameterFunctions = settings.inlayHints.parameterHintsForSingleParameterFunctions;
+        inlayHintSettings.typeHintsForAutos = settings.inlayHints.typeHintsForAutos;
+        inlayHintSettings.parameterHintsIgnoredParameterNames = new Set<string>(settings.inlayHints.parameterHintsIgnoredParameterNames as Array<string>);
+        inlayHintSettings.parameterHintsIgnoredFunctionNames = new Set<string>(settings.inlayHints.parameterHintsIgnoredFunctionNames as Array<string>);
+
+        let inlineValueSettings = inlinevalues.GetInlineValueSettings();
+        inlineValueSettings.showInlineValueForFunctionThisObject = settings.inlineValues.showInlineValueForFunctionThisObject;
+        inlineValueSettings.showInlineValueForLocalVariables = settings.inlineValues.showInlineValueForLocalVariables;
+        inlineValueSettings.showInlineValueForParameters = settings.inlineValues.showInlineValueForParameters;
+        inlineValueSettings.showInlineValueForMemberAssignment = settings.inlineValues.showInlineValueForMemberAssignment;
+
+        let codeLensSettings = scriptlenses.GetCodeLensSettings();
+        codeLensSettings.showCreateBlueprintClasses = settings.codeLenses.showCreateBlueprintClasses;
+
+        let projectCodeGenerationSettings = generatedcode.GetProjectCodeGenerationSettings();
+        projectCodeGenerationSettings.enable = settings.projectCodeGeneration.enable;
+        projectCodeGenerationSettings.generators = settings.projectCodeGeneration.generators;
+    };
+
+    function ApplyUserSettings() {
+        ApplySettings(change.settings.UnrealAngelscript);
+    };
+
+    connection.workspace.getWorkspaceFolders().then(function (folders : WorkspaceFolder[])
     {
-        diagnosticSettings.markUnreadVariablesAsUnused = settings.markUnreadVariablesAsUnused;
-        dirtyDiagnostics = true;
-    }
-
-    if (dirtyDiagnostics)
-        DirtyAllDiagnostics();
-
-    let completionSettings = parsedcompletion.GetCompletionSettings();
-    completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;
-    completionSettings.correctFloatLiteralsWhenExpectingDoublePrecision = settings.correctFloatLiteralsWhenExpectingDoublePrecision;
-
-    let inlayHintSettings = inlayhints.GetInlayHintSettings();
-    inlayHintSettings.inlayHintsEnabled = settings.inlayHints.inlayHintsEnabled;
-    inlayHintSettings.parameterHintsForConstants = settings.inlayHints.parameterHintsForConstants;
-    inlayHintSettings.parameterHintsForComplexExpressions = settings.inlayHints.parameterHintsForComplexExpressions;
-    inlayHintSettings.parameterReferenceHints = settings.inlayHints.parameterReferenceHints;
-    inlayHintSettings.parameterHintsForSingleParameterFunctions = settings.inlayHints.parameterHintsForSingleParameterFunctions;
-    inlayHintSettings.typeHintsForAutos = settings.inlayHints.typeHintsForAutos;
-    inlayHintSettings.parameterHintsIgnoredParameterNames = new Set<string>(settings.inlayHints.parameterHintsIgnoredParameterNames as Array<string>);
-    inlayHintSettings.parameterHintsIgnoredFunctionNames = new Set<string>(settings.inlayHints.parameterHintsIgnoredFunctionNames as Array<string>);
-
-    let inlineValueSettings = inlinevalues.GetInlineValueSettings();
-    inlineValueSettings.showInlineValueForFunctionThisObject = settings.inlineValues.showInlineValueForFunctionThisObject;
-    inlineValueSettings.showInlineValueForLocalVariables = settings.inlineValues.showInlineValueForLocalVariables;
-    inlineValueSettings.showInlineValueForParameters = settings.inlineValues.showInlineValueForParameters;
-    inlineValueSettings.showInlineValueForMemberAssignment = settings.inlineValues.showInlineValueForMemberAssignment;
-
-    let codeLensSettings = scriptlenses.GetCodeLensSettings();
-    codeLensSettings.showCreateBlueprintClasses = settings.codeLenses.showCreateBlueprintClasses;
-
-    let projectCodeGenerationSettings = generatedcode.GetProjectCodeGenerationSettings();
-    projectCodeGenerationSettings.enable = settings.projectCodeGeneration.enable;
-    projectCodeGenerationSettings.generators = settings.projectCodeGeneration.generators;
+        // When only one workspace is open, use its settings
+        if (folders.length == 1)
+        {
+            connection.workspace.getConfiguration({
+                scopeUri: folders[0].uri,
+                section: 'UnrealAngelscript'
+            })
+            .then(ApplySettings)
+            .catch(ApplyUserSettings);
+        }
+        // Otherwise, we use the global user settings
+        else if (settings !== undefined)
+        {
+            ApplyUserSettings();
+        }
+    })
+    .catch(ApplyUserSettings);
 });
 
 function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : Array<InlayHint> | null

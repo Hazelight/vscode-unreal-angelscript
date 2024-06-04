@@ -27,57 +27,68 @@
                 "UnrealAngelscript.insertParenthesisOnFunctionCompletion": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Insert parenthesis pair when auto-completing a function call."
+                    "description": "Insert parenthesis pair when auto-completing a function call.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.diagnosticsForUnrealNamingConvention": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Emit diagnostic warnings and hints when types, functions, or variables violate the Unreal naming convention."
+                    "description": "Emit diagnostic warnings and hints when types, functions, or variables violate the Unreal naming convention.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.markUnreadVariablesAsUnused": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Variables that are written to but never read are marked as unused as well."
+                    "description": "Variables that are written to but never read are marked as unused as well.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.mathCompletionShortcuts": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Add completions for functions in the Math:: namespace so they can be completed without typing Math:: first."
+                    "description": "Add completions for functions in the Math:: namespace so they can be completed without typing Math:: first.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.correctFloatLiteralsWhenExpectingDoublePrecision": {
                     "type": "boolean",
                     "default": false,
-                    "markdownDescription": "When a float literal is typed (eg `1.f`) in a context where double-precision is expected, automatically correct it (eg to `1.0`)"
+                    "markdownDescription": "When a float literal is typed (eg `1.f`) in a context where double-precision is expected, automatically correct it (eg to `1.0`)",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlayHints.inlayHintsEnabled": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Enable inlay hints rendered by the angelscript extension."
+                    "description": "Enable inlay hints rendered by the angelscript extension.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlayHints.parameterHintsForConstants": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Show parameter name hints when passing a constant literal argument."
+                    "description": "Show parameter name hints when passing a constant literal argument.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlayHints.parameterHintsForComplexExpressions": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Show parameter name hints when passing a complex expression as an argument."
+                    "description": "Show parameter name hints when passing a complex expression as an argument.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlayHints.parameterReferenceHints": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Show an inlay hint when a parameter takes a writeable reference."
+                    "description": "Show an inlay hint when a parameter takes a writeable reference.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlayHints.parameterHintsForSingleParameterFunctions": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Enable parameter name hints for functions that are only passed a single argument."
+                    "description": "Enable parameter name hints for functions that are only passed a single argument.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlayHints.typeHintsForAutos": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Show the name of the type as an inlay hint on auto declarations."
+                    "description": "Show the name of the type as an inlay hint on auto declarations.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlayHints.parameterHintsIgnoredParameterNames": {
                     "type": "array",
@@ -95,7 +106,8 @@
                         "Parameters",
                         "Params"
                     ],
-                    "description": "Parameters with a name included in this list will be ignored for inlay hints."
+                    "description": "Parameters with a name included in this list will be ignored for inlay hints.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlayHints.parameterHintsIgnoredFunctionNames": {
                     "type": "array",
@@ -103,27 +115,32 @@
                         "type": "string"
                     },
                     "default": [],
-                    "description": "Functions with a name included in this list will be ignored for inlay hints"
+                    "description": "Functions with a name included in this list will be ignored for inlay hints",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlineValues.showInlineValueForLocalVariables": {
                     "type": "boolean",
                     "default": true,
-                    "description": "When debugging, show an inline value next to local variable declarations."
+                    "description": "When debugging, show an inline value next to local variable declarations.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlineValues.showInlineValueForParameters": {
                     "type": "boolean",
                     "default": true,
-                    "description": "When debugging, show an inline value for function parameters."
+                    "description": "When debugging, show an inline value for function parameters.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlineValues.showInlineValueForMemberAssignment": {
                     "type": "boolean",
                     "default": true,
-                    "description": "When debugging, show an inline value next to direct assignments of this member variables."
+                    "description": "When debugging, show an inline value next to direct assignments of this member variables.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.inlineValues.showInlineValueForFunctionThisObject": {
                     "type": "boolean",
                     "default": true,
-                    "description": "When debugging, show an inline value above the function declaration to display the this pointer and Owner of the object."
+                    "description": "When debugging, show an inline value above the function declaration to display the this pointer and Owner of the object.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.scriptIgnorePatterns": {
                     "type": "array",
@@ -131,7 +148,8 @@
                         "**/Saved/**",
                         "**/.plastic/**"
                     ],
-                    "description": "Glob patterns to ignore when searching for script files to parse."
+                    "description": "Glob patterns to ignore when searching for script files to parse.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.codeLenses.showCreateBlueprintClasses": {
                     "type": "array",
@@ -139,32 +157,38 @@
                         "AActor",
                         "UUserWidget"
                     ],
-                    "description": "Script classes inheriting from the specified classes will have a 'Create Blueprint' prompt above them if they don't already have a blueprint implementation."
+                    "description": "Script classes inheriting from the specified classes will have a 'Create Blueprint' prompt above them if they don't already have a blueprint implementation.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.dataBreakpoints.cppBreakpoints.enable": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Should Data Breakpoints trigger in C++? If not, any Data Breakpoint will surface as an AS breakpoint, potentially missing the C++ callstack."
+                    "description": "Should Data Breakpoints trigger in C++? If not, any Data Breakpoint will surface as an AS breakpoint, potentially missing the C++ callstack.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.dataBreakpoints.cppBreakpoints.triggerCount": {
                     "type": "number",
                     "default": 1,
-                    "description": "How many times a C++ Data Breakpoint should trigger (silently) before activating and disabling, -1 means it will never disable automatically."
+                    "description": "How many times a C++ Data Breakpoint should trigger (silently) before activating and disabling, -1 means it will never disable automatically.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.dataBreakpoints.asBreakpoints.triggerCount": {
                     "type": "number",
                     "default": -1,
-                    "description": "How many times a AS Data Breakpoint should trigger (silently) before activating and disabling, -1 means it will never disable automatically."
+                    "description": "How many times a AS Data Breakpoint should trigger (silently) before activating and disabling, -1 means it will never disable automatically.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.projectCodeGeneration.enable": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Should project code generation be enabled? If not, only built-in code generation will be applied."
+                    "description": "Should project code generation be enabled? If not, only built-in code generation will be applied.",
+                    "scope": "resource"
                 },
                 "UnrealAngelscript.projectCodeGeneration.generators": {
                     "type": "array",
                     "default": [],
                     "description": "What generators to apply during analysis.",
+                    "scope": "resource",
                     "items": {
                         "type": "object",
                         "description": "A code generator to apply to a given class/struct.",
