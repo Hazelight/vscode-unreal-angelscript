@@ -444,7 +444,7 @@ export class DBMethod implements DBSymbol
                 let argDecl = this.args[i].format();
                 if (determineType && this.determinesOutputTypeArgumentIndex == i)
                     argDecl = this.args[i].format(this.applyDeterminesOutputType(this.args[i].typename, determineType).name);
-                if (i > 0 || (skipFirstArg && i > 1))
+                if (i > 1 || (!skipFirstArg && i > 0))
                     decl += ", ";
                 decl += argDecl;
             }
