@@ -3081,7 +3081,9 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
             {
                 if (right_type)
                 {
-                    if (left_type != right_type && !left_type.isValueType() && !right_type.isValueType())
+                    if (left_type === right_type)
+                        return left_type;
+                    if (!left_type.isValueType() && !right_type.isValueType())
                     {
                         // Find the common baseclass
                         let target_type = left_type;
