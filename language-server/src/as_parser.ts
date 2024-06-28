@@ -3093,6 +3093,10 @@ export function ResolveTypeFromExpression(scope : ASScope, node : any) : typedb.
                         else
                             return left_type;
                     }
+                    else
+                    {
+                        return left_type;
+                    }
                 }
                 else
                 {
