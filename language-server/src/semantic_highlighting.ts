@@ -143,7 +143,7 @@ function BuildSymbols(asmodule : scriptfiles.ASModule, builder : SemanticTokensB
                 type = SemanticTypes.unknown_error;
             break;
             case scriptfiles.ASSymbolType.TemplateBaseType:
-                type = SemanticTypes.templae_base_type;
+                type = SemanticTypes.template_base_type;
             break;
             case scriptfiles.ASSymbolType.Parameter:
                 type = SemanticTypes.parameter;
