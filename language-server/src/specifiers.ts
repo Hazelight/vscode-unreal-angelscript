@@ -47,6 +47,7 @@ export let ASPropertySpecifiers_NO_HAZE : any = {
     "Replicated": "Property should be replicated to clients",
     "ReplicatedUsing": "Specify a function to call when the property is replicated (requires Replicated)",
     "ReplicationCondition": "Specify when the property should be replicated",
+    "ReplicationPushModel": "Use Push Model to replicate this property",
 };
 
 export let ASPropertySubSpecifiers : any = {
