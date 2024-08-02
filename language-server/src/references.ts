@@ -551,11 +551,21 @@ export function* PerformRename(uri : string, position : Position, baseReplaceWit
                     edits.set(checkmodule.displayUri, fileEdits);
                 }
 
+                let symbolRange = checkmodule.getRange(symbol.start, symbol.end);
+                if (checkmodule.textDocument)
+                {
+                    let originalText = checkmodule.textDocument.getText(symbolRange);
+
+                    // Don't rename instances of "Super::", even though they're referencing the class we're renaming
+                    if (symbol.type == scriptfiles.ASSymbolType.Typename && originalText == "Super")
+                        continue;
+                }
+
                 let isAccessor = (symbol.type == scriptfiles.ASSymbolType.MemberAccessor
                                     || symbol.type == scriptfiles.ASSymbolType.GlobalAccessor);
                 fileEdits.push(
                     TextEdit.replace(
-                        checkmodule.getRange(symbol.start, symbol.end),
+                        symbolRange,
                         isAccessor ? accessorReplaceText : replaceText
                     )
                 );
