@@ -502,6 +502,7 @@ export function SortMethodsBasedOnArgumentTypes(methods: Array<typedb.DBMethod>,
 {
     let context = GenerateCompletionContext(asmodule, offset - 1);
     let argContext = GenerateCompletionArguments(context);
+    context.subOuterArgumentIndex = argContext.nodesForPositionalArguments.length - 1;
 
     let scoredFunctions = new Array<[typedb.DBMethod, number]>();
 

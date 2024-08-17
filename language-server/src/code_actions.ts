@@ -258,6 +258,8 @@ function AddGenerateDelegateFunctionActions(context : CodeActionContext)
                     delegate: data.delegate,
                     name: data.name,
                     position: diag.range.start,
+                    wildcardType: data.wildcardType,
+                    wildcardName: data.wildcardName,
                 }
             });
 
@@ -303,6 +305,18 @@ function AddGenerateDelegateFunctionActions(context : CodeActionContext)
             if (foundFunc && foundFunc instanceof typedb.DBMethod)
                 continue;
 
+            let wildcardType : string = null;
+            let wildcardName : string = null;
+            if (delegateBind.node_wildcard && delegateBind.wildcard_name)
+            {
+                let providedWildcardType = scriptfiles.ResolveTypeFromExpression(delegateBind.scope, delegateBind.node_wildcard);
+                if (providedWildcardType)
+                {
+                    wildcardType = providedWildcardType.name;
+                    wildcardName = delegateBind.wildcard_name;
+                }
+            }
+
             context.actions.push(<CodeAction> {
                 kind: CodeActionKind.QuickFix,
                 title: "Generate Method: "+funcName+"()",
@@ -314,6 +328,8 @@ function AddGenerateDelegateFunctionActions(context : CodeActionContext)
                     delegate: delegateBind.delegateType,
                     name: funcName,
                     position: context.module.getPosition(delegateBind.statement.start_offset + delegateBind.node_expression.start),
+                    wildcardType: wildcardType,
+                    wildcardName: wildcardName,
                 }
             });
         }
@@ -329,7 +345,40 @@ function ResolveGenerateDelegateFunctionAction(asmodule : scriptfiles.ASModule, 
     let [insertPosition, indent, prefix, suffix] = FindInsertPositionForGeneratedMethod(asmodule, data.position);
     let snippet = prefix;
     snippet += indent+"UFUNCTION()\n";
-    snippet += GenerateMethodHeaderString("private ", indent, data.name, delegateType.delegateReturn, delegateType.delegateArgs);
+
+    let delegateArgs = delegateType.delegateArgs;
+
+    // Apply any wildcards to the signature of the method
+    if (data["wildcardType"] && data["wildcardName"])
+    {
+        for (let i = 0; i < delegateArgs.length; ++i)
+        {
+            if (delegateArgs[i].name == data["wildcardName"])
+            {
+                let modifiedArgs = new Array<typedb.DBArg>();
+                for (let j = 0; j < delegateArgs.length; ++j)
+                {
+                    if (i == j)
+                    {
+                        let arg = new typedb.DBArg();
+                        arg.name = delegateArgs[j].name;
+                        arg.defaultvalue = delegateArgs[j].defaultvalue;
+                        arg.typename = typedb.TransferTypeQualifiers(delegateArgs[j].typename, data["wildcardType"]);
+                        modifiedArgs.push(arg);
+                    }
+                    else
+                    {
+                        modifiedArgs.push(delegateArgs[j]);
+                    }
+                }
+
+                delegateArgs = modifiedArgs;
+                break;
+            }
+        }
+    }
+
+    snippet += GenerateMethodHeaderString("private ", indent, data.name, delegateType.delegateReturn, delegateArgs);
     snippet += "\n";
     snippet += indent+"{\n";
     snippet += indent+"}\n";

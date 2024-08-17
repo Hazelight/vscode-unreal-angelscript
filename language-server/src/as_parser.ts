@@ -654,6 +654,8 @@ export class ASDelegateBind
     node_expression : any = null;
     node_object : any = null;
     node_name : any = null;
+    node_wildcard : any = null;
+    wildcard_name : string = null;
 };
 
 export class ASAnnotatedCall
@@ -3887,6 +3889,7 @@ class ASParseContext
     isRootIdentifier : boolean = false;
     argumentFunction : typedb.DBMethod = null;
     isResolvingFunction : boolean = false;
+    functionPassedParameterCount : number = -1;
 };
 
 export function GetConstantNumberFromNode(node : any) : [boolean, number]
@@ -4003,6 +4006,7 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             {
                 parseContext.isWriteAccess = outerWriteAccess;
                 parseContext.isRootIdentifier = outerRootIdentifier;
+                parseContext.isResolvingFunction = outerIsResolvingFunction;
                 return DetectSymbolsInType(scope, statement, left_symbol, node.children[1], parseContext, symbol_type);
             }
 
@@ -4285,6 +4289,10 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             if (left_type == null)
             {
                 parseContext.isResolvingFunction = true;
+                if (node.children[1])
+                    parseContext.functionPassedParameterCount = node.children[1].children.length;
+                else
+                    parseContext.functionPassedParameterCount = 0;
                 left_symbol = DetectNodeSymbols(scope, statement, node.children[0], parseContext, typedb.DBAllowSymbol.Functions);
                 parseContext.isResolvingFunction = false;
 
@@ -4311,6 +4319,13 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
                         delegateBind.node_object = node.children[1].children[left_symbol.delegateObjectParam];
                     if (node.children[1].children[left_symbol.delegateFunctionParam])
                         delegateBind.node_name = node.children[1].children[left_symbol.delegateFunctionParam];
+
+                    if (left_symbol.delegateWildcardParam != -1 && node.children[1].children[left_symbol.delegateWildcardParam])
+                    {
+                        delegateBind.node_wildcard = node.children[1].children[left_symbol.delegateWildcardParam];
+                        delegateBind.wildcard_name = left_symbol.macroMeta.get("delegatewildcardparam");
+                    }
+
                     delegateBind.delegateType = left_symbol.delegateBindType;
                     scope.module.delegateBinds.push(delegateBind);
                 }
@@ -5475,7 +5490,12 @@ function DetectSymbolsInType(scope : ASScope, statement : ASStatement, inSymbol 
     let symType : ASSymbolType = ASSymbolType.UnknownError;
 
     // Could be a symbol inside the type
-    let usedSymbol = dbtype.findFirstSymbol(node.value, symbol_type);
+    let usedSymbol : typedb.DBSymbol;
+    if (parseContext.isResolvingFunction)
+        usedSymbol = dbtype.findFunctionSymbolByParameterCount(node.value, parseContext.functionPassedParameterCount);
+    else
+        usedSymbol = dbtype.findFirstSymbol(node.value, symbol_type);
+
     if (usedSymbol)
     {
         if (usedSymbol instanceof typedb.DBProperty)

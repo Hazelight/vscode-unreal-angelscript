@@ -193,7 +193,7 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
             // We didn't find the function at all
             let classType = delegateBind.scope.getParentType();
             let delegateType = typedb.GetTypeByName(delegateBind.delegateType);
-            let data = null;
+            let data : any = null;
 
             if (delegateType && classType && classType.name == objType.name)
             {
@@ -202,6 +202,16 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                     delegate: delegateType.name,
                     name: funcName,
                 };
+
+                if (delegateBind.node_wildcard && delegateBind.wildcard_name)
+                {
+                    let providedWildcardType = scriptfiles.ResolveTypeFromExpression(delegateBind.scope, delegateBind.node_wildcard);
+                    if (providedWildcardType)
+                    {
+                        data["wildcardType"] = providedWildcardType.name;
+                        data["wildcardName"] = delegateBind.wildcard_name;
+                    }
+                }
             }
 
             diagnostics.push(<Diagnostic> {
@@ -251,6 +261,14 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
         if (!delegateType || !delegateType.delegateArgs)
             continue;
 
+        let providedWildcardType : typedb.DBType = null;
+        let wildcardParameterName : string = null;
+        if (delegateBind.node_wildcard && delegateBind.wildcard_name)
+        {
+            providedWildcardType = scriptfiles.ResolveTypeFromExpression(delegateBind.scope, delegateBind.node_wildcard);
+            wildcardParameterName = delegateBind.wildcard_name;
+        }
+
         // Check that the signature matches
         let signatureMatches = true;
         if (delegateType.delegateReturn != foundFunc.returnType)
@@ -266,6 +284,10 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
             {
                 let signatureArg = delegateType.delegateArgs[i].typename;
                 let boundArg = foundFunc.args[i].typename;
+
+                // If this was the wildcard parameter, make sure the types match now
+                if (wildcardParameterName && providedWildcardType && delegateType.delegateArgs[i].name == wildcardParameterName)
+                    signatureArg = typedb.TransferTypeQualifiers(signatureArg, providedWildcardType.name);
 
                 let leftTypename = typedb.CleanTypeName(signatureArg);
                 let rightTypename = typedb.CleanTypeName(boundArg);
@@ -327,7 +349,7 @@ function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Arra
                     delegateBind.statement.start_offset + delegateBind.node_expression.start,
                     delegateBind.statement.start_offset + delegateBind.node_expression.end),
                 message: "Cannot bind function "+foundFunc.name+" in "+foundFunc.containingType.name
-                +".\nExpected Signature: "+delegateType.formatDelegateSignature()
+                +".\nExpected Signature: "+delegateType.formatDelegateSignature(wildcardParameterName, providedWildcardType)
                 +"\nGot Signature: "+foundFunc.format(),
                 source: "angelscript"
             });
