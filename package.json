@@ -4,6 +4,7 @@
     "description": "Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://github.com/Hazelight/UnrealEngine-Angelscript",
     "version": "1.7.7",
     "publisher": "Hazelight",
+    "icon": "resources/angelscript_unreal.png",
     "engines": {
         "vscode": "^1.65.0"
     },
