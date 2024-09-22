@@ -342,7 +342,7 @@ function ResolveGenerateDelegateFunctionAction(asmodule : scriptfiles.ASModule, 
     if (!delegateType)
         return;
 
-    let [insertPosition, indent, prefix, suffix] = FindInsertPositionForGeneratedMethod(asmodule, data.position);
+    let [insertPosition, indent, prefix, suffix] = FindInsertPositionForGeneratedDelegateBind(asmodule, data.position);
     let snippet = prefix;
     snippet += indent+"UFUNCTION()\n";
 
@@ -451,6 +451,72 @@ function GenerateMethodHeaderString(prefix : string, indent : string, name : str
     return snippet;
 }
 
+function FindInsertPositionForGeneratedDelegateBind(asmodule : scriptfiles.ASModule, bindPosition : Position) : [Position, string, string, string]
+{
+    let offset = asmodule.getOffset(bindPosition);
+    let curScope = asmodule.getScopeAt(offset);
+    let curStatement = curScope.getStatementAt(offset);
+    let classScope = curScope.getParentTypeScope();
+
+    if (!curStatement || !classScope)
+        return FindInsertPositionForGeneratedMethod(asmodule, bindPosition);
+
+    // Find a delegate bind before this in the scope and place the function after its function
+    // If there are no binds before it, find the first subsequent delegate bind and place it in front
+    let insertPosition : Position = null;
+    let insideType = classScope.getDatabaseType();
+    for (let otherBind of asmodule.delegateBinds)
+    {
+        if (!otherBind.statement)
+            continue;
+        if (!otherBind.node_name)
+            continue;
+        if (!otherBind.node_object)
+            continue;
+
+        // Stop when we reach the end of the current scope
+        if (curScope.end_offset < otherBind.statement.start_offset)
+            break;
+
+        // Ignore things outside of our scope
+        if (otherBind.scope != curScope)
+            continue;
+
+        // Ignore the bind we're generating
+        if (otherBind.statement == curStatement)
+            continue;
+
+        let boundFunction = otherBind.resolveBoundFunction();
+        if (!boundFunction)
+            continue;
+        if (boundFunction.containingType != insideType)
+            continue;
+
+        if (otherBind.statement.start_offset < curStatement.start_offset)
+        {
+            // Try "after the previous bind" first
+            insertPosition = asmodule.getPosition(boundFunction.moduleScopeEnd);
+        }
+        else if (otherBind.statement.start_offset > curStatement.end_offset)
+        {
+            // Fall back to "in front of the next bind"
+            if (!insertPosition)
+            {
+                insertPosition = asmodule.getPosition(boundFunction.moduleOffset);
+                if (insertPosition.line > 0)
+                    insertPosition.line -= 1;
+            }
+
+            break;
+        }
+    }
+
+    if (insertPosition)
+        return FindInsertPositionForGeneratedMethod(asmodule, insertPosition);
+    else
+        return FindInsertPositionForGeneratedMethod(asmodule, bindPosition);
+}
+
 function FindInsertPositionForGeneratedMethod(asmodule : scriptfiles.ASModule, afterPosition : Position) : [Position, string, string, string]
 {
     let offset = asmodule.getOffset(afterPosition);
@@ -526,7 +592,7 @@ function FindInsertPositionForGeneratedMethod(asmodule : scriptfiles.ASModule, a
         else if (!subscope.element_head)
             checkStartPos = asmodule.getPosition(subscope.end_offset);
 
-        if (checkStartPos.line >= afterPosition.line)
+        if (checkStartPos.line > afterPosition.line)
         {
             prefix += "\n";
             return [Position.create(scopeStartPos.line-1, 10000), indent, prefix, suffix];

@@ -656,6 +656,44 @@ export class ASDelegateBind
     node_name : any = null;
     node_wildcard : any = null;
     wildcard_name : string = null;
+
+    getFunctionName() : string | null
+    {
+        if (!this.node_name)
+            return null;
+        else if (this.node_name.type == node_types.ConstName)
+            return this.node_name.value.substring(2, this.node_name.value.length-1);
+        else if (this.node_name.type == node_types.ConstString)
+            return this.node_name.value.substring(1, this.node_name.value.length-1);
+        else
+            return null;
+    }
+
+    resolveObjectType() : typedb.DBType | null
+    {
+        if (!this.node_object)
+            return null;
+        else
+            return ResolveTypeFromExpression(this.scope, this.node_object);
+    }
+
+    resolveBoundFunction() : typedb.DBMethod | null
+    {
+        let funcName = this.getFunctionName();
+        if (!funcName)
+            return null;
+        let objType = this.resolveObjectType();
+        if (!objType)
+            return null;
+
+        let foundFunc = objType.findFirstSymbol(funcName, typedb.DBAllowSymbol.Functions);
+        if (!foundFunc)
+            foundFunc = objType.findMethodByUnrealName(funcName);
+
+        if (foundFunc && foundFunc instanceof typedb.DBMethod)
+            return foundFunc;
+        return null;
+    }
 };
 
 export class ASAnnotatedCall
@@ -2291,7 +2329,6 @@ function GenerateTypeInformation(scope : ASScope)
             break;
             case node_types.IfStatement:
             case node_types.ElseStatement:
-            case node_types.ForLoop:
             case node_types.WhileLoop:
             case node_types.CaseStatement:
             case node_types.DefaultCaseStatement:
