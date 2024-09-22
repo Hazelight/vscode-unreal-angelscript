@@ -854,6 +854,14 @@ export class DBType implements DBSymbol
         return false;
     }
 
+    isShadowingNamespace() : boolean
+    {
+        if (this.namespace)
+            return this.namespace.findChildNamespace(this.name) != null;
+        else
+            return RootNamespace.findChildNamespace(this.name) != null;
+    }
+
     extendTypes : Array<DBType> = null;
     extendTypesId : number = -1;
     getExtendTypesList() : Array<DBType>

@@ -12,6 +12,9 @@ import * as path from 'path';
 let CommonTypenames = new Set<string>([
     "FVector", "FRotator", "FTransform", "FQuat",
 ]);
+let CommonObjectTypes = new Set<string>([
+    "AActor", "UActorComponent", "UObject",
+]);
 let CommonNamespaces = new Set<string>([
     "Math",
 ]);
@@ -45,8 +48,8 @@ namespace Sort
     export const EnumValue_Max_Expected = "2";
     export const Local_Expected = "2";
     export const Local = "4";
-    export const Keyword = "8b";
     export const Keyword_Expected = "8a";
+    export const Keyword = "8b";
     export const ImportModule = "8c";
     export const MemberProp_Direct = "a";
     export const MemberProp_Parent = "c";
@@ -65,7 +68,8 @@ namespace Sort
     export const Typename_Common = "fa";
     export const Typename_SameFile = "fb";
     export const Typename_NearbyUsage = "fc";
-    export const Typename = "fd";
+    export const Typename_CommonObject = "fd";
+    export const Typename = "fe";
     export const Typename_Expected = "3";
     export const Unimported = "x";
     export const Method_Override_Snippet = "0";
@@ -1822,6 +1826,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 {
                     let commitChars : Array<string> = [];
                     GetTypenameCommitChars(context, dbtype.name, commitChars);
+                    if (dbtype.isShadowingNamespace())
+                        commitChars.push(":");
 
                     let complItem = <CompletionItem> {
                             label: dbtype.name,
@@ -2069,6 +2075,8 @@ function GetTypenamePriority(context : CompletionContext, type : typedb.DBType) 
         return Sort.Typename_SameFile;
     if (context.nearbyTypenames.has(type.name))
         return Sort.Typename_NearbyUsage;
+    if (CommonObjectTypes.has(type.name))
+        return Sort.Typename_CommonObject;
     return Sort.Typename;
 }
 

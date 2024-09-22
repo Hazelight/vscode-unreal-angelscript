@@ -606,7 +606,10 @@ connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): Com
     let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
     if (!asmodule)
         return null;
+    // let startTime = performance.now();
     let completions = parsedcompletion.Complete(asmodule, _textDocumentPosition.position);
+    // let endTime = performance.now();
+    // console.log("Generating completion took "+(endTime - startTime)+" ms");
     return completions;
 });
 
