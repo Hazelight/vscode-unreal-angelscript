@@ -745,33 +745,48 @@ function AddCastHelpers(context : CodeActionContext)
 
     let leftType : typedb.DBType = null;
     let rightType : typedb.DBType = null;
+    let codeNode = statement.ast;
 
-    if (statement.ast.type == scriptfiles.node_types.Assignment)
+    switch(codeNode.type)
     {
-        let leftNode = statement.ast.children[0];
-        let rightNode = statement.ast.children[1];
+        case scriptfiles.node_types.IfStatement:
+        case scriptfiles.node_types.ElseStatement:
+        case scriptfiles.node_types.ForLoop:
+        case scriptfiles.node_types.ForEachLoop:
+        case scriptfiles.node_types.WhileLoop:
+        case scriptfiles.node_types.CaseStatement:
+        case scriptfiles.node_types.DefaultCaseStatement:
+            if (codeNode.children[codeNode.children.length-1])
+                codeNode = codeNode.children[codeNode.children.length-1];
+        break;
+    }
+
+    if (codeNode.type == scriptfiles.node_types.Assignment)
+    {
+        let leftNode = codeNode.children[0];
+        let rightNode = codeNode.children[1];
         if (!leftNode || !rightNode)
             return;
 
         leftType = scriptfiles.ResolveTypeFromExpression(scope, leftNode);
         rightType = GetTypeFromExpressionIgnoreNullptr(scope, rightNode);
     }
-    else if (statement.ast.type == scriptfiles.node_types.VariableDecl)
+    else if (codeNode.type == scriptfiles.node_types.VariableDecl)
     {
-        if (statement.ast.typename)
-            leftType = typedb.LookupType(context.scope.getNamespace(), statement.ast.typename.value);
+        if (codeNode.typename)
+            leftType = typedb.LookupType(context.scope.getNamespace(), codeNode.typename.value);
 
-        if (statement.ast.expression)
-            rightType = GetTypeFromExpressionIgnoreNullptr(scope, statement.ast.expression);
+        if (codeNode.expression)
+            rightType = GetTypeFromExpressionIgnoreNullptr(scope, codeNode.expression);
     }
-    else if (statement.ast.type == scriptfiles.node_types.ReturnStatement)
+    else if (codeNode.type == scriptfiles.node_types.ReturnStatement)
     {
         let dbFunc = scope.getDatabaseFunction();
         if (dbFunc && dbFunc.returnType)
             leftType = typedb.LookupType(context.scope.getNamespace(), dbFunc.returnType);
 
-        if (statement.ast.children && statement.ast.children[0])
-            rightType = GetTypeFromExpressionIgnoreNullptr(scope, statement.ast.children[0]);
+        if (codeNode.children && codeNode.children[0])
+            rightType = GetTypeFromExpressionIgnoreNullptr(scope, codeNode.children[0]);
     }
 
     if (!leftType || !rightType)
@@ -818,19 +833,34 @@ function ResolveCastHelper(asmodule : scriptfiles.ASModule, action : CodeAction,
     if (!statement.ast)
         return;
 
+    let codeNode = statement.ast;
+    switch(codeNode.type)
+    {
+        case scriptfiles.node_types.IfStatement:
+        case scriptfiles.node_types.ElseStatement:
+        case scriptfiles.node_types.ForLoop:
+        case scriptfiles.node_types.ForEachLoop:
+        case scriptfiles.node_types.WhileLoop:
+        case scriptfiles.node_types.CaseStatement:
+        case scriptfiles.node_types.DefaultCaseStatement:
+            if (codeNode.children[codeNode.children.length-1])
+                codeNode = codeNode.children[codeNode.children.length-1];
+        break;
+    }
+
     let rightNode : any = null;
-    if (statement.ast.type == scriptfiles.node_types.Assignment)
+    if (codeNode.type == scriptfiles.node_types.Assignment)
     {
-        rightNode = statement.ast.children[1];
+        rightNode = codeNode.children[1];
     }
-    else if (statement.ast.type == scriptfiles.node_types.VariableDecl)
+    else if (codeNode.type == scriptfiles.node_types.VariableDecl)
     {
-        rightNode = statement.ast.expression;
+        rightNode = codeNode.expression;
     }
-    else if (statement.ast.type == scriptfiles.node_types.ReturnStatement)
+    else if (codeNode.type == scriptfiles.node_types.ReturnStatement)
     {
-        if (statement.ast.children && statement.ast.children[0])
-            rightNode = statement.ast.children[0]
+        if (codeNode.children && codeNode.children[0])
+            rightNode = codeNode.children[0]
     }
 
     if (!rightNode)
@@ -1050,9 +1080,28 @@ function AddVariablePromotionHelper(context : CodeActionContext)
     if (!codeNode)
         return;
 
-    if (codeNode.type == scriptfiles.node_types.Assignment)
+    let innerStatement : any = null;
+    switch (codeNode.type)
     {
-        let leftNode = codeNode.children[0];
+        case scriptfiles.node_types.Assignment:
+            innerStatement = codeNode;
+        break;
+
+        case scriptfiles.node_types.IfStatement:
+        case scriptfiles.node_types.ElseStatement:
+        case scriptfiles.node_types.ForLoop:
+        case scriptfiles.node_types.ForEachLoop:
+        case scriptfiles.node_types.WhileLoop:
+        case scriptfiles.node_types.CaseStatement:
+        case scriptfiles.node_types.DefaultCaseStatement:
+            if (codeNode.children[codeNode.children.length-1])
+                innerStatement = codeNode.children[codeNode.children.length-1];
+        break;
+    }
+
+    if (innerStatement && innerStatement.type == scriptfiles.node_types.Assignment)
+    {
+        let leftNode = innerStatement.children[0];
         if (!leftNode || leftNode.type != scriptfiles.node_types.Identifier)
             return;
 
@@ -1062,7 +1111,7 @@ function AddVariablePromotionHelper(context : CodeActionContext)
             return;
 
         // If we don't know what type is on the right we can't provide this action
-        let rvalueType = scriptfiles.ResolveTypeFromExpression(context.scope, codeNode.children[1]);
+        let rvalueType = scriptfiles.ResolveTypeFromExpression(context.scope, innerStatement.children[1]);
         if(!rvalueType)
             return;
 
