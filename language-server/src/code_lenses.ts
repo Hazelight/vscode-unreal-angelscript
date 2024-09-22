@@ -14,6 +14,7 @@ class ASFileTemplate
 }
 
 let FileTemplates = new Array<ASFileTemplate>();
+let FileTemplateNames = new Set<string>();
 
 export interface CodeLensSettings
 {
@@ -33,7 +34,6 @@ export function GetCodeLensSettings() : CodeLensSettings
 
 export function LoadFileTemplates(filenames : Array<string>)
 {
-    let templateNames = new Set<string>();
     for (let file of filenames)
     {
         try
@@ -53,9 +53,9 @@ export function LoadFileTemplates(filenames : Array<string>)
                 template.order = parseInt(match[1]);
             }
 
-            if (!templateNames.has(template.name.toLowerCase()))
+            if (!FileTemplateNames.has(template.name.toLowerCase()))
             {
-                templateNames.add(template.name.toLowerCase());
+                FileTemplateNames.add(template.name.toLowerCase());
                 FileTemplates.push(template);
             }
         }
@@ -66,7 +66,7 @@ export function LoadFileTemplates(filenames : Array<string>)
     }
 
     // Add default templates for actor and component if they don't already exist
-    if (!templateNames.has("actor"))
+    if (!FileTemplateNames.has("actor"))
     {
         let template = new ASFileTemplate();
         template.content =
@@ -82,9 +82,10 @@ export function LoadFileTemplates(filenames : Array<string>)
 };`;
         template.name = "Actor";
         FileTemplates.push(template);
+        FileTemplateNames.add("actor");
     }
 
-    if (!templateNames.has("component"))
+    if (!FileTemplateNames.has("component"))
     {
         let template = new ASFileTemplate();
         template.content =
@@ -97,6 +98,7 @@ export function LoadFileTemplates(filenames : Array<string>)
 };`;
         template.name = "Component";
         FileTemplates.push(template);
+        FileTemplateNames.add("component");
     }
 
     FileTemplates.sort(
