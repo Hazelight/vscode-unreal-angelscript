@@ -1441,8 +1441,9 @@ function AddMacroActions(context : CodeActionContext)
             let variableName = context.statement.ast.name.value;
             let varType = typedb.LookupType(context.scope.getNamespace(), context.statement.ast.typename.value);
             let isActorComponent = varType && varType.inheritsFrom("UActorComponent");
-            let isWidget = varType && varType.inheritsFrom("UWidget");
             let isInsideWidget = dbType && dbType.inheritsFrom("UWidget");
+            let isWidget = varType && varType.inheritsFrom("UWidget");
+            let isWidgetAnim = varType && varType.inheritsFrom("UWidgetAnimation");
 
             if (!dbType.isStruct
                 && isActorComponent
@@ -1461,19 +1462,37 @@ function AddMacroActions(context : CodeActionContext)
                 });
             }
 
-            if (isWidget && isInsideWidget)
+            if (isInsideWidget)
             {
-                context.actions.push(<CodeAction> {
-                    kind: CodeActionKind.QuickFix,
-                    title: `Add UPROPERTY(BindWidget)`,
-                    source: "angelscript",
-                    data: {
-                        uri: context.module.uri,
-                        type: "insertMacro",
-                        macro: "UPROPERTY(BindWidget)",
-                        position: context.range_start,
-                    }
-                });
+                if (isWidget)
+                {
+                    context.actions.push(<CodeAction> {
+                        kind: CodeActionKind.QuickFix,
+                        title: `Add UPROPERTY(BindWidget)`,
+                        source: "angelscript",
+                        data: {
+                            uri: context.module.uri,
+                            type: "insertMacro",
+                            macro: "UPROPERTY(BindWidget)",
+                            position: context.range_start,
+                        }
+                    });
+                }
+
+                if (isWidgetAnim)
+                {
+                    context.actions.push(<CodeAction> {
+                        kind: CodeActionKind.QuickFix,
+                        title: `Add UPROPERTY(BindWidgetAnim)`,
+                        source: "angelscript",
+                        data: {
+                            uri: context.module.uri,
+                            type: "insertMacro",
+                            macro: "UPROPERTY(BindWidgetAnim)",
+                            position: context.range_start,
+                        }
+                    });
+                }
             }
 
             context.actions.push(<CodeAction> {
@@ -1488,7 +1507,7 @@ function AddMacroActions(context : CodeActionContext)
                 }
             });
 
-            if (!isActorComponent && !isWidget)
+            if (!isActorComponent && !isWidget && !isWidgetAnim)
             {
                 context.actions.push(<CodeAction> {
                     kind: CodeActionKind.QuickFix,
