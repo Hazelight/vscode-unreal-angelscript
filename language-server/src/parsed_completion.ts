@@ -3584,6 +3584,10 @@ function isEditScope(inScope : scriptfiles.ASScope) : boolean
         if (!dbFunc || dbFunc.name != "ConstructionScript")
             return false;
     }
+    else if (inScope.scopetype == scriptfiles.ASScopeType.LiteralAsset)
+    {
+        return true;
+    }
     else if (inScope.scopetype != scriptfiles.ASScopeType.Class)
     {
         return false;
