@@ -54,7 +54,7 @@ export let ASPropertySpecifiers_NO_HAZE : any = {
 export let ASPropertySubSpecifiers : any = {
     // Note: subspecifier keys should be lowercase so they can be found consistently
     "meta": {
-        "InlineEditCondition": "When this boolean is used as an edit condition, display it inline to the left of the conditional property",
+        "InlineEditConditionToggle": "When this boolean is used as an edit condition, display it inline to the left of the conditional property",
         "EditCondition": "Only allow this property to be edited depending on the state of other properties",
         "EditConditionHides": "Hide this property completely when its EditCondition is false",
         "MakeEditWidget": "Create a movable 3D widget in the world for transforms and vectors",
