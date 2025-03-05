@@ -1505,6 +1505,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 return;
             if (func.isLocal && context.scope && !func.IsAccessibleFromModule(context.scope.module.modulename))
                 return;
+            if (func.declaredModule && func.namespace.isRootNamespace() && !scriptfiles.GetScriptSettings().exposeGlobalFunctions && func.declaredModule != context.scope.module.modulename)
+                return;
             if (func.isOverride || func.isBlueprintOverride)
                 return;
             if (!func.isCallable)

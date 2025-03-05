@@ -15,6 +15,7 @@ export interface ASSettings
     useAngelscriptHaze: boolean,
     deprecateStaticClass: boolean,
     disallowStaticClass: boolean,
+    exposeGlobalFunctions: boolean,
 };
 
 let ScriptSettings : ASSettings = {
@@ -23,6 +24,7 @@ let ScriptSettings : ASSettings = {
     useAngelscriptHaze: false,
     deprecateStaticClass: false,
     disallowStaticClass: false,
+    exposeGlobalFunctions: true,
 };
 
 let PreParsedIdentifiersInModules = new Map<string, Set<ASModule>>();

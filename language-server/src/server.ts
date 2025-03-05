@@ -204,6 +204,10 @@ function connect_unreal() {
                     scriptSettings.deprecateStaticClass = msg.readBool();
                     scriptSettings.disallowStaticClass = msg.readBool();
                 }
+                if (version >= 6)
+                {
+                    scriptSettings.exposeGlobalFunctions = msg.readBool();
+                }
             }
             else if(msg.type == MessageType.ReplaceAssetDefinition)
             {
