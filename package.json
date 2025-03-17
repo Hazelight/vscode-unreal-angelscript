@@ -50,6 +50,11 @@
                     "default": false,
                     "markdownDescription": "When a float literal is typed (eg `1.f`) in a context where double-precision is expected, automatically correct it (eg to `1.0`)"
                 },
+                "UnrealAngelscript.addCompletionFromAllNamespaces": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Add completions from all workspaces, not just the current one."
+                },
                 "UnrealAngelscript.inlayHints.inlayHintsEnabled": {
                     "type": "boolean",
                     "default": true,

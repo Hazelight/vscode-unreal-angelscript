@@ -26,11 +26,13 @@ export interface CompletionSettings
 {
     mathCompletionShortcuts : boolean,
     correctFloatLiteralsWhenExpectingDoublePrecision: boolean,
+    addCompletionFromAllNamespaces: boolean,
 };
 
 let CompletionSettings : CompletionSettings = {
     mathCompletionShortcuts: true,
     correctFloatLiteralsWhenExpectingDoublePrecision: false,
+    addCompletionFromAllNamespaces: false,
 };
 
 export function GetCompletionSettings() : CompletionSettings
@@ -295,6 +297,10 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
     // Some completions force the entire completion list to be case-insensitivy for usability reasons
     if (context.forceCaseInsensitive)
         MakeCompletionsLowerCase(completions);
+
+    // pulls completions from all namespaces
+    if (CompletionSettings.addCompletionFromAllNamespaces)
+        AddCompletionsFromAllNamespaces(context, completions);
 
     return completions;
 }
@@ -4436,6 +4442,19 @@ export function AddMathShortcutCompletions(context : CompletionContext, completi
         if (completionNames.has(compl.label))
             continue;
         completions.push(compl);
+    }
+}
+
+function AddCompletionsFromAllNamespaces(context: CompletionContext, completions: Array<CompletionItem>) {
+    let namespaces = typedb.GetAllNamespaces().values();
+    let nameSpaceCompletions : Array<CompletionItem> = [];
+    for (let namespace of namespaces) {
+        AddCompletionsFromType(context, namespace, nameSpaceCompletions, false);
+        for(let completion of nameSpaceCompletions){
+            completion.label = namespace.name + "::" + completion.label;
+        }
+        completions.push(...nameSpaceCompletions);
+        nameSpaceCompletions = [];
     }
 }
 
