@@ -446,6 +446,7 @@ export class ASDebugSession extends LoggingDebugSession
                     externalSource.presentationHint = 'deemphasize';
 
                     frame = new StackFrame(i, name+" ("+sourcePath.substring(2)+")");
+                    frame.presentationHint = "label";
                 }
                 else
                 {
