@@ -80,6 +80,15 @@
                     "default": true,
                     "description": "Show the name of the type as an inlay hint on auto declarations."
                 },
+                "UnrealAngelscript.inlayHints.typeHintsForAutoIgnoredTypes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                    ],
+                    "description": "Types in this list will never receive a type hint for an auto declaration"
+                },
                 "UnrealAngelscript.inlayHints.parameterHintsIgnoredParameterNames": {
                     "type": "array",
                     "items": {

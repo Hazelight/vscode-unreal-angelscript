@@ -1140,6 +1140,7 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
     inlayHintSettings.parameterReferenceHints = settings.inlayHints.parameterReferenceHints;
     inlayHintSettings.parameterHintsForSingleParameterFunctions = settings.inlayHints.parameterHintsForSingleParameterFunctions;
     inlayHintSettings.typeHintsForAutos = settings.inlayHints.typeHintsForAutos;
+    inlayHintSettings.typeHintsIgnoredTypes = new Set<string>(settings.inlayHints.typeHintsForAutoIgnoredTypes as Array<string>);
     inlayHintSettings.parameterHintsIgnoredParameterNames = new Set<string>(settings.inlayHints.parameterHintsIgnoredParameterNames as Array<string>);
     inlayHintSettings.parameterHintsIgnoredFunctionNames = new Set<string>(settings.inlayHints.parameterHintsIgnoredFunctionNames as Array<string>);
 

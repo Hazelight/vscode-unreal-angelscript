@@ -11,6 +11,7 @@ export interface InlayHintSettings
     parameterHintsForSingleParameterFunctions : boolean;
     parameterHintsForComplexExpressions : boolean;
     typeHintsForAutos : boolean;
+    typeHintsIgnoredTypes : Set<string>;
     parameterHintsIgnoredParameterNames : Set<string>;
     parameterHintsIgnoredFunctionNames : Set<string>;
 };
@@ -22,6 +23,7 @@ let InlayHintSettings : InlayHintSettings = {
     parameterHintsForSingleParameterFunctions : false,
     parameterHintsForComplexExpressions : true,
     typeHintsForAutos : true,
+    typeHintsIgnoredTypes : new Set<string>(),
     parameterHintsIgnoredParameterNames : new Set<string>(),
     parameterHintsIgnoredFunctionNames : new Set<string>(),
 };
@@ -83,6 +85,8 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
 
             let cleanResultType = typedb.CleanTypeName(scopevar.typename);
             if (cleanResultType == "auto")
+                continue;
+            if (InlayHintSettings.typeHintsIgnoredTypes.has(cleanResultType))
                 continue;
 
             let showAutoHint = true;
