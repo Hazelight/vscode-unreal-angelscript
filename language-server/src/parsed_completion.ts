@@ -298,9 +298,13 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
     if (context.forceCaseInsensitive)
         MakeCompletionsLowerCase(completions);
 
+    let useBillw = true;
     // pulls completions from all namespaces
     if (CompletionSettings.addCompletionFromAllNamespaces)
-        AddCompletionsFromAllNamespaces(context, completions);
+        if (useBillw)
+            AddAllNamespacesForCompletion(context, completions, searchTypes);
+        else
+            AddCompletionsFromAllNamespaces(context, completions);
 
     return completions;
 }
@@ -4455,6 +4459,308 @@ function AddCompletionsFromAllNamespaces(context: CompletionContext, completions
         }
         completions.push(...nameSpaceCompletions);
         nameSpaceCompletions = [];
+    }
+}
+
+export function AddAllCompletionsFromNamespace(namespace : typedb.DBNamespace, context : CompletionContext, completions : Array<CompletionItem>)
+{
+    if (context.isIncompleteNamespace)
+        return;
+
+    let unexpectedCompletions = new Array<CompletionItem>();
+    let completionNames = new Set<string>();
+
+    const allowedSymbolTypes = [typedb.DBMethod, typedb.DBProperty, typedb.DBType];
+    const symbolCompletionKind = [CompletionItemKind.Method, CompletionItemKind.Property, CompletionItemKind.Class];
+
+    let propertyIndex = 0;
+
+    // We can't just use AddCompletitionsFromType: we need the fully qualified names here as we are looking in all namespaces, not just the
+    // current one
+    namespace.forEachSymbol(function (symbol : typedb.DBSymbol)
+    {
+        if (symbol instanceof typedb.DBMethod)
+        {
+            const func : typedb.DBMethod = symbol;
+
+            if (func.isMixin)
+                return;
+            if (!CanCompleteSymbol(context, func))
+                return;
+            if (!isFunctionAccessibleFromScope(namespace, func, context.scope))
+                return;
+            if (func.isLocal && context.scope && !func.IsAccessibleFromModule(context.scope.module.modulename))
+                return;
+            if (func.isOverride || func.isBlueprintOverride)
+                return;
+            if (!func.isCallable)
+                return;
+            if (func.containingType) // shouldn't be an issue as we are only looking in namespace
+                return;
+
+            let commitChars = ["("];
+
+            let compl = <CompletionItem>{
+                label: func.namespace.getQualifiedNamespace() + "::" + func.name,
+                kind: CompletionItemKind.Method,
+                data: ["global_func", func.namespace.getQualifiedNamespace(), func.name, func.id],
+                commitCharacters: commitChars,
+                filterText: func.name,
+                sortText: Sort.Global,
+            };
+
+            compl.labelDetails = <CompletionItemLabelDetails>
+            {
+                detail: (func.args && func.args.length > 0) ? FunctionLabelWithParamsSuffix : FunctionLabelSuffix,
+            };
+
+            compl.command = <Command> {
+                title: "",
+                command: "angelscript.paren",
+            };
+
+            if (func.returnType && func.returnType != "void")
+            {
+                compl.labelDetails.description = func.returnType;
+
+                if (!typedb.IsPrimitive(func.returnType))
+                    compl.commitCharacters.push(".");
+            }
+
+            if (context.expectedType && !context.isTypeExpected(func.returnType))
+            {
+                unexpectedCompletions.push(compl);
+                return;
+            }
+
+            completions.push(compl);
+            completionNames.add(compl.label);
+        }
+        else if (symbol instanceof typedb.DBProperty)
+        {
+            if (!CanCompleteSymbol(context, symbol))
+                return;
+
+            let prop : typedb.DBProperty = symbol;
+            propertyIndex += 1;
+
+            let compl = <CompletionItem>{
+                    label: prop.name,
+                    kind : CompletionItemKind.Field,
+                    labelDetails: <CompletionItemLabelDetails>
+                    {
+                        description: prop.typename,
+                    },
+                    commitCharacters: [".", ";", ","],
+                    filterText: GetSymbolFilterText(context, prop),
+            };
+
+            compl.sortText = Sort.GlobalProp;
+            compl.data = ["global_prop", prop.namespace.getQualifiedNamespace(), prop.name];
+
+            if (context.isTypeExpected(prop.typename))
+            {
+                if (prop.containingType || !prop.namespace.isRootNamespace())
+                    context.completionsMatchingExpected.push(compl);
+
+                compl.sortText = Sort.GlobalProp_Expected;
+            }
+
+            if (context.isIncompleteNamespace)
+                compl.insertText = ":"+compl.label;
+            completions.push(compl);
+        }
+        else if (symbol instanceof typedb.DBType)
+        {
+            let dbtype : typedb.DBType = symbol;
+
+            // Ignore template instantations for completion
+            if (dbtype.isTemplateInstantiation)
+                return;
+
+            let kind : CompletionItemKind = CompletionItemKind.Class;
+
+            if (dbtype.isEnum)
+            {
+                let canCompleteEnum = CanCompleteSymbol(context, dbtype);
+
+                // Allow completing to qualified enum values when appropriate
+                if ((context.isSubExpression && !context.isFunctionDeclaration) || context.isRightExpression)
+                {
+                    if (context.expectedType == dbtype)
+                    {
+                        let enumIndex = 0;
+                        dbtype.forEachSymbol(function (sym : typedb.DBSymbol)
+                        {
+                            if (!(sym instanceof typedb.DBProperty))
+                                return;
+
+                            enumIndex += 1;
+
+                            let enumvalue = sym;
+                            let canCompleteValue = CanCompleteTo(context, enumvalue.name);
+                            if (!canCompleteEnum && !canCompleteValue)
+                                return;
+
+                            let enumstr = dbtype.name+"::"+enumvalue.name;
+                            let complItem = <CompletionItem> {
+                                    label: enumstr,
+                                    kind: CompletionItemKind.EnumMember,
+                                    data: ["enum", dbtype.name, enumvalue.name],
+                            };
+
+                            let isMaxValue = enumvalue.name.includes("MAX");
+
+                            // Append the index of the enum value so they get sorted correctly
+                            let sortNumber = enumIndex.toString().padStart(3, '0');
+                            if (context.expectedType == dbtype)
+                            {
+                                if (isMaxValue)
+                                {
+                                    complItem.sortText =  Sort.EnumValue_Max_Expected+sortNumber;
+                                }
+                                else
+                                {
+                                    complItem.preselect = true;
+                                    complItem.sortText = Sort.EnumValue_Expected+sortNumber;
+                                    context.havePreselection = true;
+                                }
+                            }
+                            else
+                            {
+                                if (isMaxValue)
+                                    complItem.sortText = Sort.EnumValue_Max+sortNumber;
+                                else
+                                    complItem.sortText = Sort.EnumValue+sortNumber;
+                            }
+
+                            if (context.isIncompleteNamespace)
+                                complItem.insertText = ":"+complItem.label;
+
+                            if (canCompleteEnum)
+                                completions.push(complItem);
+
+                            // Add secondary item for if we're just typing the enum value's name
+                            if (canCompleteValue && context.expectedType == dbtype && !isMaxValue)
+                            {
+                                completions.push({
+                                    ...complItem,
+                                    filterText: enumvalue.name,
+                                });
+                            }
+                        });
+                    }
+                }
+
+                if (canCompleteEnum)
+                {
+                    if (!context.expectedType || !context.expectedType.isEnum || context.expectedType == dbtype)
+                    {
+                        let commitChars : Array<string> = [];
+                        if (!context.isIncompleteNamespace)
+                            commitChars.push(":");
+
+                        let complItem = <CompletionItem> {
+                                label: dbtype.name,
+                                kind: CompletionItemKind.Enum,
+                                data: ["type", dbtype.name],
+                                commitCharacters: commitChars,
+                                filterText: GetSymbolFilterText(context, dbtype),
+                                sortText: GetTypenamePriority(context, dbtype),
+                        };
+
+                        if (context.expectedType == dbtype)
+                        {
+                            complItem.sortText =  Sort.EnumName_Expected;
+                            complItem.preselect = true;
+                            context.havePreselection = true;
+                        }
+
+                        if (context.isIncompleteNamespace)
+                            complItem.insertText = ":"+complItem.label;
+
+                        completions.push(complItem);
+                    }
+                }
+            }
+            else
+            {
+                if (CanCompleteSymbol(context, dbtype))
+                {
+                    let commitChars : Array<string> = [];
+                    GetTypenameCommitChars(context, dbtype.name, commitChars);
+
+                    let complItem = <CompletionItem> {
+                            label: dbtype.name,
+                            kind: kind,
+                            data: ["type", dbtype.name],
+                            commitCharacters: commitChars,
+                            filterText: GetSymbolFilterText(context, dbtype),
+                            sortText: GetTypenamePriority(context, dbtype),
+                    };
+
+                    if (context.maybeTypename && context.typenameExpected && context.typenameExpected == dbtype.name)
+                    {
+                        // We might be expecting a specific typename, in which case we should preselect it
+                        complItem.sortText = Sort.Typename_Expected;
+                        complItem.preselect = true;
+                        context.havePreselection = true;
+                    }
+
+                    if (context.isIncompleteNamespace)
+                        complItem.insertText = ":"+complItem.label;
+
+                    completions.push(complItem);
+                }
+            }
+        }
+    });
+
+    // Any functions where we _don't_ have an expected overload for, add them still
+    for (let compl of unexpectedCompletions)
+    {
+        if (completionNames.has(compl.label))
+            continue;
+        completions.push(compl);
+    }
+}
+
+export function listNamespaces()
+{
+    const namespaces = Array.from(typedb.GetAllNamespaces()).map(([name, namespace]) => ({ name, namespace }));
+    const namespaceNames = namespaces.map(ns => ns.name).sort((a, b) => a.localeCompare(b));
+    return namespaceNames;
+}
+
+export function AddAllNamespacesForCompletion(context: CompletionContext, completions: Array<CompletionItem>, ignore: Array<typedb.DBType | typedb.DBNamespace>)
+{
+    if (!CompletionSettings.addCompletionFromAllNamespaces)
+        return;
+
+    const namespaces = Array.from(typedb.GetAllNamespaces()).map(([name, namespace]) => ({ name, namespace }));
+
+    let processedNamespaces = new Set<string>();
+
+    // Seed processedNamespaces with our ignore list
+    ignore.forEach(element => {
+        if(element instanceof typedb.DBNamespace) {
+            processedNamespaces.add(element.qualifiedNamespace);
+        }
+    });
+
+    while (namespaces.length > 0) {
+        const { name, namespace } = namespaces.pop();
+        if (namespace && !processedNamespaces.has(namespace.qualifiedNamespace)) {
+            processedNamespaces.add(namespace.qualifiedNamespace);
+
+            // Keep track of the fully qualified path of the current namespace
+            if (namespace.childNamespaces) {
+                for (const [childName, childNamespace] of namespace.childNamespaces) {
+                    namespaces.push({ name: childNamespace.qualifiedNamespace, namespace: childNamespace });
+                }
+            }
+            AddAllCompletionsFromNamespace(namespace, context, completions);
+        }
     }
 }
 
