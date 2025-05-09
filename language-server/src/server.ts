@@ -22,6 +22,8 @@ import {
     WorkspaceSymbol, DocumentSymbol,
     InlayHint, InlayHintParams,
     InlineValue, InlineValueParams,
+    ShowMessageRequest,
+    MessageType as VSCodeMessageType,
 } from 'vscode-languageserver/node';
 import { TextDocument, TextDocumentContentChangeEvent } from 'vscode-languageserver-textdocument';
 
@@ -347,7 +349,7 @@ connection.onInitialize((_params): InitializeResult => {
                 resolveProvider: false
             },
             executeCommandProvider: {
-                commands: ["angelscript.openAssets", "angelscript.createBlueprint", "angelscript.editAsset"],
+                commands: ["angelscript.openAssets", "angelscript.createBlueprint", "angelscript.editAsset", "angelscript.listNamespaces"],
             },
             codeActionProvider: {
                 resolveProvider: true,
@@ -784,6 +786,28 @@ connection.onCodeLensResolve(function (lens : CodeLens) : CodeLens{
     return lens;
 });
 
+function listNamespaces(): string {
+    const allModules = scriptfiles.GetAllLoadedModules();
+    const namespaceSet = new Set<string>();
+    for (const module of allModules) {
+        if (module.namespaces) {
+            for (const ns of module.namespaces) {
+                // Ensure namespace has a name and is not the global "" (empty string often represents global scope)
+                // Also checking for actual name string, not just existence.
+                if (ns.name && ns.name.trim() !== "") {
+                    namespaceSet.add(ns.name);
+                }
+            }
+        }
+    }
+    if (namespaceSet.size === 0) {
+        return "No namespaces found in the current workspace.";
+    }
+    // Sort for consistent output
+    const sortedNamespaces = Array.from(namespaceSet).sort();
+    return "Available Namespaces:\n" + sortedNamespaces.join("\n");
+}
+
 connection.onExecuteCommand(function (params : ExecuteCommandParams)
 {
     if (params.command == "angelscript.openAssets")
@@ -824,6 +848,11 @@ connection.onExecuteCommand(function (params : ExecuteCommandParams)
             else
                 connection.window.showErrorMessage("Cannot create blueprint: not connected to unreal editor.");
         }
+    }
+    else if (params.command == "angelscript.listNamespaces")
+    {
+        const namespaces = listNamespaces();
+        connection.window.showInformationMessage(namespaces);
     }
 });
 
