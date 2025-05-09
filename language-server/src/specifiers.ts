@@ -39,6 +39,7 @@ export let ASPropertySpecifiers : any = {
     "BindWidget": "Automatically bind this property to the widget with the same name within child UMG blueprints",
     "BindWidgetAnim": "Automatically bind this property to the widget animation with the same name within child UMG blueprints",
     "SaveGame": "Property should be serialized for save games",
+    "BindComponent": "Automatically bind this property to the component with the same name within child actor blueprints",
 };
 
 export let ASPropertySpecifiers_HAZE : any = {
