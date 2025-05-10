@@ -302,13 +302,16 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
 
     if (context.scope && !context.completingNamespace)
     {
+        let useBillw = true;
         if (CompletionSettings.addCompletionFromSpecificNamespaces.length > 0)
         {
-            AddCompletionsFromAllNamespaces(context, completions, CompletionSettings.addCompletionFromSpecificNamespaces);
+            if (useBillw)
+                AddAllNamespacesForCompletion(context, completions, searchTypes, CompletionSettings.addCompletionFromSpecificNamespaces);
+            else
+                AddCompletionsFromAllNamespaces(context, completions, CompletionSettings.addCompletionFromSpecificNamespaces);
         }
         else
         {
-            let useBillw = false;
             // pulls completions from all namespaces
             if (CompletionSettings.addCompletionFromAllNamespaces)
                 if (useBillw)
@@ -4748,12 +4751,14 @@ export function listNamespaces()
     return filteredNamespaces.map(({ name }) => name).sort((a, b) => a.localeCompare(b));
 }
 
-export function AddAllNamespacesForCompletion(context: CompletionContext, completions: Array<CompletionItem>, ignore: Array<typedb.DBType | typedb.DBNamespace>)
+export function AddAllNamespacesForCompletion(context: CompletionContext, completions: Array<CompletionItem>, ignore: Array<typedb.DBType | typedb.DBNamespace>, filter: string[] = null) : void
 {
     if (!CompletionSettings.addCompletionFromAllNamespaces)
         return;
 
-    const namespaces = Array.from(typedb.GetAllNamespaces()).map(([name, namespace]) => ({ name, namespace }));
+    let namespaces = Array.from(typedb.GetAllNamespaces()).map(([name, namespace]) => ({ name, namespace }));
+    if (filter)
+        namespaces = namespaces.filter(({ namespace }) => filter.includes(namespace.name));
 
     let processedNamespaces = new Set<string>();
 
