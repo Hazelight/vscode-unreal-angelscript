@@ -1137,6 +1137,7 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
     completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;
     completionSettings.correctFloatLiteralsWhenExpectingDoublePrecision = settings.correctFloatLiteralsWhenExpectingDoublePrecision;
     completionSettings.addCompletionFromAllNamespaces = settings.addCompletionFromAllNamespaces;
+    completionSettings.addCompletionFromSpecificNamespaces = (settings.addCompletionFromSpecificNamespaces as string).split(",").map(part => part.trim());
 
     let inlayHintSettings = inlayhints.GetInlayHintSettings();
     inlayHintSettings.inlayHintsEnabled = settings.inlayHints.inlayHintsEnabled;

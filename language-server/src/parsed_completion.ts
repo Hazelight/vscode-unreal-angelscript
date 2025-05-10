@@ -27,12 +27,14 @@ export interface CompletionSettings
     mathCompletionShortcuts : boolean,
     correctFloatLiteralsWhenExpectingDoublePrecision: boolean,
     addCompletionFromAllNamespaces: boolean,
+    addCompletionFromSpecificNamespaces: Array<string>,
 };
 
 let CompletionSettings : CompletionSettings = {
     mathCompletionShortcuts: true,
     correctFloatLiteralsWhenExpectingDoublePrecision: false,
     addCompletionFromAllNamespaces: false,
+    addCompletionFromSpecificNamespaces: [],
 };
 
 export function GetCompletionSettings() : CompletionSettings
@@ -298,13 +300,23 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
     if (context.forceCaseInsensitive)
         MakeCompletionsLowerCase(completions);
 
-    let useBillw = false;
-    // pulls completions from all namespaces
-    if (CompletionSettings.addCompletionFromAllNamespaces)
-        if (useBillw)
-            AddAllNamespacesForCompletion(context, completions, searchTypes);
+    if (context.scope && !context.completingNamespace)
+    {
+        if (CompletionSettings.addCompletionFromSpecificNamespaces.length > 0)
+        {
+            AddCompletionsFromAllNamespaces(context, completions, CompletionSettings.addCompletionFromSpecificNamespaces);
+        }
         else
-            AddCompletionsFromAllNamespaces(context, completions);
+        {
+            let useBillw = false;
+            // pulls completions from all namespaces
+            if (CompletionSettings.addCompletionFromAllNamespaces)
+                if (useBillw)
+                    AddAllNamespacesForCompletion(context, completions, searchTypes);
+                else
+                    AddCompletionsFromAllNamespaces(context, completions);
+        }
+    }
 
     return completions;
 }
@@ -4449,9 +4461,11 @@ export function AddMathShortcutCompletions(context : CompletionContext, completi
     }
 }
 
-function AddCompletionsFromAllNamespaces(context: CompletionContext, completions: Array<CompletionItem>) {
+function AddCompletionsFromAllNamespaces(context: CompletionContext, completions: Array<CompletionItem>, filter: string[] = null) {
     let namespaces = typedb.GetAllNamespaces().values();
     let filteredNamespaces = [...namespaces].filter(namespace => !typedb.GetTypeByName(namespace.qualifiedNamespace));
+    if (filter)
+        filteredNamespaces = filteredNamespaces.filter(namespace => filter.includes(namespace.name));
     let nameSpaceCompletions : Array<CompletionItem> = [];
     for (let namespace of filteredNamespaces) {
         AddCompletionsFromType(context, namespace, nameSpaceCompletions, false);

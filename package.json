@@ -55,6 +55,11 @@
                     "default": false,
                     "description": "Add completions from all workspaces, not just the current one."
                 },
+                "UnrealAngelscript.addCompletionFromSpecificNamespaces": {
+                    "type": "string",
+                    "default": "Math",
+                    "description": "Add completions from specific namespaces."
+                },
                 "UnrealAngelscript.inlayHints.inlayHintsEnabled": {
                     "type": "boolean",
                     "default": true,
