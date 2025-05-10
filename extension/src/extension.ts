@@ -178,13 +178,18 @@ export function activate(context: ExtensionContext) {
     context.subscriptions.push(helloWorldCommand);
 
     // The command 'angelscript.listNamespaces' is declared in package.json.
-    let listNamespacesCommand = vscode.commands.registerCommand('angelscript.listNamespaces', () => {
+    let listNamespacesCommand = vscode.commands.registerCommand('angelscript.listNamespaces',  () => {
         // Call the angelscript.listNamespaces command on the server
         client.sendRequest(ExecuteCommandRequest.type, {
             command: 'angelscript.listNamespaces',
             arguments: []
-        }).then((result: any) => {
-            console.log("Received list namespaces result", result);
+        }).then(async (result: any) => {
+            let namespaces = result as string[];
+            let text = namespaces.join("\n");
+            const document = await vscode.workspace.openTextDocument({
+                content: text,
+            });
+            await vscode.window.showTextDocument(document);
         }, (error: any) => {
             console.error(error);
         });

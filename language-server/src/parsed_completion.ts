@@ -4731,31 +4731,7 @@ export function listNamespaces()
     const namespaces = Array.from(typedb.GetAllNamespaces()).map(([name, namespace]) => ({ name, namespace }));
     // filter namespaces with no types.
     let filteredNamespaces = namespaces.filter(({ namespace }) => !typedb.GetTypeByName(namespace.qualifiedNamespace));
-    return filteredNamespaces.map(({ name }) => name);
-
-    /*
-    let processedNamespaces = new Set<string>();
-
-    let res = [];
-    while (namespaces.length > 0) {
-        const { name, namespace } = namespaces.pop();
-        if (namespace && !processedNamespaces.has(namespace.qualifiedNamespace)) {
-            processedNamespaces.add(namespace.qualifiedNamespace);
-
-            // Keep track of the fully qualified path of the current namespace
-            if (namespace.childNamespaces) {
-                for (const [childName, childNamespace] of namespace.childNamespaces) {
-                    namespaces.push({ name: childNamespace.qualifiedNamespace, namespace: childNamespace });
-                }
-            }
-
-            let type = typedb.GetTypeByName(namespace.qualifiedNamespace);
-            if (!type)
-                res.push(namespace.qualifiedNamespace);
-        }
-    }
-    return res;
-    */
+    return filteredNamespaces.map(({ name }) => name).sort((a, b) => a.localeCompare(b));
 }
 
 export function AddAllNamespacesForCompletion(context: CompletionContext, completions: Array<CompletionItem>, ignore: Array<typedb.DBType | typedb.DBNamespace>)

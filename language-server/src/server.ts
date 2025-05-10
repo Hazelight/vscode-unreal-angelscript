@@ -829,10 +829,9 @@ connection.onExecuteCommand(function (params : ExecuteCommandParams)
     }
     else if (params.command == "angelscript.listNamespaces")
     {
-        console.log("Listing namespaces");
         const namespaces = parsedcompletion.listNamespaces();
-        connection.window.showInformationMessage(namespaces.join(", "));
-        console.log(namespaces);
+        connection.window.showInformationMessage(namespaces.length + " namespaces found");
+        return namespaces;
     }
 });
 
