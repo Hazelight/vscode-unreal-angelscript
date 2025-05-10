@@ -298,7 +298,7 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
     if (context.forceCaseInsensitive)
         MakeCompletionsLowerCase(completions);
 
-    let useBillw = true;
+    let useBillw = false;
     // pulls completions from all namespaces
     if (CompletionSettings.addCompletionFromAllNamespaces)
         if (useBillw)
@@ -4451,8 +4451,9 @@ export function AddMathShortcutCompletions(context : CompletionContext, completi
 
 function AddCompletionsFromAllNamespaces(context: CompletionContext, completions: Array<CompletionItem>) {
     let namespaces = typedb.GetAllNamespaces().values();
+    let filteredNamespaces = [...namespaces].filter(namespace => !typedb.GetTypeByName(namespace.qualifiedNamespace));
     let nameSpaceCompletions : Array<CompletionItem> = [];
-    for (let namespace of namespaces) {
+    for (let namespace of filteredNamespaces) {
         AddCompletionsFromType(context, namespace, nameSpaceCompletions, false);
         for(let completion of nameSpaceCompletions){
             completion.label = namespace.name + "::" + completion.label;
@@ -4728,8 +4729,33 @@ export function AddAllCompletionsFromNamespace(namespace : typedb.DBNamespace, c
 export function listNamespaces()
 {
     const namespaces = Array.from(typedb.GetAllNamespaces()).map(([name, namespace]) => ({ name, namespace }));
-    const namespaceNames = namespaces.map(ns => ns.name).sort((a, b) => a.localeCompare(b));
-    return namespaceNames;
+    // filter namespaces with no types.
+    let filteredNamespaces = namespaces.filter(({ namespace }) => !typedb.GetTypeByName(namespace.qualifiedNamespace));
+    return filteredNamespaces.map(({ name }) => name);
+
+    /*
+    let processedNamespaces = new Set<string>();
+
+    let res = [];
+    while (namespaces.length > 0) {
+        const { name, namespace } = namespaces.pop();
+        if (namespace && !processedNamespaces.has(namespace.qualifiedNamespace)) {
+            processedNamespaces.add(namespace.qualifiedNamespace);
+
+            // Keep track of the fully qualified path of the current namespace
+            if (namespace.childNamespaces) {
+                for (const [childName, childNamespace] of namespace.childNamespaces) {
+                    namespaces.push({ name: childNamespace.qualifiedNamespace, namespace: childNamespace });
+                }
+            }
+
+            let type = typedb.GetTypeByName(namespace.qualifiedNamespace);
+            if (!type)
+                res.push(namespace.qualifiedNamespace);
+        }
+    }
+    return res;
+    */
 }
 
 export function AddAllNamespacesForCompletion(context: CompletionContext, completions: Array<CompletionItem>, ignore: Array<typedb.DBType | typedb.DBNamespace>)

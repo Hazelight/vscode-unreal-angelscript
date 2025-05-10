@@ -518,6 +518,10 @@
                 "command": "angelscript.saveAndEditAsset",
                 "title": "Angelscript Save and Edit Asset",
                 "enablement": "false"
+            },
+            {
+                "command": "angelscript.listNamespaces",
+                "title": "Angelscript: List Namespaces"
             }
         ],
         "menus": {

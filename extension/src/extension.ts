@@ -172,6 +172,25 @@ export function activate(context: ExtensionContext) {
         });
     context.subscriptions.push(saveAndEditAsset);
 
+    let helloWorldCommand = vscode.commands.registerCommand('angelscript.helloWorld', () => {
+        vscode.window.showInformationMessage('Hello World from Angelscript Extension!');
+    });
+    context.subscriptions.push(helloWorldCommand);
+
+    // The command 'angelscript.listNamespaces' is declared in package.json.
+    let listNamespacesCommand = vscode.commands.registerCommand('angelscript.listNamespaces', () => {
+        // Call the angelscript.listNamespaces command on the server
+        client.sendRequest(ExecuteCommandRequest.type, {
+            command: 'angelscript.listNamespaces',
+            arguments: []
+        }).then((result: any) => {
+            console.log("Received list namespaces result", result);
+        }, (error: any) => {
+            console.error(error);
+        });
+    });
+    context.subscriptions.push(listNamespacesCommand);
+
     console.log("Done activating angelscript extension");
 }
 

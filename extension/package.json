@@ -4,6 +4,13 @@
     "description": "Implements support for unreal-bound angelscript files.",
     "version": "0.0.1",
     "publisher": "Hazelight",
+    "main": "./out/extension.js",
+    "activationEvents": [
+        "onLanguage:angelscript",
+        "onCommand:angelscript.listNamespaces",
+        "workspaceContains:**/*.as",
+        "workspaceContains:**/*.asc"
+    ],
     "engines": {
         "vscode": "^1.65.0"
     },
