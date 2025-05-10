@@ -40,25 +40,15 @@
                     "default": false,
                     "description": "Variables that are written to but never read are marked as unused as well."
                 },
-                "UnrealAngelscript.mathCompletionShortcuts": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Add completions for functions in the Math:: namespace so they can be completed without typing Math:: first."
-                },
                 "UnrealAngelscript.correctFloatLiteralsWhenExpectingDoublePrecision": {
                     "type": "boolean",
                     "default": false,
                     "markdownDescription": "When a float literal is typed (eg `1.f`) in a context where double-precision is expected, automatically correct it (eg to `1.0`)"
                 },
-                "UnrealAngelscript.addCompletionFromAllNamespaces": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Add completions from all workspaces, not just the current one."
-                },
                 "UnrealAngelscript.addCompletionFromSpecificNamespaces": {
                     "type": "string",
                     "default": "Math",
-                    "description": "Add completions from specific namespaces."
+                    "description": "Add completions from specific namespaces (comma separated list)."
                 },
                 "UnrealAngelscript.inlayHints.inlayHintsEnabled": {
                     "type": "boolean",
