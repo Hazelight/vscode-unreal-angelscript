@@ -294,8 +294,8 @@ export function Complete(asmodule: scriptfiles.ASModule, position: Position): Ar
         MakeCompletionsLowerCase(completions);
 
     // If has some specific namespaces to expose, add them to the completion list
-    if (context.scope && !context.completingNamespace && CompletionSettings.addCompletionFromSpecificNamespaces.length > 0)
-        AddCompletionsFromAllNamespaces(context, completions, CompletionSettings.addCompletionFromSpecificNamespaces);
+    if (context.scope && !context.completingNamespace)
+        AddCompletionsFromAllNamespaces(context, completions);
 
     return completions;
 }
