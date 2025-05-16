@@ -22,6 +22,40 @@
     },
     "main": "./extension/out/extension",
     "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "angelscript-api",
+                    "title": "Angelscript API",
+                    "icon": "resources/angelscript_unreal.png"
+                }
+            ]
+        },
+        "views": {
+            "angelscript-api": [
+                {
+                    "id": "angelscript-api-search",
+                    "name": "Search",
+                    "icon": "resources/angelscript_unreal.png",
+                    "type": "webview",
+                    "initialSize": 1
+                },
+                {
+                    "id": "angelscript-api-list",
+                    "name": "List",
+                    "icon": "resources/angelscript_unreal.png",
+                    "type": "tree",
+                    "initialSize": 20
+                },
+                {
+                    "id": "angelscript-api-details",
+                    "name": "Details",
+                    "icon": "resources/angelscript_unreal.png",
+                    "type": "webview",
+                    "initialSize": 2
+                }
+            ]
+        },
         "configuration": {
             "title": "Unreal Angelscript",
             "properties": {

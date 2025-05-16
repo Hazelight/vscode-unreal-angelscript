@@ -44,6 +44,7 @@ import * as inlayhints from './inlay_hints';
 import * as inlinevalues from './inline_values';
 import * as colorpicker from './color_picker';
 import * as typehierarchy from './type_hierarchy';
+import * as api_docs from './api_docs';
 import * as fs from 'fs';
 import * as glob from 'glob';
 
@@ -1023,6 +1024,54 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
             return "-";
         return moduleName;
     }
+});
+
+connection.onRequest("angelscript/getAPI", (root : string) : any => {
+    if (typedb.HasTypesFromUnreal())
+        return api_docs.GetAPIList(root);
+
+    function timerFunc(resolve : any, reject : any, triesLeft : number) {
+        if (typedb.HasTypesFromUnreal())
+            return resolve(api_docs.GetAPIList(root));
+        setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
+    }
+    let promise = new Promise<any>(function(resolve, reject)
+    {
+        timerFunc(resolve, reject, 50);
+    });
+    return promise;
+});
+
+connection.onRequest("angelscript/getAPISearch", (filter : string) : any => {
+    if (typedb.HasTypesFromUnreal())
+        return api_docs.GetAPISearch(filter);
+
+    function timerFunc(resolve : any, reject : any, triesLeft : number) {
+        if (typedb.HasTypesFromUnreal())
+            return resolve(api_docs.GetAPISearch(filter));
+        setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
+    }
+    let promise = new Promise<any>(function(resolve, reject)
+    {
+        timerFunc(resolve, reject, 50);
+    });
+    return promise;
+});
+
+connection.onRequest("angelscript/getAPIDetails", (root : any) : any => {
+    if (typedb.HasTypesFromUnreal())
+        return api_docs.GetAPIDetails(root);
+
+    function timerFunc(resolve : any, reject : any, triesLeft : number) {
+        if (typedb.HasTypesFromUnreal())
+            return resolve(api_docs.GetAPIDetails(root));
+        setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
+    }
+    let promise = new Promise<any>(function(resolve, reject)
+    {
+        timerFunc(resolve, reject, 50);
+    });
+    return promise;
 });
 
 connection.languages.inlineValue.on(function (params : InlineValueParams) : Array<InlineValue> {

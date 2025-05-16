@@ -15,8 +15,11 @@ import { ASDebugSession } from './debug';
 import * as Net from 'net';
 import { ClientRequest } from 'http';
 
-const GetModuleForSymbolRequest: RequestType<TextDocumentPositionParams, string, void> = new RequestType<TextDocumentPositionParams, string, void>('angelscript/getModuleForSymbol');
-const ProvideInlineValuesRequest: RequestType<TextDocumentPositionParams, any[], void> = new RequestType<TextDocumentPositionParams, any[], void>('angelscript/provideInlineValues');
+const GetModuleForSymbolRequest = new RequestType<TextDocumentPositionParams, string, void>('angelscript/getModuleForSymbol');
+const ProvideInlineValuesRequest = new RequestType<TextDocumentPositionParams, any[], void>('angelscript/provideInlineValues');
+const GetAPIRequest = new RequestType<any, any[], void>('angelscript/getAPI');
+const GetAPIDetailsRequest = new RequestType<any, string, void>('angelscript/getAPIDetails');
+const GetAPISearchRequest = new RequestType<any, any[], void>('angelscript/getAPISearch');
 
 export function activate(context: ExtensionContext) {
 
@@ -173,7 +176,224 @@ export function activate(context: ExtensionContext) {
     context.subscriptions.push(saveAndEditAsset);
 
     console.log("Done activating angelscript extension");
+
+    let apiTree = new ASApiTreeProvider(client);
+    let apiSearch = new ASApiSearchProvider(client);
+    let apiDetails = new ASApiDetailsProvider(client);
+
+    apiSearch.tree = apiTree;
+
+    vscode.window.registerTreeDataProvider("angelscript-api-list", apiTree);
+    vscode.window.registerWebviewViewProvider("angelscript-api-search", apiSearch);
+    vscode.window.registerWebviewViewProvider("angelscript-api-details", apiDetails);
+    vscode.commands.registerCommand("angelscript-api-list.view-details", function (data : any)
+    {
+        apiDetails.showDetails(data);
+    });
 }
+
+class ASApiSearchProvider implements vscode.WebviewViewProvider
+{
+    webview : vscode.Webview;
+    client : LanguageClient;
+    searchHtml : string;
+    tree : ASApiTreeProvider;
+
+    constructor(client : LanguageClient)
+    {
+        this.client = client;
+        this.searchHtml = `
+        <input
+            id="search"
+            type="text"
+            style="width: 100%; display: block; padding: 5px; font-size: 130%; background: inherit; border: 1px solid gray; color: inherit;"
+            placeholder="Search Angelscript API"
+        />
+
+        <script>
+        let vscode = acquireVsCodeApi();
+        let searchBox = document.getElementById("search");
+        searchBox.addEventListener("input", function()
+        {
+            vscode.postMessage(searchBox.value);
+        });
+        </script>
+    `;
+    }
+
+    resolveWebviewView(webviewView: vscode.WebviewView, context: vscode.WebviewViewResolveContext, token: CancellationToken): Thenable<void> | void
+    {
+        this.webview = webviewView.webview;
+        webviewView.webview.options = {
+            enableScripts: true,
+        };
+        webviewView.webview.html = this.searchHtml;
+
+        let searchProvider = this;
+        webviewView.webview.onDidReceiveMessage(function (data : any)
+        {
+            searchProvider.onMessage(data);
+        });
+    }
+
+    onMessage(data : any)
+    {
+        this.tree.search = data as string;
+        this.tree.refresh();
+    }
+}
+
+class ASApiDetailsProvider implements vscode.WebviewViewProvider
+{
+    webview : vscode.Webview;
+    client : LanguageClient;
+
+    constructor(client : LanguageClient)
+    {
+        this.client = client;
+    }
+
+    resolveWebviewView(webviewView: vscode.WebviewView, context: vscode.WebviewViewResolveContext, token: CancellationToken): Thenable<void> | void
+    {
+        this.webview = webviewView.webview;
+        webviewView.webview.html = "<em>Select API to see details...</em>";
+    }
+
+    showDetails(data : any)
+    {
+        let webview = this.webview;
+        this.client.sendRequest(GetAPIDetailsRequest, data).then(
+            async function (details : string)
+            {
+                let detailsHtml = await vscode.commands.executeCommand("markdown.api.render", details) as string;
+                detailsHtml = `
+                <style>
+                body {
+                    font-size: 100%;
+                }
+                pre {
+                    font-size: 110%;
+                    white-space: pre-wrap;
+                    tab-size: 2;
+                    background: none;
+                }
+                pre > code {
+                    background: none;
+                }
+                </style>
+
+                <div style="width: 100%; overflow: wrap;">
+                ${detailsHtml}
+                </div>
+`;
+                webview.html = detailsHtml;
+            }
+        );
+    }
+}
+
+class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
+{
+    client : LanguageClient;
+    search : string;
+
+    private _onDidChangeTreeData: vscode.EventEmitter<ASApiItem | undefined | void> = new vscode.EventEmitter<ASApiItem | undefined | void>();
+	readonly onDidChangeTreeData: vscode.Event<ASApiItem | undefined | void> = this._onDidChangeTreeData.event;
+
+    constructor(client : LanguageClient)
+    {
+        this.client = client;
+    }
+
+    refresh()
+    {
+        this._onDidChangeTreeData.fire();
+    }
+
+    getTreeItem(element: ASApiItem)
+    {
+        return element;
+    }
+
+    getChildren(element?: ASApiItem) : Thenable<ASApiItem[]>
+    {
+        let request;
+        if (element)
+            request = this.client.sendRequest(GetAPIRequest, element.id);
+        else if (this.search)
+            request = this.client.sendRequest(GetAPISearchRequest, this.search);
+        else
+            request = this.client.sendRequest(GetAPIRequest, "");
+
+        return request.then(
+            function (values : any[])
+            {
+                let items = new Array<ASApiItem>();
+                for (let api of values)
+                {
+                    if (api.type == "namespace")
+                    {
+                        let item = new ASApiItem(api.label, vscode.TreeItemCollapsibleState.Collapsed);
+                        item.type = api.type;
+                        item.data = api.data;
+                        item.id = api.id;
+                        item.iconPath = new vscode.ThemeIcon("symbol-namespace", new vscode.ThemeColor("terminal.ansiBrightBlue"));
+                        items.push(item);
+                    }
+                    else if (api.type == "function")
+                    {
+                        let item = new ASApiItem(api.label);
+                        item.id = api.id;
+                        item.data = api.data;
+                        item.type = api.type;
+                        item.command = {
+                            "title": "View Details",
+                            "command": "angelscript-api-list.view-details",
+                            "arguments": [api.data],
+                        };
+                        item.iconPath = new vscode.ThemeIcon("symbol-function", new vscode.ThemeColor("terminal.ansiBrightYellow"));
+                        items.push(item);
+                    }
+                    else if (api.type == "property")
+                    {
+                        let item = new ASApiItem(api.label);
+                        item.id = api.id;
+                        item.data = api.data;
+                        item.type = api.type;
+                        item.command = {
+                            "title": "View Details",
+                            "command": "angelscript-api-list.view-details",
+                            "arguments": [api.data],
+                        };
+                        item.iconPath = new vscode.ThemeIcon("symbol-property", new vscode.ThemeColor("terminal.ansiBrightCyan"));
+                        items.push(item);
+                    }
+                }
+
+                return items;
+            }
+        );
+    }
+
+    resolveTreeItem(item: vscode.TreeItem, element: ASApiItem, token: CancellationToken): ProviderResult<vscode.TreeItem>
+    {
+        return this.client.sendRequest(GetAPIDetailsRequest, element.data).then(
+            function (details : string)
+            {
+                element.tooltip = new vscode.MarkdownString(details);
+                element.tooltip.supportHtml = true;
+                return element;
+            }
+        );
+    }
+}
+
+class ASApiItem extends vscode.TreeItem
+{
+    type : string;
+    data : any;
+}
+
 
 class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
 
