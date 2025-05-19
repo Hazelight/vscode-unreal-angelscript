@@ -131,6 +131,22 @@ export function GetInlayHintsForScope(scope : scriptfiles.ASScope, start_offset 
                     if (funcNode.value == cleanResultType)
                         showAutoHint = false;
                 }
+
+                // If any of the arguments are literals of that type, elide the hint
+                if (scopevar.node_expression.children[1]
+                    && scopevar.node_expression.children[1].type == node_types.ArgumentList
+                    && scopevar.node_expression.children[1].children
+                )
+                {
+                    for (let child of scopevar.node_expression.children[1].children)
+                    {
+                        if (child && child.type == node_types.Identifier)
+                        {
+                            if (child.value == cleanResultType)
+                                showAutoHint = false;
+                        }
+                    }
+                }
             }
 
             if (showAutoHint)
