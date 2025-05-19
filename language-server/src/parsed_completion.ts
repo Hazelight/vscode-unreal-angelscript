@@ -1885,8 +1885,6 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
         {
             if (!namespace.name || namespace.name.length == 0)
                 continue;
-            if (!isNamespaceAccessibleFromScope(namespace, context.scope))
-                return;
 
             let kind : CompletionItemKind = CompletionItemKind.Module;
             if ((!context.isSubExpression && !context.isRightExpression) || context.maybeTypename || expectedSubclassOf)
@@ -1897,6 +1895,9 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
             if (CanCompleteSymbol(context, namespace))
             {
+                if (!isNamespaceAccessibleFromScope(namespace, context.scope))
+                    continue;
+
                 let commitChars = [];
                 if (!context.isIncompleteNamespace)
                     commitChars.push(":");
