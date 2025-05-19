@@ -365,7 +365,7 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
                             "command": "angelscript-api-list.view-details",
                             "arguments": [api.data],
                         };
-                        item.iconPath = new vscode.ThemeIcon("symbol-property", new vscode.ThemeColor("terminal.ansiBrightCyan"));
+                        item.iconPath = new vscode.ThemeIcon("symbol-field", new vscode.ThemeColor("terminal.ansiBrightCyan"));
                         items.push(item);
                     }
                 }
