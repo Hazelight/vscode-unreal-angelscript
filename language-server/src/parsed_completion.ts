@@ -26,11 +26,13 @@ export interface CompletionSettings
 {
     mathCompletionShortcuts : boolean,
     correctFloatLiteralsWhenExpectingDoublePrecision: boolean,
+    dependencyRestrictions: Array<any>,
 };
 
 let CompletionSettings : CompletionSettings = {
     mathCompletionShortcuts: true,
     correctFloatLiteralsWhenExpectingDoublePrecision: false,
+    dependencyRestrictions: [],
 };
 
 export function GetCompletionSettings() : CompletionSettings
@@ -38,8 +40,26 @@ export function GetCompletionSettings() : CompletionSettings
     return CompletionSettings;
 }
 
+export function RefreshDependencyRestrictions()
+{
+    ResolvedModuleDependencyIsolations.clear();
+    IsolateRegexes = [];
+
+    for (let restriction of CompletionSettings.dependencyRestrictions)
+    {
+        if (restriction.isolate)
+        {
+            let pattern = "^"+(restriction.isolate as string).replace(/\./g, "\\.").replace(/\$/g, "[^.]+");
+            IsolateRegexes.push(new RegExp(pattern));
+        }
+    }
+}
+
 let FunctionLabelSuffix = "()";
 let FunctionLabelWithParamsSuffix = "(…)";
+
+let IsolateRegexes = new Array<RegExp>();
+let ResolvedModuleDependencyIsolations = new Map<string, string>();
 
 namespace Sort
 {
@@ -1503,10 +1523,6 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 return;
             if (!isFunctionAccessibleFromScope(curtype, func, context.scope))
                 return;
-            if (func.isLocal && context.scope && !func.IsAccessibleFromModule(context.scope.module.modulename))
-                return;
-            if (func.declaredModule && func.namespace.isRootNamespace() && !scriptfiles.GetScriptSettings().exposeGlobalFunctions && func.declaredModule != context.scope.module.modulename)
-                return;
             if (func.isOverride || func.isBlueprintOverride)
                 return;
             if (!func.isCallable)
@@ -1714,6 +1730,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
             if (dbtype.isEnum)
             {
+                if (!isTypeAccessibleFromScope(dbtype, context.scope))
+                    return;
                 let canCompleteEnum = CanCompleteSymbol(context, dbtype);
 
                 // Allow completing to qualified enum values when appropriate
@@ -1826,6 +1844,9 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
                 if (CanCompleteSymbol(context, dbtype))
                 {
+                    if (!isTypeAccessibleFromScope(dbtype, context.scope))
+                        return;
+
                     let commitChars : Array<string> = [];
                     GetTypenameCommitChars(context, dbtype.name, commitChars);
                     if (dbtype.isShadowingNamespace())
@@ -1864,6 +1885,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
         {
             if (!namespace.name || namespace.name.length == 0)
                 continue;
+            if (!isNamespaceAccessibleFromScope(namespace, context.scope))
+                return;
 
             let kind : CompletionItemKind = CompletionItemKind.Module;
             if ((!context.isSubExpression && !context.isRightExpression) || context.maybeTypename || expectedSubclassOf)
@@ -1936,6 +1959,8 @@ export function AddMixinCompletions(context : CompletionContext, completions : A
                 if (!sym.isMixin)
                     return;
                 if (!CanCompleteSymbol(context, sym))
+                    return;
+                if (!isFunctionAccessibleFromScope(null, sym, context.scope))
                     return;
                 if (sym.args && sym.args.length != 0 && mixinsForType.inheritsFrom(sym.args[0].typename))
                 {
@@ -3597,6 +3622,41 @@ function isEditScope(inScope : scriptfiles.ASScope) : boolean
     return true;
 }
 
+export function resolveModuleIsolation(module : string) : string
+{
+    let existing = ResolvedModuleDependencyIsolations.get(module);
+    if (existing === undefined)
+    {
+        let isolate = "";
+
+        for (let restriction of IsolateRegexes)
+        {
+            let match = restriction.exec(module);
+            if (match)
+            {
+                isolate = match[0];
+                break;
+            }
+        }
+
+        ResolvedModuleDependencyIsolations.set(module, isolate);
+        return isolate;
+    }
+    else
+    {
+        return existing;
+    }
+}
+
+export function isValidModuleDependency(module : string, dependencyModule : string)
+{
+    if (!dependencyModule)
+        return true;
+    if (resolveModuleIsolation(module) != resolveModuleIsolation(dependencyModule))
+        return false;
+    return true;
+}
+
 function isPropertyAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamespace, prop : typedb.DBProperty, inScope : scriptfiles.ASScope) : boolean
 {
     if (curtype instanceof typedb.DBNamespace)
@@ -3608,6 +3668,9 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamesp
         {
             return false;
         }
+
+        if (prop.declaredModule && !isValidModuleDependency(inScope.module.modulename, prop.declaredModule))
+            return false;
 
         return true;
     }
@@ -3665,9 +3728,20 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamesp
 function isFunctionAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamespace, func : typedb.DBMethod, inScope : scriptfiles.ASScope) : boolean
 {
     if (!func.containingType)
+    {
+        if (func.declaredModule)
+        {
+            if (func.isLocal || (func.namespace.isRootNamespace() && !scriptfiles.GetScriptSettings().exposeGlobalFunctions))
+            {
+                if (func.declaredModule != inScope.module.modulename)
+                    return false;
+            }
+
+            if (!isValidModuleDependency(inScope.module.modulename, func.declaredModule))
+                return false;
+        }
         return true;
-    if (curtype instanceof typedb.DBNamespace)
-        return true;
+    }
 
     if (func.isPrivate || func.isProtected)
     {
@@ -3709,6 +3783,30 @@ function isFunctionAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamesp
             return false;
     }
 
+    return true;
+}
+
+function isTypeAccessibleFromScope(type : typedb.DBType, inScope : scriptfiles.ASScope) : boolean
+{
+    if (!type.declaredModule)
+        return true;
+    if (!isValidModuleDependency(inScope.module.modulename, type.declaredModule))
+        return false;
+    return true;
+}
+
+function isNamespaceAccessibleFromScope(namespace : typedb.DBNamespace, inScope : scriptfiles.ASScope) : boolean
+{
+    let allowedNamespace = false;
+    if (!namespace.declarations)
+        return true;
+    for (let decl of namespace.declarations)
+    {
+        if (!decl.declaredModule || isValidModuleDependency(inScope.module.modulename, decl.declaredModule))
+            allowedNamespace = true;
+    }
+    if (!allowedNamespace)
+        return false;
     return true;
 }
 

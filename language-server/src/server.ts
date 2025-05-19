@@ -1185,7 +1185,9 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
 
     let completionSettings = parsedcompletion.GetCompletionSettings();
     completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;
+    completionSettings.dependencyRestrictions = settings.completion.dependencyRestrictions;
     completionSettings.correctFloatLiteralsWhenExpectingDoublePrecision = settings.correctFloatLiteralsWhenExpectingDoublePrecision;
+    parsedcompletion.RefreshDependencyRestrictions();
 
     let inlayHintSettings = inlayhints.GetInlayHintSettings();
     inlayHintSettings.inlayHintsEnabled = settings.inlayHints.inlayHintsEnabled;

@@ -536,17 +536,6 @@ export class DBMethod implements DBSymbol
         return true;
     }
 
-    IsAccessibleFromModule(module : string) : boolean
-    {
-        if (this.isLocal)
-        {
-            if (this.declaredModule && this.declaredModule != module)
-                return false;
-        }
-
-        return true;
-    }
-
     applyDeterminesOutputType(originalType : string, determineType : DBType) : DBType
     {
         let resultType = LookupType(this.namespace, originalType);

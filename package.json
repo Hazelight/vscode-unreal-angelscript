@@ -52,7 +52,7 @@
                     "name": "Details",
                     "icon": "resources/angelscript_unreal.png",
                     "type": "webview",
-                    "initialSize": 2
+                    "initialSize": 5
                 }
             ]
         },
@@ -433,6 +433,21 @@
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                },
+                "UnrealAngelscript.completion.dependencyRestrictions": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Restrictions to apply for which modules can depend on symbols from which other modules",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "isolate": {
+                                "type": "string",
+                                "default": "",
+                                "description": "Isolate symbols in modules matching this, so they cannot be used outside that match"
                             }
                         }
                     }
