@@ -16,6 +16,8 @@ export interface ASSettings
     deprecateStaticClass: boolean,
     disallowStaticClass: boolean,
     exposeGlobalFunctions: boolean,
+    deprecateActorGenerics: boolean,
+    disallowActorGenerics: boolean,
 };
 
 let ScriptSettings : ASSettings = {
@@ -25,6 +27,8 @@ let ScriptSettings : ASSettings = {
     deprecateStaticClass: false,
     disallowStaticClass: false,
     exposeGlobalFunctions: true,
+    deprecateActorGenerics: false,
+    disallowActorGenerics: false,
 };
 
 let PreParsedIdentifiersInModules = new Map<string, Set<ASModule>>();

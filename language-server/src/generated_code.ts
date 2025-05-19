@@ -201,6 +201,7 @@ function AddGeneratedCodeForUActorComponent(asmodule : scriptfiles.ASModule, dbt
 
 function AddGeneratedCodeForAActor(asmodule : scriptfiles.ASModule, dbtype : typedb.DBType, nsType : typedb.DBNamespace)
 {
+    if (!scriptfiles.GetScriptSettings().disallowActorGenerics && !scriptfiles.GetScriptSettings().deprecateActorGenerics)
     {
         let method = AddGlobalFunction(asmodule, dbtype, nsType, "Spawn");
         method.returnType = dbtype.name;

@@ -209,6 +209,11 @@ function connect_unreal() {
                 {
                     scriptSettings.exposeGlobalFunctions = msg.readBool();
                 }
+                if (version >= 7)
+                {
+                    scriptSettings.deprecateActorGenerics = msg.readBool();
+                    scriptSettings.disallowActorGenerics = msg.readBool();
+                }
             }
             else if(msg.type == MessageType.ReplaceAssetDefinition)
             {
