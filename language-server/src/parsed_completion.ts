@@ -3653,8 +3653,15 @@ export function isValidModuleDependency(module : string, dependencyModule : stri
 {
     if (!dependencyModule)
         return true;
-    if (resolveModuleIsolation(module) != resolveModuleIsolation(dependencyModule))
-        return false;
+
+    let dependencyIsolation = resolveModuleIsolation(dependencyModule);
+    if (dependencyIsolation)
+    {
+        let moduleIsolation = resolveModuleIsolation(module);
+        if (dependencyIsolation != moduleIsolation)
+            return false;
+    }
+
     return true;
 }
 
