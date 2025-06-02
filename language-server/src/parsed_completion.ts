@@ -3739,7 +3739,7 @@ function isFunctionAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamesp
     {
         if (func.declaredModule)
         {
-            if (func.isLocal || (func.namespace.isRootNamespace() && !scriptfiles.GetScriptSettings().exposeGlobalFunctions))
+            if (func.isLocal || (func.namespace.isRootNamespace() && !scriptfiles.GetScriptSettings().exposeGlobalFunctions && !func.isMixin))
             {
                 if (func.declaredModule != inScope.module.modulename)
                     return false;
