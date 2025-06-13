@@ -413,11 +413,21 @@ export class DBMethod implements DBSymbol
         if (!skipReturn)
         {
             if (determineType)
-                decl += this.applyDeterminesOutputType(this.returnType, determineType).name + " ";
+            {
+                let outputType = this.applyDeterminesOutputType(this.returnType, determineType);
+                if (outputType)
+                    decl += outputType.name + " ";
+                else
+                    decl += this.returnType + " ";
+            }
             else if (this.determinesOutputTypeArgumentIndex != -1)
+            {
                 decl += "auto ";
+            }
             else
+            {
                 decl += this.returnType + " ";
+            }
         }
         if(prefix != null)
             decl += prefix;
