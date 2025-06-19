@@ -3352,6 +3352,14 @@ export function CollapseNamespaceFromNode(node : any) : string
     return namespace;
 }
 
+function GetStaticTypeSignatureForType(dbnamespace : typedb.DBNamespace, typeSymbol : typedb.DBType)
+{
+    if (typeSymbol.isValueType())
+        return typedb.LookupType(dbnamespace, "TStructType<"+typeSymbol.getQualifiedTypenameInNamespace(dbnamespace)+">");
+    else
+        return typedb.LookupType(dbnamespace, "TSubclassOf<"+typeSymbol.getQualifiedTypenameInNamespace(dbnamespace)+">");
+}
+
 function ResolveNamespacePropertyType(dbnamespace : typedb.DBNamespace, nsPrefix : string, name : string) : typedb.DBType
 {
     if (!dbnamespace || !name)
@@ -3392,10 +3400,8 @@ function ResolveNamespacePropertyType(dbnamespace : typedb.DBNamespace, nsPrefix
 
     // Find a UObject typename to get a static reflection data class for
     let typeSymbol = typedb.LookupType(dbnamespace, propName);
-    if (typeSymbol && !typeSymbol.isValueType())
-    {
-        return typedb.LookupType(dbnamespace, "TSubclassOf<"+typeSymbol.getQualifiedTypenameInNamespace(dbnamespace)+">");
-    }
+    if (typeSymbol)
+        return GetStaticTypeSignatureForType(dbnamespace, typeSymbol);
 
     return null;
 }
@@ -3477,10 +3483,8 @@ function ResolveTypeFromIdentifier(scope : ASScope, identifier : string) : typed
 
     // Find a UObject typename to get a static reflection data class for
     let typeSymbol = typedb.LookupType(scope.getNamespace(), identifier);
-    if (typeSymbol && !typeSymbol.isValueType())
-    {
-        return typedb.LookupType(scope.getNamespace(), "TSubclassOf<"+typeSymbol.getQualifiedTypenameInNamespace(scope.getNamespace())+">");
-    }
+    if (typeSymbol)
+        return GetStaticTypeSignatureForType(scope.getNamespace(), typeSymbol);
 
     return null;
 }
@@ -5207,7 +5211,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
             addedSymbol.isUnimported = true;
 
         scope.module.markDependencyType(symType);
-        return typedb.LookupType(scope.getNamespace(), "TSubclassOf<"+symType.getQualifiedTypenameInNamespace(scope.getNamespace())+">");
+        return GetStaticTypeSignatureForType(scope.getNamespace(), symType);
     }
 
     // We might be typing a typename at the start of a declaration, which accidentally got parsed as an identifier due to incompleteness
@@ -5685,7 +5689,7 @@ function DetectSymbolsInNamespace(scope : ASScope, statement : ASStatement, name
 
             scope.module.markDependencyType(usedSymbol);
             if (!parseContext.isResolvingFunction)
-                return typedb.LookupType(scope.getNamespace(), "TSubclassOf<"+usedSymbol.getQualifiedTypenameInNamespace(scope.getNamespace())+">");
+                return GetStaticTypeSignatureForType(scope.getNamespace(), usedSymbol);
             else
                 return usedSymbol;
         }
