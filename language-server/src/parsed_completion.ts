@@ -1527,6 +1527,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 return;
             if (!func.isCallable)
                 return;
+            if (func.isTemplateInstantiation && func.containingType != curtype)
+                return;
 
             // Don't show constructors if we're probably completing the name of a type
             if (func.isConstructor && (context.maybeTypename || (expectedSubclassOf && !func.returnType.startsWith("TSubclassOf"))))
