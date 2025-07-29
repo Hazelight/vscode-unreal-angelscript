@@ -338,7 +338,6 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
                         if (label.indexOf("::") != -1)
                         {
                             let parts = label.split("::");
-                            console.dir(parts);
                             label = parts[parts.length - 2] + "::";
                         }
                         let item = new ASApiItem(label, vscode.TreeItemCollapsibleState.Collapsed);
