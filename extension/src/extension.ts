@@ -333,17 +333,25 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
                 {
                     if (api.type == "namespace")
                     {
-                        let item = new ASApiItem(api.label, vscode.TreeItemCollapsibleState.Collapsed);
+                        // In case of nested namespaces, only take the rightmost namespace name as a label
+                        let label : string = api.label;
+                        if (label.indexOf("::") != -1)
+                        {
+                            let parts = label.split("::");
+                            console.dir(parts);
+                            label = parts[parts.length - 2] + "::";
+                        }
+                        let item = new ASApiItem(label, vscode.TreeItemCollapsibleState.Collapsed);
                         item.type = api.type;
                         item.data = api.data;
-                        item.id = api.id;
+                        item.id = `__ns_${api.id}`;
                         item.iconPath = new vscode.ThemeIcon("symbol-namespace", new vscode.ThemeColor("terminal.ansiBrightBlue"));
                         items.push(item);
                     }
                     else if (api.type == "function")
                     {
                         let item = new ASApiItem(api.label);
-                        item.id = api.id;
+                        item.id = `__fun_${api.id}`;
                         item.data = api.data;
                         item.type = api.type;
                         item.command = {
@@ -357,7 +365,7 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
                     else if (api.type == "property")
                     {
                         let item = new ASApiItem(api.label);
-                        item.id = api.id;
+                        item.id = `__prop_${api.id}`;
                         item.data = api.data;
                         item.type = api.type;
                         item.command = {

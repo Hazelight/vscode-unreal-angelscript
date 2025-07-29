@@ -6,6 +6,9 @@ export function GetAPIList(root : string) : any
 {
     let list : any[] = [];
 
+    // Strip away the prefixes that are needed for cases where a namespace and a property with the same name can both exist next to each other
+    root = root.replace(/__(ns|fun|prop)_/, "");
+
     let addType = function(type : typedb.DBType | typedb.DBNamespace)
     {
         if (type instanceof typedb.DBNamespace)
