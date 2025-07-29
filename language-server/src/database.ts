@@ -1264,7 +1264,7 @@ export class DBType implements DBSymbol
                     if (sym instanceof DBMethod)
                     {
                         if (!match
-                            || sym.args.length == parameterCount
+                            || (sym.args.length == parameterCount && match.args.length != parameterCount)
                             || (sym.args.length >= parameterCount && match.args.length < parameterCount)
                             || (sym.args.length >= parameterCount && sym.args.length < match.args.length)
                         )
@@ -1279,7 +1279,7 @@ export class DBType implements DBSymbol
                 if (syms instanceof DBMethod)
                 {
                     if (!match
-                        || syms.args.length == parameterCount
+                        || (syms.args.length == parameterCount && match.args.length != parameterCount)
                         || (syms.args.length >= parameterCount && match.args.length < parameterCount)
                         || (syms.args.length >= parameterCount && syms.args.length < match.args.length)
                     )
