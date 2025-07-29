@@ -2454,11 +2454,30 @@ export function AddTypesFromUnreal(input : any)
             {
                 let decl = new DBNamespaceDeclaration();
                 decl.declaredModule = null;
+                decl.isNestedParent = false;
 
-                let ns = LookupNamespace(null, type.name.substring(2));
+                let identifier = type.name.substring(2);
+
+                // For nested namespaces, declare all parent namespaces first
+                let parentNamespace = null;
+                let namespaceIndex = identifier.indexOf("::");
+                if (namespaceIndex != -1)
+                {
+                    let parts = identifier.split("::");
+                    identifier = parts[parts.length-1];
+
+                    for (let i = 0, count = parts.length - 1; i < count; ++i)
+                    {
+                        let parentDecl = new DBNamespaceDeclaration();
+                        parentDecl.isNestedParent = true;
+                        parentNamespace = DeclareNamespace(parentNamespace, parts[i], parentDecl);
+                    }
+                }
+
+                let ns = LookupNamespace(parentNamespace, identifier);
                 if (!ns)
                 {
-                    ns = DeclareNamespace(null, type.name.substring(2), decl);
+                    ns = DeclareNamespace(parentNamespace, identifier, decl);
                 }
                 else
                 {
