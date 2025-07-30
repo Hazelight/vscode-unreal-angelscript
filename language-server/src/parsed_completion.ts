@@ -3661,7 +3661,10 @@ export function isValidModuleDependency(module : string, dependencyModule : stri
     {
         let moduleIsolation = resolveModuleIsolation(module);
         if (dependencyIsolation != moduleIsolation)
-            return false;
+        {
+            if (!moduleIsolation.startsWith(dependencyIsolation))
+                return false
+        }
     }
 
     return true;
