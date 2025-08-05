@@ -448,6 +448,11 @@
                                 "type": "string",
                                 "default": "",
                                 "description": "Isolate symbols in modules matching this, so they cannot be used outside that match"
+                            },
+                            "unisolate": {
+                                "type": "string",
+                                "default": "",
+                                "description": "Modules matching this don't obey isolation restrictions"
                             }
                         }
                     }
