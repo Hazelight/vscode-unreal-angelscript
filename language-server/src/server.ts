@@ -59,6 +59,9 @@ let connection: Connection = createConnection(new IPCMessageReader(process), new
 // Create a connection to unreal
 let unreal : Socket;
 
+const hostname = "127.0.0.1";
+let port : number = 27099;
+
 let ParseQueue : Array<scriptfiles.ASModule> = [];
 let ParseQueueIndex = 0;
 let LoadQueue : Array<scriptfiles.ASModule> = [];
@@ -246,7 +249,7 @@ function connect_unreal() {
         }
     });
 
-    unreal.connect(27099, "127.0.0.1", function()
+    unreal.connect(port, hostname, function()
     {
         //connection.console.log('Connection to unreal editor established.');
         setTimeout(function()
@@ -1182,6 +1185,8 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
 
     if (dirtyDiagnostics)
         DirtyAllDiagnostics();
+
+    port = settings.unrealConnectionPort;
 
     let completionSettings = parsedcompletion.GetCompletionSettings();
     completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;

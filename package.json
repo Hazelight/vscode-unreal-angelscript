@@ -84,6 +84,11 @@
                     "default": false,
                     "markdownDescription": "When a float literal is typed (eg `1.f`) in a context where double-precision is expected, automatically correct it (eg to `1.0`)"
                 },
+                "UnrealAngelscript.unrealConnectionPort": {
+                    "type": "number",
+                    "default": 27099,
+                    "description": "What port to use when connecting to the Unreal engine game or editor instance for auto-completion and debugging. Must match the debug port configured in the Unreal Engine project settings, or as a launch argument (-asdebugport=)."
+                },
                 "UnrealAngelscript.inlayHints.inlayHintsEnabled": {
                     "type": "boolean",
                     "default": true,
@@ -526,8 +531,8 @@
                             },
                             "port": {
                                 "type": "number",
-                                "description": "Port to AS debug server",
-                                "default:": 27099
+                                "description": "Port to AS debug server. If 0, we use the Unreal Connection Port from the extension settings.",
+                                "default:": 0
                             },
                             "hostname": {
                                 "type": "string",
