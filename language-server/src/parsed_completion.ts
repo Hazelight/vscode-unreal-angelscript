@@ -1442,6 +1442,10 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
         if (context.expectedType.templateSubTypes && context.expectedType.templateSubTypes[0])
             expectedSubclassOf = context.expectedType.templateSubTypes[0];
     }
+    else if (context.expectedType && context.expectedType.name == "UClass")
+    {
+        expectedSubclassOf = "UObject";
+    }
 
     // Complete symbols
     let propertyIndex = 0;
