@@ -1857,7 +1857,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
                     let commitChars : Array<string> = [];
                     GetTypenameCommitChars(context, dbtype.name, commitChars);
-                    if (dbtype.isShadowingNamespace())
+
+                    if (dbtype.isShadowingNamespace() && !context.isIncompleteNamespace)
                         commitChars.push(":");
 
                     let complItem = <CompletionItem> {
