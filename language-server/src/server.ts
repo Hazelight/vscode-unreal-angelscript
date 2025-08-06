@@ -1186,7 +1186,13 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
     if (dirtyDiagnostics)
         DirtyAllDiagnostics();
 
-    port = settings.unrealConnectionPort;
+    if (port != settings.unrealConnectionPort)
+    {
+        port = settings.unrealConnectionPort;
+
+        // If the port has changed, reconnect
+        connect_unreal();
+    }
 
     let completionSettings = parsedcompletion.GetCompletionSettings();
     completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;
