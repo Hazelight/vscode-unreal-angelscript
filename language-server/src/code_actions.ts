@@ -92,6 +92,12 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
     // Actions to generate a method by usage
     AddGenerateMethodActions(context);
 
+    // Hazelight-specific code actions
+    if (scriptfiles.GetScriptSettings().useAngelscriptHaze)
+    {
+        AddGenerateParamsStructActions(context);
+    }
+
     return context.actions;
 }
 
@@ -117,6 +123,10 @@ export function ResolveCodeAction(asmodule : scriptfiles.ASModule, action : Code
         ResolveInsertCases(asmodule, action, data);
     else if (data.type == "methodFromUsage")
         ResolveGenerateMethod(asmodule, action, data);
+    else if (data.type == "createActivationParameters")
+        ResolveCreateActivationParameters(asmodule, action, data);
+    else if (data.type == "createDeactivationParameters")
+        ResolveCreateDeactivationParameters(asmodule, action, data);
     return action;
 }
 
@@ -2197,4 +2207,177 @@ function ResolveGenerateMethod(asmodule : scriptfiles.ASModule, action : CodeAct
     action.edit.changes[asmodule.displayUri] = [
         TextEdit.insert(insertPosition, snippet)
     ];
+}
+
+function AddGenerateParamsStructActions(context : CodeActionContext)
+{
+    if (!context.statement || !context.scope)
+        return;
+    let dbtype = context.scope.getParentType();
+    if (!dbtype || !dbtype.inheritsFrom("UHazeCapability"))
+        return;
+
+    if (context.scope.scopetype != scriptfiles.ASScopeType.Function)
+        return;
+    if (!context.statement.ast || context.statement.ast.type != scriptfiles.node_types.FunctionDecl)
+        return;
+
+    let funcNode = context.statement.ast;
+    if (funcNode.parameters && funcNode.parameters.length >= 1)
+        return;
+
+    if (funcNode.name.value == "ShouldActivate" || funcNode.name.value == "OnActivated")
+    {
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.Refactor,
+            title: "Create ActivationParameters for Capability",
+            source: "angelscript",
+            isPreferred: true,
+            data: {
+                uri: context.module.uri,
+                type: "createActivationParameters",
+                inClass: dbtype.name,
+            }
+        });
+    }
+    else if (funcNode.name.value == "ShouldDeactivate" || funcNode.name.value == "OnDeactivated")
+    {
+        context.actions.push(<CodeAction> {
+            kind: CodeActionKind.Refactor,
+            title: "Create DeactivationParameters for Capability",
+            source: "angelscript",
+            isPreferred: true,
+            data: {
+                uri: context.module.uri,
+                type: "createDeactivationParameters",
+                inClass: dbtype.name,
+            }
+        });
+    }
+}
+
+function GetInsertPositionBeforeScope(scope : scriptfiles.ASScope) : Position
+{
+    let offset = scope.start_offset;
+    while (offset < scope.module.content.length)
+    {
+        let chr = scope.module.content[offset];
+        if (chr != ' ' && chr != '\t' && chr != '\r' && chr != '\n')
+            break;
+        offset += 1;
+    }
+
+    return scope.module.getPosition(offset);
+}
+
+function ResolveCreateActivationParameters(asmodule: scriptfiles.ASModule, action: CodeAction, data: any)
+{
+    let className = data.inClass as string;
+    let structName = className;
+    if (structName.startsWith("U"))
+        structName = structName.substring(1);
+    if (structName.endsWith("Capability"))
+        structName = structName.substring(0, structName.length - 10);
+    structName = `F${structName}ActivationParams`;
+
+    let structDecl = `struct ${structName}\n{\n}\n\n`;
+    let typeScope = asmodule.rootscope.findScopeForType(className);
+    if (!typeScope)
+        return;
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(GetInsertPositionBeforeScope(typeScope), structDecl)
+    ];
+
+    for (let statement of typeScope.statements)
+    {
+        if (!statement.ast)
+            continue;
+        if (statement.ast.type != scriptfiles.node_types.FunctionDecl)
+            continue;
+
+        let funcNode = statement.ast;
+        if (funcNode.name.value == "ShouldActivate")
+        {
+            action.edit.changes[asmodule.displayUri].push(
+                TextEdit.replace(
+                    asmodule.getRange(
+                        statement.start_offset,
+                        statement.end_offset
+                    ),
+                    statement.content.replace("ShouldActivate(", `ShouldActivate(${structName}& ActivationParams`)
+                )
+            );
+        }
+        else if (funcNode.name.value == "OnActivated")
+        {
+            action.edit.changes[asmodule.displayUri].push(
+                TextEdit.replace(
+                    asmodule.getRange(
+                        statement.start_offset,
+                        statement.end_offset
+                    ),
+                    statement.content.replace("OnActivated(", `OnActivated(${structName} ActivationParams`)
+                )
+            );
+        }
+    }
+}
+
+function ResolveCreateDeactivationParameters(asmodule: scriptfiles.ASModule, action: CodeAction, data: any)
+{
+    let className = data.inClass as string;
+    let structName = className;
+    if (structName.startsWith("U"))
+        structName = structName.substring(1);
+    if (structName.endsWith("Capability"))
+        structName = structName.substring(0, structName.length - 10);
+    structName = `F${structName}DeactivationParams`;
+
+    let structDecl = `struct ${structName}\n{\n}\n\n`;
+    let typeScope = asmodule.rootscope.findScopeForType(className);
+    if (!typeScope)
+        return;
+
+    action.edit = <WorkspaceEdit> {};
+    action.edit.changes = {};
+    action.edit.changes[asmodule.displayUri] = [
+        TextEdit.insert(GetInsertPositionBeforeScope(typeScope), structDecl)
+    ];
+
+    for (let statement of typeScope.statements)
+    {
+        if (!statement.ast)
+            continue;
+        if (statement.ast.type != scriptfiles.node_types.FunctionDecl)
+            continue;
+
+        let funcNode = statement.ast;
+        if (funcNode.name.value == "ShouldDeactivate")
+        {
+            action.edit.changes[asmodule.displayUri].push(
+                TextEdit.replace(
+                    asmodule.getRange(
+                        statement.start_offset,
+                        statement.end_offset
+                    ),
+                    statement.content.replace("ShouldDeactivate(", `ShouldDeactivate(${structName}& DeactivationParams`)
+                )
+            );
+        }
+        else if (funcNode.name.value == "OnDeactivated")
+        {
+            action.edit.changes[asmodule.displayUri].push(
+                TextEdit.replace(
+                    asmodule.getRange(
+                        statement.start_offset,
+                        statement.end_offset
+                    ),
+                    statement.content.replace("OnDeactivated(", `OnDeactivated(${structName} DeactivationParams`)
+                )
+            );
+        }
+    }
 }
