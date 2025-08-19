@@ -1165,6 +1165,7 @@ function AddVariablePromotionHelper(context : CodeActionContext)
         break;
     }
 
+    // Allow promoting assignments of new variables
     if (innerStatement && innerStatement.type == scriptfiles.node_types.Assignment)
     {
         let leftNode = innerStatement.children[0];
@@ -1195,6 +1196,50 @@ function AddVariablePromotionHelper(context : CodeActionContext)
                 position: context.range_start,
             }
         });
+    }
+    // Allow promoting new variables used for the condition in an if statement
+    else if (codeNode.type == scriptfiles.node_types.IfStatement
+        || codeNode.type == scriptfiles.node_types.WhileLoop)
+    {
+        let conditionNode = codeNode.children[0];
+        let identifierNode : any = null;
+        if (conditionNode && conditionNode.type == scriptfiles.node_types.Identifier)
+        {
+            identifierNode = conditionNode;
+        }
+        else if (conditionNode && conditionNode.type == scriptfiles.node_types.UnaryOperation)
+        {
+            let operandNode = conditionNode.children[0];
+            if (operandNode && operandNode.type == scriptfiles.node_types.Identifier)
+                identifierNode = operandNode;
+        }
+
+        if (identifierNode)
+        {
+            // If the left side is a known variable we can't provide this action
+            let lvalueType = scriptfiles.ResolveTypeFromExpression(context.scope, identifierNode);
+            if (lvalueType)
+                return;
+
+            // Don't offer promotion until we've finished typing the identifier
+            let isTypingIdentifier = (context.scope.module.isEditingInside(context.statement.start_offset + identifierNode.start, context.statement.start_offset + identifierNode.end));
+            if (isTypingIdentifier)
+                return;
+
+            let variableName = identifierNode.value;
+            context.actions.push(<CodeAction> {
+                kind: CodeActionKind.RefactorRewrite,
+                title: `Promote ${variableName} to boolean member variable`,
+                source: "angelscript",
+                data: {
+                    uri: context.module.uri,
+                    type: "variablePromotion",
+                    variableName: variableName,
+                    variableType: "bool",
+                    position: context.range_start,
+                }
+            });
+        }
     }
 }
 

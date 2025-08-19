@@ -5215,7 +5215,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
     }
 
     // We might be typing a typename at the start of a declaration, which accidentally got parsed as an identifier due to incompleteness
-    let isTypingSingleIdentifier = (node == statement.ast && scope.module.isEditingInside(statement.start_offset + node.start, statement.end_offset + node.end + 2));
+    let isTypingSingleIdentifier = (node == statement.ast && scope.module.isEditingInside(statement.start_offset + node.start, statement.start_offset + node.end + 2));
     if (isTypingSingleIdentifier || node.maybeTypename)
     {
         // We could be typing a namespace
