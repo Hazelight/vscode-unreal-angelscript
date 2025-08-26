@@ -2087,7 +2087,7 @@ function CanCompleteSymbol(context : CompletionContext, symbol : typedb.DBSymbol
     {
         return CanCompleteToOnlyStart(context, symbol.name);
     }
-    else if (!symbol.containingType && symbol.namespace.isRootNamespace())
+    else if (!symbol.containingType && symbol.namespace.isRootNamespace() && !context.priorType)
     {
         if (symbol.keywords)
             return CanCompleteToOnlyStart(context, GetSymbolFilterText(context, symbol));
