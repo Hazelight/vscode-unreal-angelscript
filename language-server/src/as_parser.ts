@@ -751,12 +751,12 @@ export function GetAllParsedModules() : Array<ASModule>
 // Get a module reference with the specified module name
 export function GetModule(modulename : string) : ASModule
 {
-    let module = ModuleDatabase.get(modulename);
+    let module = ModuleDatabase.get(modulename.toLowerCase());
     if (!module)
     {
         module = new ASModule;
         module.modulename = modulename;
-        ModuleDatabase.set(modulename, module);
+        ModuleDatabase.set(modulename.toLowerCase(), module);
     }
     return module;
 }
