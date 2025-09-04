@@ -2527,7 +2527,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
                 // Comparison operators that expect the same type
                 context.expectedType = context.leftType;
             }
-            else if (context.leftType.isPrimitive)
+            else if (context.leftType.isPrimitive || context.leftType.isEnum)
             {
                 // Any non boolean operator on a primitive expects that same type
                 context.expectedType = context.leftType;
