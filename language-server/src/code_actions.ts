@@ -85,6 +85,7 @@ export function GetCodeActions(asmodule : scriptfiles.ASModule, range : Range, d
 
     // Actions for promoting to member variables
     AddVariablePromotionHelper(context);
+    AddConditionVariablePromotionHelper(context);
 
     // Actions for switch blocks
     AddSwitchCaseActions(context);
@@ -1207,8 +1208,21 @@ function AddVariablePromotionHelper(context : CodeActionContext)
             }
         });
     }
+}
+
+function AddConditionVariablePromotionHelper(context : CodeActionContext)
+{
+    if (!context.scope)
+        return;
+    if (!context.statement)
+        return;
+
+    let codeNode = context.statement.ast;
+    if (!codeNode)
+        return;
+
     // Allow promoting new variables used for the condition in an if statement
-    else if (codeNode.type == scriptfiles.node_types.IfStatement
+    if (codeNode.type == scriptfiles.node_types.IfStatement
         || codeNode.type == scriptfiles.node_types.WhileLoop)
     {
         let conditionNode = codeNode.children[0];
