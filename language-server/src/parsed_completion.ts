@@ -3763,7 +3763,7 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamesp
 
 function isFunctionAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamespace, func : typedb.DBMethod, inScope : scriptfiles.ASScope) : boolean
 {
-    if (!func.containingType)
+    if (!func.containingType && !func.isConstructor)
     {
         if (func.declaredModule)
         {
