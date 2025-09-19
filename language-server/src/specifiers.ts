@@ -24,22 +24,30 @@ export let ASPropertySpecifiers : any = {
     "DisplayName": "Name to use to display in the editor",
     "EditInline": "Edit the values of this object inline in its container",
     "ExposeOnSpawn": "Property should be available to be changed when spawning this object from blueprint",
-    "EditFixedSize": "Use on TArray propertie, the size of the array cannot be changed from the editor",
+    "EditFixedSize": "Use on TArray properties, the size of the array cannot be changed from the editor",
     "BlueprintProtected": "Treat this property as protected in blueprint, disallowing it from being edited by non-child blueprints",
+    "Meta": "Specify arbitrary meta tags",
+    "Instanced": "The object in this property is a new instance for each containing instance",
+    "BlueprintSetter": "Specify a function to call instead when writing this property from blueprint",
+    "BlueprintGetter": "Specify a function to call instead when reading this property from blueprint",
+    "SaveGame": "Property should be serialized for save games",
+};
+
+export let ASPropertySpecifiersForActors : any = {
     "DefaultComponent": "Component will be created as a default component on the actor",
     "OverrideComponent": "Specify a component in the parent class to override the class type of",
     "RootComponent": "Use on DefaultComponents, specify that this component should be the root component of the actor",
     "ShowOnActor": "Use on DefaultComponents, properties from the component will appear in the actor's details panel",
     "Attach": "Use on DefaultComponents, specify a different component to attach this to in the scene hierarchy",
     "AttachSocket": "Use on DefaultComponents with an Attach, specify a socket to attach to on this component's attach parent",
-    "Meta": "Specify arbitrary meta tags",
-    "Instanced": "The object in this property is a new instance for each containing instance",
-    "BlueprintSetter": "Specify a function to call instead when writing this property from blueprint",
-    "BlueprintGetter": "Specify a function to call instead when reading this property from blueprint",
     "BindWidget": "Automatically bind this property to the widget with the same name within child UMG blueprints",
     "BindWidgetAnim": "Automatically bind this property to the widget animation with the same name within child UMG blueprints",
-    "SaveGame": "Property should be serialized for save games",
     "BindComponent": "Automatically bind this property to the component with the same name within child actor blueprints",
+};
+
+export let ASPropertySpecifiersForWidgets : any = {
+    "BindWidget": "Automatically bind this property to the widget with the same name within child UMG blueprints",
+    "BindWidgetAnim": "Automatically bind this property to the widget animation with the same name within child UMG blueprints",
 };
 
 export let ASPropertySpecifiers_HAZE : any = {
@@ -154,5 +162,6 @@ export let ASFunctionSubSpecifiers : any = {
     "meta": {
         "NoSuperCall": "This function is allowed to not call its Super, suppress the warning",
         "AdvancedDisplay": "Determine which parameters to the function are considered Advanced",
+        "RequiredParameters": "Specify which parameters are always required to be connected to something for blueprint nodes calling this function",
     }
 };

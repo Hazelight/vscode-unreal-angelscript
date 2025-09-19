@@ -1019,6 +1019,15 @@ function AddCompletionsFromUnrealMacro(context : CompletionContext, completions 
         {
             AddCompletionsFromSpecifiers(context, specifiers.ASPropertySpecifiers, completions);
 
+            if (context.scope)
+            {
+                let dbtype = context.scope.getDatabaseType();
+                if (dbtype && dbtype.inheritsFrom("AActor"))
+                    AddCompletionsFromSpecifiers(context, specifiers.ASPropertySpecifiersForActors, completions);
+                if (dbtype && dbtype.inheritsFrom("UWidget"))
+                    AddCompletionsFromSpecifiers(context, specifiers.ASPropertySpecifiersForWidgets, completions);
+            }
+
             if (scriptfiles.GetScriptSettings().useAngelscriptHaze)
                 AddCompletionsFromSpecifiers(context, specifiers.ASPropertySpecifiers_HAZE, completions);
             else
