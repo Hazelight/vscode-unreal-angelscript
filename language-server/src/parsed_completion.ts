@@ -3432,12 +3432,27 @@ function ScanOffsetStartOfOuterExpression(content : string, offset : number, ign
                 }
             break;
             case '{':
-            case '}':
             {
                 if (depth_paren == 0 && depth_sqbracket == 0 && depth_anglebracket == 0)
                 {
+                    if (ignoreTableIndex >= 0
+                        && ignoreTable[ignoreTableIndex+1] == curOffset
+                        && ignoreTable.length > ignoreTableIndex+2
+                        && content[ignoreTable[ignoreTableIndex+2]] == "}")
+                    {
+                        // If we have ignore areas on both sides of a {} then it's likely
+                        // we're inside an f-string, so we should keep searching through this brace
+                        break;
+                    }
+
                     return [-1, 0];
                 }
+            }
+            break;
+            case '}':
+            {
+                if (depth_paren == 0 && depth_sqbracket == 0 && depth_anglebracket == 0)
+                    return [-1, 0];
             }
             break;
         }
