@@ -203,7 +203,7 @@ export class ASDebugSession extends LoggingDebugSession
         logger.setup(args.trace ? Logger.LogLevel.Verbose : Logger.LogLevel.Stop, false);
 
         let hostname = args.hostname ?? this.hostname;
-        let port = args.port ?? this.port;
+        let port = (args.port !== undefined && args.port > 0) ? args.port : this.port;
 
         unreal.connect(hostname, port);
         unreal.sendStartDebugging(this.debugAdapterVersion);

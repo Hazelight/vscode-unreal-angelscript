@@ -52,6 +52,11 @@ export function RefreshDependencyRestrictions()
             let pattern = "^"+(restriction.isolate as string).replace(/\./g, "\\.").replace(/\$/g, "[^.]+");
             IsolateRegexes.push(new RegExp(pattern));
         }
+        else if (restriction.unisolate)
+        {
+            let pattern = "^"+(restriction.unisolate as string).replace(/\./g, "\\.").replace(/\$/g, "[^.]+");
+            UnisolateRegexes.push(new RegExp(pattern));
+        }
     }
 }
 
@@ -59,6 +64,7 @@ let FunctionLabelSuffix = "()";
 let FunctionLabelWithParamsSuffix = "(…)";
 
 let IsolateRegexes = new Array<RegExp>();
+let UnisolateRegexes = new Array<RegExp>();
 let ResolvedModuleDependencyIsolations = new Map<string, string>();
 
 namespace Sort
@@ -1436,6 +1442,10 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
         if (context.expectedType.templateSubTypes && context.expectedType.templateSubTypes[0])
             expectedSubclassOf = context.expectedType.templateSubTypes[0];
     }
+    else if (context.expectedType && context.expectedType.name == "UClass")
+    {
+        expectedSubclassOf = "UObject";
+    }
 
     // Complete symbols
     let propertyIndex = 0;
@@ -1526,6 +1536,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
             if (func.isOverride || func.isBlueprintOverride)
                 return;
             if (!func.isCallable)
+                return;
+            if (func.isTemplateInstantiation && func.containingType != curtype)
                 return;
 
             // Don't show constructors if we're probably completing the name of a type
@@ -1849,7 +1861,8 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
 
                     let commitChars : Array<string> = [];
                     GetTypenameCommitChars(context, dbtype.name, commitChars);
-                    if (dbtype.isShadowingNamespace())
+
+                    if (dbtype.isShadowingNamespace() && !context.isIncompleteNamespace)
                         commitChars.push(":");
 
                     let complItem = <CompletionItem> {
@@ -2074,7 +2087,7 @@ function CanCompleteSymbol(context : CompletionContext, symbol : typedb.DBSymbol
     {
         return CanCompleteToOnlyStart(context, symbol.name);
     }
-    else if (!symbol.containingType && symbol.namespace.isRootNamespace())
+    else if (!symbol.containingType && symbol.namespace.isRootNamespace() && !context.priorType)
     {
         if (symbol.keywords)
             return CanCompleteToOnlyStart(context, GetSymbolFilterText(context, symbol));
@@ -2514,7 +2527,7 @@ function GenerateCompletionContext(asmodule : scriptfiles.ASModule, offset : num
                 // Comparison operators that expect the same type
                 context.expectedType = context.leftType;
             }
-            else if (context.leftType.isPrimitive)
+            else if (context.leftType.isPrimitive || context.leftType.isEnum)
             {
                 // Any non boolean operator on a primitive expects that same type
                 context.expectedType = context.leftType;
@@ -3640,6 +3653,16 @@ export function resolveModuleIsolation(module : string) : string
             }
         }
 
+        for (let restriction of UnisolateRegexes)
+        {
+            let match = restriction.exec(module);
+            if (match)
+            {
+                isolate += "__unisolate";
+                break;
+            }
+        }
+
         ResolvedModuleDependencyIsolations.set(module, isolate);
         return isolate;
     }
@@ -3659,7 +3682,12 @@ export function isValidModuleDependency(module : string, dependencyModule : stri
     {
         let moduleIsolation = resolveModuleIsolation(module);
         if (dependencyIsolation != moduleIsolation)
-            return false;
+        {
+            if (moduleIsolation.endsWith("__unisolate"))
+                return true;
+            if (!moduleIsolation.startsWith(dependencyIsolation))
+                return false;
+        }
     }
 
     return true;
@@ -3735,7 +3763,7 @@ function isPropertyAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamesp
 
 function isFunctionAccessibleFromScope(curtype : typedb.DBType | typedb.DBNamespace, func : typedb.DBMethod, inScope : scriptfiles.ASScope) : boolean
 {
-    if (!func.containingType)
+    if (!func.containingType && !func.isConstructor)
     {
         if (func.declaredModule)
         {

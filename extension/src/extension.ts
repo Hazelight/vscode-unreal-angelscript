@@ -436,9 +436,15 @@ class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
                 const session = new ASDebugSession();
                 session.setRunAsServer(true);
 
-                if (port !== undefined)
+                if (port !== undefined && port > 0)
                 {
+                    // Use the provided port
                     session.port = port;
+                }
+                else
+                {
+                    // Get the port from the workspace configuration
+                    session.port = vscode.workspace.getConfiguration("UnrealAngelscript").get("unrealConnectionPort");
                 }
 
                 if (hostname !== undefined)

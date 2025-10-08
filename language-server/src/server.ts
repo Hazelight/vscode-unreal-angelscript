@@ -59,6 +59,9 @@ let connection: Connection = createConnection(new IPCMessageReader(process), new
 // Create a connection to unreal
 let unreal : Socket;
 
+const hostname = "127.0.0.1";
+let port : number = 27099;
+
 let ParseQueue : Array<scriptfiles.ASModule> = [];
 let ParseQueueIndex = 0;
 let LoadQueue : Array<scriptfiles.ASModule> = [];
@@ -74,15 +77,25 @@ let SetTypeTimeout = false;
 let UnrealTypesTimedOut = false;
 
 let settings : any = null;
+let reconnectTimeoutId : any = undefined;
 
-function connect_unreal() {
+function connect_unreal()
+{
+    // connection.console.log('Connecting to unreal editor on port '+port);
+
+    if (reconnectTimeoutId)
+    {
+        clearTimeout(reconnectTimeoutId);
+        reconnectTimeoutId = undefined;
+    }
+
     if (unreal != null)
     {
+        unreal.removeAllListeners();
         unreal.write(buildDisconnect());
         unreal.destroy();
     }
     unreal = new Socket;
-    //connection.console.log('Connecting to unreal editor...');
 
     unreal.on("data", function(data : Buffer) {
         let messages : Array<Message> = readMessages(data);
@@ -229,26 +242,30 @@ function connect_unreal() {
     });
 
     unreal.on("error", function() {
+        // connection.console.log('Reconnecting to unreal due to error');
         if (unreal != null)
         {
             unreal.destroy();
             unreal = null;
-            setTimeout(connect_unreal, 5000);
+            if (!reconnectTimeoutId)
+                reconnectTimeoutId = setTimeout(connect_unreal, 5000);
         }
     });
 
     unreal.on("close", function() {
+        // connection.console.log('Ceconnecting to unreal due to close');
         if (unreal != null)
         {
             unreal.destroy();
             unreal = null;
-            setTimeout(connect_unreal, 5000);
+            if (!reconnectTimeoutId)
+                reconnectTimeoutId = setTimeout(connect_unreal, 5000);
         }
     });
 
-    unreal.connect(27099, "127.0.0.1", function()
+    unreal.connect(port, hostname, function()
     {
-        //connection.console.log('Connection to unreal editor established.');
+        // connection.console.log('Connection to unreal editor established.');
         setTimeout(function()
         {
             if (!unreal)
@@ -1182,6 +1199,14 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
 
     if (dirtyDiagnostics)
         DirtyAllDiagnostics();
+
+    if (port != settings.unrealConnectionPort)
+    {
+        port = settings.unrealConnectionPort;
+
+        // If the port has changed, reconnect
+        connect_unreal();
+    }
 
     let completionSettings = parsedcompletion.GetCompletionSettings();
     completionSettings.mathCompletionShortcuts = settings.mathCompletionShortcuts;

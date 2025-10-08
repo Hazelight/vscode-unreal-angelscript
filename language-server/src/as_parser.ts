@@ -751,12 +751,12 @@ export function GetAllParsedModules() : Array<ASModule>
 // Get a module reference with the specified module name
 export function GetModule(modulename : string) : ASModule
 {
-    let module = ModuleDatabase.get(modulename);
+    let module = ModuleDatabase.get(modulename.toLowerCase());
     if (!module)
     {
         module = new ASModule;
         module.modulename = modulename;
-        ModuleDatabase.set(modulename, module);
+        ModuleDatabase.set(modulename.toLowerCase(), module);
     }
     return module;
 }
@@ -5215,7 +5215,7 @@ function DetectIdentifierSymbols(scope : ASScope, statement : ASStatement, node 
     }
 
     // We might be typing a typename at the start of a declaration, which accidentally got parsed as an identifier due to incompleteness
-    let isTypingSingleIdentifier = (node == statement.ast && scope.module.isEditingInside(statement.start_offset + node.start, statement.end_offset + node.end + 2));
+    let isTypingSingleIdentifier = (node == statement.ast && scope.module.isEditingInside(statement.start_offset + node.start, statement.start_offset + node.end + 2));
     if (isTypingSingleIdentifier || node.maybeTypename)
     {
         // We could be typing a namespace

@@ -265,6 +265,7 @@ export class DBMethod implements DBSymbol
     delegateWildcardParam : number = -1;
 
     methodAnnotation : DBMethodAnnotation = DBMethodAnnotation.None;
+    isTemplateInstantiation : boolean = false;
 
     declaredModule : string;
     moduleOffset : number;
@@ -289,6 +290,7 @@ export class DBMethod implements DBSymbol
         inst.isProperty = this.isProperty;
         inst.isDefaultsOnly = this.isDefaultsOnly;
         inst.determinesOutputTypeArgumentIndex = this.determinesOutputTypeArgumentIndex;
+        inst.isTemplateInstantiation = true;
 
         inst.args = [];
         for(let argval of this.args)
@@ -638,6 +640,8 @@ export class DBType implements DBSymbol
     isEvent : boolean = false;
     isPrimitive : boolean = false;
     isTemplateInstantiation : boolean = false;
+    isTemplateCovariant : boolean = false;
+    isTemplateInheritSpecializations : boolean = false;
     templateBaseType : string = null;
 
     classification : DBTypeClassification = DBTypeClassification.Unknown;
@@ -677,6 +681,8 @@ export class DBType implements DBSymbol
         inst.moduleOffset = this.moduleOffset;
         inst.moduleOffsetEnd = this.moduleOffsetEnd;
         inst.isTemplateInstantiation = true;
+        inst.isTemplateInheritSpecializations = this.isTemplateInheritSpecializations;
+        inst.isTemplateCovariant = this.isTemplateCovariant;
         inst.templateSubTypes = actualTypes;
         inst.templateBaseType = this.name;
 
@@ -789,6 +795,11 @@ export class DBType implements DBSymbol
             }
         }
 
+        if ('template_covariant' in input)
+            this.isTemplateCovariant = input['template_covariant'];
+        if ('template_inherit_specializations' in input)
+            this.isTemplateInheritSpecializations = input['template_inherit_specializations'];
+
         if (delegateSignatureMethod != null && delegateSignatureMethod instanceof DBMethod)
         {
             // Detect the signature for the delegate from the Broadcast or ExecuteIfBound methods
@@ -850,6 +861,8 @@ export class DBType implements DBSymbol
     {
         if(this.supertype)
             return true;
+        if (this.isTemplateInstantiation && this.isTemplateInheritSpecializations)
+            return true;
         return false;
     }
 
@@ -883,6 +896,25 @@ export class DBType implements DBSymbol
                 let dbsuper = LookupType(checkType.namespace, checkType.supertype);
                 if(dbsuper && !this.extendTypes.includes(dbsuper))
                     this.extendTypes.push(dbsuper);
+            }
+
+            if (checkType.isTemplateInstantiation && checkType.templateSubTypes.length > 0 && this.isTemplateInheritSpecializations)
+            {
+                let subType : DBType = LookupType(checkType.namespace, checkType.templateSubTypes[0]);
+                while (subType && subType.supertype)
+                {
+                    subType = LookupType(checkType.namespace, subType.supertype);
+                    if (subType)
+                    {
+                        let subtypes = this.templateSubTypes.slice();
+                        subtypes[0] = subType.name;
+
+                        let subtypeTemplateName = FormatTemplateTypename(checkType.templateBaseType, subtypes);
+                        let subtypeTemplate = LookupType(checkType.namespace, subtypeTemplateName);
+                        if (subtypeTemplate && !this.extendTypes.includes(subtypeTemplate))
+                            this.extendTypes.push(subtypeTemplate);
+                    }
+                }
             }
 
             checkIndex += 1;
@@ -1043,12 +1075,13 @@ export class DBType implements DBSymbol
     getInheritanceTypes() : Array<DBType>
     {
         let typeList = new Array<DBType>();
-        let check : DBType = this;
+        let check: DBType = this;
         while (check && typeList.indexOf(check) == -1)
         {
             typeList.push(check);
             check = LookupType(check.namespace, check.supertype);
         }
+
         return typeList;
     }
 
@@ -1231,7 +1264,7 @@ export class DBType implements DBSymbol
                     if (sym instanceof DBMethod)
                     {
                         if (!match
-                            || sym.args.length == parameterCount
+                            || (sym.args.length == parameterCount && match.args.length != parameterCount)
                             || (sym.args.length >= parameterCount && match.args.length < parameterCount)
                             || (sym.args.length >= parameterCount && sym.args.length < match.args.length)
                         )
@@ -1246,7 +1279,7 @@ export class DBType implements DBSymbol
                 if (syms instanceof DBMethod)
                 {
                     if (!match
-                        || syms.args.length == parameterCount
+                        || (syms.args.length == parameterCount && match.args.length != parameterCount)
                         || (syms.args.length >= parameterCount && match.args.length < parameterCount)
                         || (syms.args.length >= parameterCount && syms.args.length < match.args.length)
                     )
@@ -2252,6 +2285,22 @@ export function LookupType(namespace : DBNamespace, typename : string) : DBType 
     return null;
 }
 
+export function FormatTemplateTypename(baseType : string, subtypes : Array<string>) : string
+{
+    let typename = baseType;
+    if (subtypes.length == 0)
+        return typename;
+    typename += "<";
+    for (let i = 0; i < subtypes.length; ++i)
+    {
+        if (i != 0)
+            typename += ",";
+        typename += subtypes[i];
+    }
+    typename += ">";
+    return typename;
+}
+
 export function LookupGlobalSymbol(namespace : DBNamespace, name : string, allowSymbol = DBAllowSymbol.All) : Array<DBSymbol>
 {
     if (!name)
@@ -2440,7 +2489,22 @@ export function AddTypesFromUnreal(input : any)
 {
     for (let key in input)
     {
-        let type = new DBType();
+        let type : DBType;
+
+        if ('templateSpecialization' in input[key])
+        {
+            // If we're specializing a template, generate it first before adding the specializations into it
+            let existingType = GetTypeByName(key);
+            if (existingType)
+                RemoveTypeFromDatabase(existingType);
+            type = LookupType(null, key);
+        }
+        else
+        {
+            // Create the type from scratch if it's not a template instance
+            type = new DBType;
+        }
+
         type.fromJSON(key, input[key]);
 
         if (type.name.startsWith("__"))
