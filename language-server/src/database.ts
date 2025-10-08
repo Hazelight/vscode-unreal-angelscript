@@ -2583,7 +2583,7 @@ export function FinishTypesFromUnreal()
     if (systemLib)
     {
         for (let functionName of [
-            "SetTimer", "ClearTimer", "PauseTimer", "UnPauseTimer",
+            "SetTimer", "SetTimerForNextTick", "ClearTimer", "PauseTimer", "UnPauseTimer",
             "IsTimerActive", "IsTimerPaused", "TimerExists",
             "GetTimerElapsedTime", "GetTimerRemainingTime"
         ])
