@@ -40,8 +40,6 @@ export let ASPropertySpecifiersForActors : any = {
     "ShowOnActor": "Use on DefaultComponents, properties from the component will appear in the actor's details panel",
     "Attach": "Use on DefaultComponents, specify a different component to attach this to in the scene hierarchy",
     "AttachSocket": "Use on DefaultComponents with an Attach, specify a socket to attach to on this component's attach parent",
-    "BindWidget": "Automatically bind this property to the widget with the same name within child UMG blueprints",
-    "BindWidgetAnim": "Automatically bind this property to the widget animation with the same name within child UMG blueprints",
     "BindComponent": "Automatically bind this property to the component with the same name within child actor blueprints",
 };
 
