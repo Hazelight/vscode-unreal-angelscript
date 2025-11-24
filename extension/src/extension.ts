@@ -217,6 +217,10 @@ class ASApiSearchProvider implements vscode.WebviewViewProvider
         {
             vscode.postMessage(searchBox.value);
         });
+        window.addEventListener("focus", function(event)
+        {
+            searchBox.focus();
+        });
         </script>
     `;
     }
