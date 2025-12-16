@@ -7712,6 +7712,15 @@ function peg$parse(input, options) {
           if (peg$silentFails === 0) { peg$fail(peg$e8); }
         }
         if (s4 === peg$FAILED) {
+          if (input.charCodeAt(peg$currPos) === 43) {
+            s4 = peg$c3;
+            peg$currPos++;
+          } else {
+            s4 = peg$FAILED;
+            if (peg$silentFails === 0) { peg$fail(peg$e7); }
+          }
+        }
+        if (s4 === peg$FAILED) {
           s4 = null;
         }
         s5 = [];

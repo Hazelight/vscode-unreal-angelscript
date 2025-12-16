@@ -901,7 +901,7 @@ decimal_literal
             )?
         / "." [0-9]+
     ) exponent:(
-        "e" "-"? [0-9]+
+        "e" ("-" / "+")? [0-9]+
     )? suffix:"f"? {
         let value = head[1];
         if (exponent)
