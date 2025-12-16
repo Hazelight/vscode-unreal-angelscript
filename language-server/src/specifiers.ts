@@ -46,6 +46,7 @@ export let ASPropertySpecifiersForActors : any = {
 export let ASPropertySpecifiersForWidgets : any = {
     "BindWidget": "Automatically bind this property to the widget with the same name within child UMG blueprints",
     "BindWidgetAnim": "Automatically bind this property to the widget animation with the same name within child UMG blueprints",
+    "BindWidgetOptional": "Optionally bind this property to the widget with the same name within child UMG blueprints (no error if widget is missing)",
 };
 
 export let ASPropertySpecifiers_HAZE : any = {
