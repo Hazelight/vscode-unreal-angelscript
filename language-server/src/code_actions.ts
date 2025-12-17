@@ -1546,6 +1546,17 @@ function AddMacroActions(context : CodeActionContext)
                             position: context.range_start,
                         }
                     });
+                    context.actions.push(<CodeAction> {
+                        kind: CodeActionKind.QuickFix,
+                        title: `Add UPROPERTY(BindWidgetOptional)`,
+                        source: "angelscript",
+                        data: {
+                            uri: context.module.uri,
+                            type: "insertMacro",
+                            macro: "UPROPERTY(BindWidgetOptional)",
+                            position: context.range_start,
+                        }
+                    });
                 }
 
                 if (isWidgetAnim)
