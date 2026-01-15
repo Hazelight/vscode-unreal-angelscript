@@ -15,7 +15,7 @@ export function GetAPIList(root : string) : any
         {
             for (let [_, childNamespace] of type.childNamespaces)
             {
-                if (childNamespace.isShadowingType())
+                if (isNamespaceApiEmpty(childNamespace))
                     continue;
 
                 list.push({
@@ -267,9 +267,6 @@ export function GetAPISearch(filter : string) : any
         {
             for (let [_, childNamespace] of type.childNamespaces)
             {
-                if (childNamespace.isShadowingType())
-                    continue;
-
                 searchType(childNamespace);
             }
 
@@ -292,6 +289,8 @@ export function GetAPISearch(filter : string) : any
                 if (symbol.isConstructor)
                     return;
                 if (symbol.name.startsWith("op"))
+                    return;
+                if (shouldSkipApiFunction(symbol))
                     return;
                 if (typeMatches || canComplete(symbol.name))
                 {
@@ -361,4 +360,18 @@ export function GetAPISearch(filter : string) : any
     });
 
     return list;
+}
+
+function isNamespaceApiEmpty(nsType : typedb.DBNamespace) : boolean
+{
+    if (nsType.childNamespaces.size != 0)
+        return false;
+    if (nsType.symbols.size != 0)
+        return false;
+    return true;
+}
+
+function shouldSkipApiFunction(func : typedb.DBMethod) : boolean
+{
+    return false;
 }
