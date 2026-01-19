@@ -103,7 +103,7 @@ export class ASModule
     preParsedImports = new Array<string>();
     preParsedIdentifiers = new Array<string>();
 
-    queuedParse : any = null;
+    parseDelay : any = null;
 
     rawStatements : Array<ASStatement> = [];
     cachedStatements : Array<ASStatement> = null;

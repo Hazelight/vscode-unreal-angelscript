@@ -1120,19 +1120,20 @@ connection.onDidChangeTextDocument((params) => {
         scriptfiles.UpdateModuleFromDisk(asmodule);
     scriptfiles.UpdateModuleFromContentChanges(asmodule, params.contentChanges);
 
-    if (!asmodule.queuedParse)
+    if (!asmodule.parseDelay)
     {
         // We don't parse because of didChange more than ten times per second,
         // so we don't end up with a giant backlog of parses.
-        asmodule.queuedParse = setTimeout(function() {
-            asmodule.queuedParse = null;
-            scriptfiles.ParseModuleAndDependencies(asmodule);
-            if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
-            {
-                scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
-                scriptfiles.ResolveModule(asmodule);
-                scriptdiagnostics.UpdateScriptModuleDiagnostics(asmodule);
-            }
+        scriptfiles.ParseModuleAndDependencies(asmodule);
+        if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
+        {
+            scriptfiles.PostProcessModuleTypesAndDependencies(asmodule);
+            scriptfiles.ResolveModule(asmodule);
+            scriptdiagnostics.UpdateScriptModuleDiagnostics(asmodule);
+        }
+
+        asmodule.parseDelay = setTimeout(function() {
+            asmodule.parseDelay = null;
         }, 100);
     }
 
