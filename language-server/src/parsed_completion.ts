@@ -1568,7 +1568,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                                     description: func.returnType,
                                 },
                                 commitCharacters: [".", ";", ","],
-                                filterText: GetSymbolFilterText(context, func),
+                                filterText: GetPropertyAccessorFilterText(context, func),
                         };
 
                         if (func.containingType)
@@ -1618,7 +1618,7 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                                     description: func.args[0].typename,
                                 },
                                 commitCharacters: [".", ";", ","],
-                                filterText: GetSymbolFilterText(context, func),
+                                filterText: GetPropertyAccessorFilterText(context, func),
                                 sortText: (func.containingType == scopeType) ? "a" : "b",
                         };
 
@@ -1657,7 +1657,9 @@ export function AddCompletionsFromType(context : CompletionContext, curtype : ty
                 }
             }
 
-            if(!func.name.startsWith("op") && (!func.isBlueprintEvent || showEvents))
+            if(!func.name.startsWith("op")
+                && (!func.isBlueprintEvent || showEvents)
+                && (!func.isProperty || !func.declaredModule))
             {
                 let commitChars = ["("];
                 if (func.isConstructor)
@@ -2115,6 +2117,16 @@ function GetSymbolFilterText(context : CompletionContext, symbol : typedb.DBSymb
     if (!symbol.keywords)
         return undefined;
     return [symbol.name, ...symbol.keywords].join(" ");
+}
+
+function GetPropertyAccessorFilterText(context : CompletionContext, symbol : typedb.DBMethod) : string | undefined
+{
+    if (!symbol.declaredModule)
+        return GetSymbolFilterText(context, symbol);
+    let propertyFilter = `${symbol.name} Get${symbol.name} Set${symbol.name}`;
+    if (!symbol.keywords)
+        return propertyFilter;
+    return [propertyFilter, ...symbol.keywords].join(" ");
 }
 
 function GetTypenamePriority(context : CompletionContext, type : typedb.DBType) : string
