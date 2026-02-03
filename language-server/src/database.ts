@@ -2538,7 +2538,9 @@ export function AddTypesFromUnreal(input : any)
                     }
                 }
 
-                let ns = LookupNamespace(parentNamespace, identifier);
+                let ns = parentNamespace
+                    ? parentNamespace.findChildNamespace(identifier)
+                    : LookupNamespace(null, identifier);
                 if (!ns)
                 {
                     ns = DeclareNamespace(parentNamespace, identifier, decl);
