@@ -24,7 +24,7 @@ const GetAPISearchRequest = new RequestType<any, any[], void>('angelscript/getAP
 export function activate(context: ExtensionContext) {
 
     // The server is implemented in node
-    let serverModule = context.asAbsolutePath(path.join('language-server', 'out', 'server.js'));
+    let serverModule = context.asAbsolutePath(path.join('language-server', 'dist', 'server.js'));
     // The debug options for the server
     let debugOptions = { execArgv: ["--nolazy", "--inspect=6009"] };
 

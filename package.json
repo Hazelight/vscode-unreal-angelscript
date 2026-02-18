@@ -2,7 +2,7 @@
     "name": "unreal-angelscript",
     "displayName": "Unreal Angelscript",
     "description": "Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://github.com/Hazelight/UnrealEngine-Angelscript",
-    "version": "1.8.9",
+    "version": "1.9.1",
     "publisher": "Hazelight",
     "icon": "resources/angelscript_unreal.png",
     "engines": {
@@ -20,7 +20,7 @@
         "type": "git",
         "url": "https://github.com/Hazelight/vscode-unreal-angelscript"
     },
-    "main": "./extension/out/extension",
+    "main": "./extension/dist/extension.js",
     "contributes": {
         "viewsContainers": {
             "activitybar": [
@@ -676,32 +676,16 @@
             }
         ]
     },
-    "dependencies": {
-        "@types/glob": "^7.1.3",
-        "glob": "^7.1.3",
-        "iconv-lite": "^0.6.2",
-        "moo": "^0.5.1",
-        "npm": "^11.5.2",
-        "vscode-languageclient": "^8.1.0",
-        "vscode-languageserver": "^8.1.0",
-        "vscode-languageserver-textdocument": "^1.0.8"
-    },
     "scripts": {
         "vscode:prepublish": "npm run compile",
-        "compile": "tsc -b",
-        "watch": "tsc -b -w",
+        "compile": "npm run compile:extension && npm run compile:language-server",
+        "compile:extension": "cd extension && node esbuild.js",
+        "compile:language-server": "cd language-server && node esbuild.js",
+        "watch": "npm-run-all -p watch:*",
+        "watch:extension": "cd extension && node esbuild.js --watch",
+        "watch:language-server": "cd language-server && node esbuild.js --watch",
         "postinstall": "cd extension && npm install && cd ../language-server && npm install && cd ..",
         "pegjs:compile": "cd language-server/pegjs && peggy angelscript.pegjs --allowed-start-rules start,start_global,start_class,start_enum",
         "pegjs:test": "cd language-server/pegjs && peggy angelscript.pegjs --allowed-start-rules start,start_global,start_class,start_enum --trace --test-file test.as -S start"
-    },
-    "devDependencies": {
-        "@types/mocha": "^8.2.2",
-        "@types/node": "^12.12.0",
-        "@typescript-eslint/eslint-plugin": "^4.21.0",
-        "@typescript-eslint/parser": "^4.21.0",
-        "eslint": "^7.23.0",
-        "mocha": "^11.7.1",
-        "peggy": "^3.0.2",
-        "typescript": "^4.6.2"
     }
 }

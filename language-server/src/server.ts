@@ -46,7 +46,7 @@ import * as colorpicker from './color_picker';
 import * as typehierarchy from './type_hierarchy';
 import * as api_docs from './api_docs';
 import * as fs from 'fs';
-import * as glob from 'glob';
+import {glob} from 'glob';
 
 import {
     Message, MessageType, readMessages, buildGoTo,

@@ -8,8 +8,10 @@
         "vscode": "^1.65.0"
     },
     "dependencies": {
+        "@types/node": "^25.2.3",
         "await-notify": "^1.0.1",
-        "vscode-debugadapter": "^1.48.0",
+        "esbuild": "^0.27.3",
+        "vscode-debugadapter": "1.51.0",
         "vscode-languageclient": "^8.1.0"
     },
     "devDependencies": {

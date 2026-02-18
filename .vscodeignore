@@ -2,3 +2,8 @@
 .vscode-test/**
 .gitignore
 vsc-extension-quickstart.md
+extension/node_modules/**
+extension/out/**
+language-server/node_modules/**
+language-server/out/**
+node_modules/**

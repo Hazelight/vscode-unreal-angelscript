@@ -10,11 +10,7 @@
                 "--extensionDevelopmentPath=${workspaceRoot}",
                 //"--enable-proposed-api", "Hazelight.unreal-angelscript"
             ],
-            "outFiles": ["${workspaceRoot}/extension/out/**/*.js"],
-            "preLaunchTask": {
-                "type": "npm",
-                "script": "watch"
-            }
+            "outFiles": ["${workspaceRoot}/extension/dist/**/*.js"],
         },
         {
             "type": "node",
@@ -22,7 +18,7 @@
             "name": "Attach to Server",
             "port": 6009,
             "restart": true,
-            "outFiles": ["${workspaceRoot}/language-server/out/**/*.js"]
+            "outFiles": ["${workspaceRoot}/language-server/dist/**/*.js"]
         },
         {
             "name": "Debug Debug Adapter",
@@ -31,7 +27,7 @@
             "cwd": "${workspaceRoot}",
             "program": "${workspaceRoot}/extension/src/debugAdapter.ts",
             "args": [ "--server=4711" ],
-            "outFiles": [ "${workspaceRoot}/extension/out/**/*.js" ]
+            "outFiles": [ "${workspaceRoot}/extension/dist/**/*.js" ]
         },
     ],
     "compounds": [
