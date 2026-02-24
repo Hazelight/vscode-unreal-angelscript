@@ -104,6 +104,7 @@ export class ASModule
     preParsedIdentifiers = new Array<string>();
 
     parseDelay : any = null;
+    parseAfterDelay : boolean = false;
 
     rawStatements : Array<ASStatement> = [];
     cachedStatements : Array<ASStatement> = null;

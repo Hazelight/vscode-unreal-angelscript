@@ -1105,21 +1105,8 @@ connection.languages.inlineValue.on(function (params : InlineValueParams) : Arra
     return inlinevalues.ProvideInlineValues(asmodule, params.context.stoppedLocation.start);
 });
 
-connection.onDidChangeTextDocument((params) => {
-    // The content of a text document did change in VSCode.
-    // params.uri uniquely identifies the document.
-    // params.contentChanges describe the content changes to the document.
-    if (params.contentChanges.length == 0)
-        return;
-
-    let uri = params.textDocument.uri;
-    let modulename = getModuleName(uri);
-
-    let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
-    if (!asmodule.loaded)
-        scriptfiles.UpdateModuleFromDisk(asmodule);
-    scriptfiles.UpdateModuleFromContentChanges(asmodule, params.contentChanges);
-
+function TriggerThrottledModuleParse(asmodule : scriptfiles.ASModule)
+{
     if (!asmodule.parseDelay)
     {
         // We don't parse because of didChange more than ten times per second,
@@ -1134,8 +1121,35 @@ connection.onDidChangeTextDocument((params) => {
 
         asmodule.parseDelay = setTimeout(function() {
             asmodule.parseDelay = null;
+
+            if (asmodule.parseAfterDelay)
+            {
+                asmodule.parseAfterDelay = false;
+                TriggerThrottledModuleParse(asmodule);
+            }
         }, 100);
     }
+    else
+    {
+        asmodule.parseAfterDelay = true;
+    }
+}
+
+connection.onDidChangeTextDocument((params) => {
+    // The content of a text document did change in VSCode.
+    // params.uri uniquely identifies the document.
+    // params.contentChanges describe the content changes to the document.
+    if (params.contentChanges.length == 0)
+        return;
+
+    let uri = params.textDocument.uri;
+    let modulename = getModuleName(uri);
+
+    let asmodule = scriptfiles.GetOrCreateModule(modulename, getPathName(uri), uri);
+    if (!asmodule.loaded)
+        scriptfiles.UpdateModuleFromDisk(asmodule);
+    scriptfiles.UpdateModuleFromContentChanges(asmodule, params.contentChanges);
+    TriggerThrottledModuleParse(asmodule);
 
     if (asmodule.lastEditStart != -1 && parsedcompletion.GetCompletionSettings().correctFloatLiteralsWhenExpectingDoublePrecision)
     {
