@@ -156,6 +156,16 @@ export class ASDebugSession extends LoggingDebugSession
         this.waitingInitializeResponse = response;
     }
 
+    protected customRequest(command: string, response: DebugProtocol.Response, args: any, request?: DebugProtocol.Request) : void
+    {
+        if (command == "angelscript/stopPIE")
+        {
+            unreal.sendStopPIE();
+            response.success = true;
+            this.sendResponse(response);
+        }
+    }
+
 
     receiveBreakFilters(msg : unreal.Message) : void
     {

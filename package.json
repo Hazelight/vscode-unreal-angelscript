@@ -2,7 +2,7 @@
     "name": "unreal-angelscript",
     "displayName": "Unreal Angelscript",
     "description": "Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://github.com/Hazelight/UnrealEngine-Angelscript",
-    "version": "1.9.1",
+    "version": "1.8.9",
     "publisher": "Hazelight",
     "icon": "resources/angelscript_unreal.png",
     "engines": {
@@ -580,6 +580,12 @@
                 "command": "angelscript.saveAndEditAsset",
                 "title": "Angelscript Save and Edit Asset",
                 "enablement": "false"
+            },
+            {
+                "command": "angelscript.debugStopPIE",
+                "title": "Unreal: Resume Execution and Stop Any Active PIE Sessions",
+                "shortTitle": "Resume and Stop PIE",
+                "icon": "resources/stop_pie.png"
             }
         ],
         "menus": {
@@ -588,6 +594,12 @@
                     "when": "resourceLangId == angelscript",
                     "command": "angelscript.goToSymbol",
                     "group": "navigation"
+                }
+            ],
+            "debug/toolBar": [
+                {
+                    "command": "angelscript.debugStopPIE",
+                    "when": "debugType == angelscript && debugState == stopped"
                 }
             ]
         },

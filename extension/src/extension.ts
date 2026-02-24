@@ -175,6 +175,14 @@ export function activate(context: ExtensionContext) {
         });
     context.subscriptions.push(saveAndEditAsset);
 
+    let stopPIE = vscode.commands.registerCommand('angelscript.debugStopPIE',
+        function()
+        {
+            if (vscode.debug.activeDebugSession)
+                vscode.debug.activeDebugSession.customRequest("angelscript/stopPIE");
+        });
+    context.subscriptions.push(stopPIE);
+
     console.log("Done activating angelscript extension");
 
     let apiTree = new ASApiTreeProvider(client);

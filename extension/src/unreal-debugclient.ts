@@ -58,6 +58,8 @@ export enum MessageType
 
     SetDataBreakpoints,
     ClearDataBreakpoints,
+
+    StopPIE,
 }
 
 export class Message
@@ -479,6 +481,15 @@ export function sendBreakOptions(filters : string[])
 
     let msg = Buffer.concat(parts);
     msg.writeUInt32LE(msg.length - 4, 0);
+
+    unreal.write(msg);
+}
+
+export function sendStopPIE()
+{
+    let msg = Buffer.alloc(5);
+    msg.writeUInt32LE(1, 0);
+    msg.writeUInt8(MessageType.StopPIE, 4);
 
     unreal.write(msg);
 }
