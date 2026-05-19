@@ -1,15 +1,18 @@
 {
-    "name": "lsp-sample-server",
-    "description": "Example implementation of a language server in node.",
-    "version": "1.0.0",
-    "author": "Microsoft Corporation",
+    "name": "ue-angelscript-ls",
+    "description": "",
+    "version": "0.1.0",
+    "bin": {
+        "ue-angelscript-ls": "dist/server.js"
+    },
+    "author": "Hazelight",
     "license": "MIT",
     "engines": {
         "node": "*"
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/Microsoft/vscode-extension-samples"
+        "url": "https://github.com/Hazelight/vscode-unreal-angelscript"
     },
     "dependencies": {
         "@types/glob": "^7.1.3",
@@ -25,5 +28,8 @@
         "typescript": "^4.5.5",
         "vscode-test": "^1.3.0"
     },
-    "scripts": {}
+    "scripts": {
+        "build": "node esbuild.js",
+        "prepare": "npm run build"
+    }
 }

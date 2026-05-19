@@ -21,7 +21,7 @@ import {
     TypeHierarchySupertypesParams, TypeHierarchySubtypesParams,
     WorkspaceSymbol, DocumentSymbol,
     InlayHint, InlayHintParams,
-    InlineValue, InlineValueParams,
+    InlineValue, InlineValueParams, WorkspaceFolder,
 } from 'vscode-languageserver/node';
 import { TextDocument, TextDocumentContentChangeEvent } from 'vscode-languageserver-textdocument';
 
@@ -53,8 +53,14 @@ import {
     buildDisconnect, buildOpenAssets, buildCreateBlueprint
 } from './unreal-buffers';
 
-// Create a connection for the server. The connection uses Node's IPC as a transport
-let connection: Connection = createConnection(new IPCMessageReader(process), new IPCMessageWriter(process));
+// Create a connection for the server.
+//
+// If we have a Node IPC send function available, use that, otherwise use stdio
+// to be used as a standalone lsp client.
+const ipcSendAvailble = typeof process.send === 'function';
+let connection: Connection = ipcSendAvailble
+    ? createConnection(new IPCMessageReader(process), new IPCMessageWriter(process))
+    : createConnection(process.stdin, process.stdout);
 
 // Create a connection to unreal
 let unreal : Socket;
@@ -289,6 +295,11 @@ connect_unreal();
 let shouldSendDiagnosticRelatedInformation: boolean = false;
 let RootUris : string[] = [];
 
+// These should all be optional extras, i.e. the server should still function normally if it's undefined.
+type InitializationOptions = {
+    additionalScriptRootFolders?: WorkspaceFolder[]
+} | undefined;
+
 // After the server has started the client sends an initialize request. The server receives
 // in the passed params the rootPath of the workspace plus the client capabilities.
 connection.onInitialize((_params): InitializeResult => {
@@ -306,6 +317,18 @@ connection.onInitialize((_params): InitializeResult => {
         }
     }
 
+    const initializationOptions = _params.initializationOptions as InitializationOptions;
+
+    const additionalFolders = initializationOptions?.additionalScriptRootFolders;
+    if (additionalFolders) {
+        for (let scriptRootPath of additionalFolders) {
+            let uri = decodeURIComponent(scriptRootPath.uri);
+            if (!RootUris.includes(uri)) {
+                Roots.push(URI.parse(scriptRootPath.uri).fsPath);
+                RootUris.push(uri);
+            }
+        }
+    }
 
     connection.console.log("Workspace roots: " + Roots);
 
