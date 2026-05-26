@@ -35,6 +35,20 @@ export function activate(context: ExtensionContext) {
         debug: { module: serverModule, transport: TransportKind.ipc, options: debugOptions }
     }
 
+    // Resolve scriptRootFolders setting into additionalScriptRootFolders for the LS
+    let initOptions: { additionalScriptRootFolders: { uri: string, name: string }[] } | undefined = undefined;
+    let scriptRootFolders: string[] = vscode.workspace.getConfiguration("UnrealAngelscript").get("scriptRootFolders") || [];
+    if (scriptRootFolders.length > 0 && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+        let workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+        let additionalFolders: { uri: string, name: string }[] = [];
+        for (let relPath of scriptRootFolders) {
+            let absPath = path.resolve(workspaceRoot, relPath);
+            let folderUri = vscode.Uri.file(absPath).toString();
+            additionalFolders.push({ uri: folderUri, name: path.basename(absPath) });
+        }
+        initOptions = { additionalScriptRootFolders: additionalFolders };
+    }
+
     // Options to control the language client
     let clientOptions: LanguageClientOptions = {
         // Register the server for plain text documents
@@ -42,7 +56,8 @@ export function activate(context: ExtensionContext) {
         synchronize: {
             fileEvents: workspace.createFileSystemWatcher('**/*.as'),
             configurationSection: "UnrealAngelscript",
-        }
+        },
+        initializationOptions: initOptions,
     }
 
     console.log("Activate angelscript extension");

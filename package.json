@@ -173,6 +173,14 @@
                     "default": true,
                     "description": "When debugging, show an inline value above the function declaration to display the this pointer and Owner of the object."
                 },
+                "UnrealAngelscript.scriptRootFolders": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "markdownDescription": "Paths to Script root folders, relative to the workspace root. When set, these folders are added as additional script roots for the language server, allowing the workspace root to be a parent directory (e.g. a monorepo root) rather than the Script folder itself. Example: `[\"Projects/MyGame/Script\"]`"
+                },
                 "UnrealAngelscript.scriptIgnorePatterns": {
                     "type": "array",
                     "default": [
