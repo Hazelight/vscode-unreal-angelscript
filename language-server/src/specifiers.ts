@@ -93,6 +93,7 @@ export let ASPropertySubSpecifiers : any = {
 };
 
 export let ASClassSpecifiers : any = {
+    "Placeable": "Class can be placed in the level or on an actor by the editor",
     "NotPlaceable": "Class cannot be placed in the level or on an actor by the editor",
     "NotBlueprintable": "Blueprints cannot be choose this as a parent class",
     "Blueprintable": "Blueprints can be created with this as a parent class",
