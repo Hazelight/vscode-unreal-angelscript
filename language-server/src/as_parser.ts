@@ -3130,7 +3130,16 @@ function ResolveIteratorType(dbtype : typedb.DBType) : typedb.DBType
         if (!return_type)
             return dbtype;
 
-        // Check the Proceed method of the iterator and take its return value as the type
+        // Check the Iterate method of the iterator and take its return value as the type
+        let iterate_sym = return_type.findFirstSymbol("Iterate", typedb.DBAllowSymbol.Functions);
+        if (iterate_sym && iterate_sym instanceof typedb.DBMethod)
+        {
+            let iterate_return = typedb.LookupType(iterate_sym.namespace, iterate_sym.returnType);
+            if (iterate_return)
+                return iterate_return;
+        }
+
+        // The old version of iterators uses a Proceed function, check that as well
         let proceed_sym = return_type.findFirstSymbol("Proceed", typedb.DBAllowSymbol.Functions);
         if (proceed_sym && proceed_sym instanceof typedb.DBMethod)
         {
