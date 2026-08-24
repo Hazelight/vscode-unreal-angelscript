@@ -1038,6 +1038,9 @@ function AddVariablePromotionHelper(context : CodeActionContext)
         case scriptfiles.node_types.Assignment:
             innerStatement = codeNode;
         break;
+        case scriptfiles.node_types.FunctionCall:
+            innerStatement = codeNode;
+        break;
 
         case scriptfiles.node_types.IfStatement:
         case scriptfiles.node_types.ElseStatement:
@@ -1082,6 +1085,59 @@ function AddVariablePromotionHelper(context : CodeActionContext)
                 position: context.range_start,
             }
         });
+    }
+    else if (innerStatement
+        && innerStatement.type == scriptfiles.node_types.FunctionCall
+        && innerStatement.children && innerStatement.children.length >= 2)
+    {
+        // Allow promoting new variables used as function parameters
+        let argList = innerStatement.children[1];
+        if (argList && argList.children)
+        {
+            for (let paramIndex = 0; paramIndex < argList.children.length; ++paramIndex)
+            {
+                let argNode = argList.children[paramIndex];
+                if (!argNode)
+                    continue;
+                if (argNode.type != scriptfiles.node_types.Identifier)
+                    continue;
+
+                // If the parameter side is a known variable we can't provide this action
+                let valueType = scriptfiles.ResolveTypeFromExpression(context.scope, argNode);
+                if (valueType)
+                    continue;
+
+                let variableName = argNode.value;
+
+                let functions : Array<typedb.DBMethod> = [];
+                scriptfiles.ResolveFunctionOverloadsFromExpression(context.scope, innerStatement.children[0], functions);
+
+                if (functions.length == 0)
+                    continue;
+
+                for (let func of functions)
+                {
+                    if (!func.args)
+                        continue;
+                    if (paramIndex >= func.args.length)
+                        continue;
+
+                    context.actions.push(<CodeAction> {
+                        kind: CodeActionKind.RefactorRewrite,
+                        title: `Promote ${variableName} to member variable`,
+                        source: "angelscript",
+                        data: {
+                            uri: context.module.uri,
+                            type: "variablePromotion",
+                            variableName: variableName,
+                            variableType: typedb.CleanTypeName(func.args[paramIndex].typename),
+                            position: context.range_start,
+                        }
+                    });
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -1246,7 +1302,7 @@ function FindInsertPositionForGeneratedMemberVariable(asmodule : scriptfiles.ASM
         // Insert after the member variable that was most recently assigned
         afterPos = asmodule.getPosition(anchoredMemberVariableOffset);
     }
-    else if (lastMemberVariableOffset != -1)
+    else if (lastMemberVariableOffset != -1 && (lastDefaultLineOffset == -1 || lastDefaultLineOffset < lastMemberVariableOffset))
     {
         // Insert after the last member variable declaration
         afterPos = asmodule.getPosition(lastMemberVariableOffset);
